@@ -9,7 +9,7 @@ use tokio::sync::{broadcast::Receiver, oneshot::Sender};
 #[cfg(debug_assertions)]
 use crate::DebugState;
 use crate::{
-    BotOperationUpdate, Character, GameState, GameTemplate, KeyBinding, NavigationPath, Request,
+    Character, GameState, GameTemplate, KeyBinding, NavigationPath, OperationUpdate, Request,
     Response,
     detect::to_base64_from_mat,
     models::Map,
@@ -168,17 +168,11 @@ impl EventHandler<UiEvent> for UiEventHandler {
     }
 }
 
-fn update_operation(context: &mut EventContext<'_>, update: BotOperationUpdate) {
+fn update_operation(context: &mut EventContext<'_>, update: OperationUpdate) {
     if context.map_service.map().is_none() || context.character_service.character().is_none() {
         return;
     }
-    context.operation_service.apply(
-        context.resources,
-        context.world,
-        context.rotator,
-        &context.settings_service.settings(),
-        update,
-    );
+    context.operation_service.update(context.resources, update);
 }
 
 fn create_map(context: &mut EventContext<'_>, name: String) -> Option<Map> {

@@ -97,7 +97,7 @@ macro_rules! send_request {
 /// Represents request from UI.
 #[derive(Debug)]
 enum Request {
-    UpdateOperation(BotOperationUpdate),
+    UpdateOperation(OperationUpdate),
     CreateMap(String),
     UpdateMap(Option<String>, Option<Map>),
     CreateNavigationPath,
@@ -228,14 +228,14 @@ pub enum BotOperation {
 }
 
 #[derive(PartialEq, Clone, Copy, Debug)]
-pub enum BotOperationUpdate {
+pub enum OperationUpdate {
     Halt,
     TemporaryHalt,
     Run,
 }
 
 /// Updates the bot current's operation.
-pub async fn update_operation(update: BotOperationUpdate) {
+pub async fn update_operation(update: OperationUpdate) {
     send_request!(UpdateOperation(update))
 }
 

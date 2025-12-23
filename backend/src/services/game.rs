@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use std::{fmt::Debug, ops::Deref};
 
 use log::debug;
 #[cfg(test)]
@@ -11,8 +11,8 @@ use tokio::{
 
 use super::EventContext;
 use crate::{
-    BotOperation, BotOperationUpdate, BoundQuadrant, Character, DatabaseEvent, GameState,
-    KeyBinding, KeyBindingConfiguration, Localization, Map, Settings,
+    BotOperation, BoundQuadrant, Character, DatabaseEvent, GameState, KeyBinding,
+    KeyBindingConfiguration, Localization, Map, OperationUpdate, Settings,
     bridge::InputReceiver,
     database_event_receiver,
     ecs::{Resources, World},
@@ -213,17 +213,11 @@ impl EventHandler<GameEvent> for GameEventHandler {
         match event {
             GameEvent::ToggleOperation => {
                 let update = if context.resources.operation.halting() {
-                    BotOperationUpdate::Run
+                    OperationUpdate::Run
                 } else {
-                    BotOperationUpdate::TemporaryHalt
+                    OperationUpdate::TemporaryHalt
                 };
-                context.operation_service.apply(
-                    context.resources,
-                    context.world,
-                    context.rotator,
-                    &context.settings_service.settings(),
-                    update,
-                );
+                context.operation_service.update(context.resources, update);
             }
             GameEvent::MapUpdated(map) => context
                 .ui_service
@@ -235,18 +229,21 @@ impl EventHandler<GameEvent> for GameEventHandler {
                 let settings_service = &mut context.settings_service;
                 settings_service.update_settings(settings);
                 settings_service.apply_settings(
-                    &mut context.resources.operation,
                     context.resources.input.as_mut(),
                     context.game_service.input_receiver_mut(),
                     context.capture,
                 );
 
-                context.control_service.update(&settings_service.settings());
+                let settings = settings_service.settings();
+                context
+                    .operation_service
+                    .config(context.resources, settings.deref().into());
+                context.control_service.update(&settings);
                 context.rotator_service.apply(
                     context.rotator,
                     context.map_service.map(),
                     context.character_service.character(),
-                    &settings_service.settings(),
+                    &settings,
                 );
             }
             GameEvent::LocalizationUpdated(localization) => context

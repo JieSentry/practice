@@ -4,30 +4,45 @@ use std::fmt::Formatter;
 use std::time::Duration;
 use std::time::Instant;
 
-use crate::BotOperationUpdate;
-use crate::CycleRunStopMode;
+use crate::models::{CycleRunStopMode, Settings};
+
+#[derive(Debug, Clone, Copy)]
+pub struct OperationConfiguration {
+    pub mode: CycleRunStopMode,
+    pub run_duration_millis: u64,
+    pub stop_duration_millis: u64,
+}
+
+impl From<&Settings> for OperationConfiguration {
+    fn from(settings: &Settings) -> Self {
+        let mode = settings.cycle_run_stop;
+        let run_duration_millis = settings.cycle_run_duration_millis;
+        let stop_duration_millis = settings.cycle_stop_duration_millis;
+
+        Self {
+            mode,
+            run_duration_millis,
+            stop_duration_millis,
+        }
+    }
+}
 
 /// Current operating state of the bot.
 #[derive(Debug, Clone, Copy)]
 pub enum Operation {
     HaltUntil {
         instant: Instant,
-        run_duration_millis: u64,
-        stop_duration_millis: u64,
+        config: OperationConfiguration,
     },
     TemporaryHalting {
         resume: Duration,
-        run_duration_millis: u64,
-        stop_duration_millis: u64,
-        once: bool,
+        config: OperationConfiguration,
     },
     Halting,
     Running,
     RunUntil {
         instant: Instant,
-        run_duration_millis: u64,
-        stop_duration_millis: u64,
-        once: bool,
+        config: OperationConfiguration,
     },
 }
 
@@ -40,135 +55,39 @@ impl Operation {
         )
     }
 
-    pub fn update_from_bot_update_and_mode(
-        self,
-        update: BotOperationUpdate,
-        mode: CycleRunStopMode,
-        run_duration_millis: u64,
-        stop_duration_millis: u64,
-    ) -> Operation {
-        match (update, mode) {
-            (BotOperationUpdate::TemporaryHalt, CycleRunStopMode::None)
-            | (BotOperationUpdate::Halt, _) => Operation::Halting,
-            (BotOperationUpdate::TemporaryHalt, _) => {
-                if let Operation::RunUntil {
-                    instant,
-                    run_duration_millis,
-                    stop_duration_millis: update_from_bot_update_and_mode,
-                    once,
-                } = self
-                {
-                    Operation::TemporaryHalting {
-                        resume: instant.saturating_duration_since(Instant::now()),
-                        run_duration_millis,
-                        stop_duration_millis: update_from_bot_update_and_mode,
-                        once,
-                    }
-                } else {
-                    Operation::Halting
-                }
-            }
-            (BotOperationUpdate::Run, CycleRunStopMode::Once | CycleRunStopMode::Repeat) => {
-                if let Operation::TemporaryHalting {
-                    resume,
-                    run_duration_millis,
-                    stop_duration_millis,
-                    once,
-                } = self
-                {
-                    Operation::RunUntil {
-                        instant: Instant::now() + resume,
-                        run_duration_millis,
-                        stop_duration_millis,
-                        once,
-                    }
-                } else {
-                    run_until(
-                        run_duration_millis,
-                        stop_duration_millis,
-                        matches!(mode, CycleRunStopMode::Once),
-                    )
-                }
-            }
-            (BotOperationUpdate::Run, CycleRunStopMode::None) => Operation::Running,
+    #[inline]
+    pub fn halt_until(config: OperationConfiguration) -> Operation {
+        Operation::HaltUntil {
+            instant: Instant::now() + Duration::from_millis(config.stop_duration_millis),
+            config,
         }
     }
 
-    pub fn update_from_mode(
-        self,
-        mode: CycleRunStopMode,
-        run_duration_millis: u64,
-        stop_duration_millis: u64,
-    ) -> Operation {
-        match self {
-            Operation::HaltUntil {
-                instant,
-                stop_duration_millis: current_stop_duration_millis,
-                ..
-            } => match mode {
-                CycleRunStopMode::None | CycleRunStopMode::Once => Operation::Halting,
-                CycleRunStopMode::Repeat => {
-                    if current_stop_duration_millis == stop_duration_millis {
-                        Operation::HaltUntil {
-                            instant,
-                            stop_duration_millis,
-                            run_duration_millis,
-                        }
-                    } else {
-                        halt_until(run_duration_millis, stop_duration_millis)
-                    }
-                }
-            },
-            Operation::TemporaryHalting {
-                run_duration_millis: current_run_duration_millis,
-                ..
-            } => {
-                if current_run_duration_millis != run_duration_millis
-                    || matches!(mode, CycleRunStopMode::None)
-                {
-                    Operation::Halting
-                } else {
-                    self
-                }
-            }
-            Operation::Halting => Operation::Halting,
-            Operation::Running | Operation::RunUntil { .. } => match mode {
-                CycleRunStopMode::None => Operation::Running,
-                CycleRunStopMode::Once | CycleRunStopMode::Repeat => run_until(
-                    run_duration_millis,
-                    stop_duration_millis,
-                    matches!(mode, CycleRunStopMode::Once),
-                ),
-            },
+    #[inline]
+    pub fn run_until(config: OperationConfiguration) -> Operation {
+        Operation::RunUntil {
+            instant: Instant::now() + Duration::from_millis(config.run_duration_millis),
+            config,
         }
     }
 
     pub fn update_tick(self) -> Operation {
         let now = Instant::now();
         match self {
-            Operation::HaltUntil {
-                instant,
-                run_duration_millis,
-                stop_duration_millis,
-            } => {
+            Operation::HaltUntil { instant, config } => {
                 if now < instant {
                     self
                 } else {
-                    run_until(run_duration_millis, stop_duration_millis, false)
+                    Operation::run_until(config)
                 }
             }
-            Operation::RunUntil {
-                instant,
-                run_duration_millis,
-                stop_duration_millis,
-                once,
-            } => {
+            Operation::RunUntil { instant, config } => {
                 if now < instant {
                     self
-                } else if once {
+                } else if matches!(config.mode, CycleRunStopMode::Once) {
                     Operation::Halting
                 } else {
-                    halt_until(run_duration_millis, stop_duration_millis)
+                    Operation::halt_until(config)
                 }
             }
             Operation::Halting | Operation::TemporaryHalting { .. } | Operation::Running => self,
@@ -193,25 +112,6 @@ impl Display for Operation {
                 write!(f, "Running for {}", duration_from_instant(instant))
             }
         }
-    }
-}
-
-#[inline]
-fn halt_until(run_duration_millis: u64, stop_duration_millis: u64) -> Operation {
-    Operation::HaltUntil {
-        instant: Instant::now() + Duration::from_millis(stop_duration_millis),
-        run_duration_millis,
-        stop_duration_millis,
-    }
-}
-
-#[inline]
-fn run_until(run_duration_millis: u64, stop_duration_millis: u64, once: bool) -> Operation {
-    Operation::RunUntil {
-        instant: Instant::now() + Duration::from_millis(run_duration_millis),
-        run_duration_millis,
-        stop_duration_millis,
-        once,
     }
 }
 

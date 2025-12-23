@@ -196,7 +196,7 @@ impl Services {
             .for_each(|event| {
                 events.push(Box::new(event));
             });
-        if let Some(event) = self.operation.poll(navigator) {
+        if let Some(event) = self.operation.poll() {
             events.push(Box::new(event));
         }
         if let Some(event) = self.world.poll() {

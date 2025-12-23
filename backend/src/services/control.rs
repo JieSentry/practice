@@ -10,12 +10,12 @@ use tokio::{sync::mpsc::Receiver, task::spawn_blocking};
 
 use super::EventContext;
 use crate::{
-    ActionKeyDirection, ActionKeyWith, BotOperationUpdate, Settings, WaitAfterBuffered,
+    ActionKeyDirection, ActionKeyWith, OperationUpdate, Settings, WaitAfterBuffered,
     bridge::{KeyKind, LinkKeyKind},
     control::{BotAction, CommandKind, ControlEvent, DiscordBot},
     ecs::{Resources, World},
     player::{Chat, ChattingContent, Key, PlayerAction},
-    services::EventHandler,
+    services::{EventHandler, operation::Halt},
 };
 
 /// A service to handle control-related (e.g., Discord Bot) incoming requests.
@@ -80,36 +80,29 @@ impl EventHandler<ControlEvent> for ControlEventHandler {
                 let _ = event
                     .sender
                     .send(EditInteractionResponse::new().content("Bot started running."));
-                context.operation_service.apply(
-                    context.resources,
-                    context.world,
-                    context.rotator,
-                    &context.settings_service.settings(),
-                    BotOperationUpdate::Run,
-                );
+                context
+                    .operation_service
+                    .update(context.resources, OperationUpdate::Run);
             }
             CommandKind::Stop { go_to_town } => {
                 let _ = event
                     .sender
                     .send(EditInteractionResponse::new().content("Bot stopped running."));
-                context.operation_service.halt(
-                    context.resources,
-                    context.world,
-                    context.rotator,
-                    go_to_town,
+                context.operation_service.queue_halt(
+                    true,
+                    Halt {
+                        go_to_town,
+                        check_for_navigation: false,
+                    },
                 );
             }
             CommandKind::Suspend => {
                 let _ = event
                     .sender
                     .send(EditInteractionResponse::new().content("Bot attempted to suspend."));
-                context.operation_service.apply(
-                    context.resources,
-                    context.world,
-                    context.rotator,
-                    &context.settings_service.settings(),
-                    BotOperationUpdate::TemporaryHalt,
-                );
+                context
+                    .operation_service
+                    .update(context.resources, OperationUpdate::TemporaryHalt);
             }
             CommandKind::Status => {
                 let provider = state_and_frame_provider(context.resources, context.world);

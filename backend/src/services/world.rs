@@ -4,11 +4,11 @@ use tokio::sync::broadcast::Receiver;
 
 use super::EventContext;
 use crate::{
-    BotOperationUpdate,
+    OperationUpdate,
     ecs::WorldEvent,
     notification::NotificationKind,
     player::{PanicTo, Panicking, Player},
-    services::EventHandler,
+    services::{EventHandler, operation::Halt},
 };
 
 /// A service to handle world-related incoming requests.
@@ -40,13 +40,13 @@ impl EventHandler<WorldEvent> for WorldEventHandler {
     fn handle(&mut self, context: &mut EventContext<'_>, event: WorldEvent) {
         match event {
             WorldEvent::CycledToHalt => {
-                context.operation_service.halt(
-                    context.resources,
-                    context.world,
-                    context.rotator,
+                context.operation_service.queue_halt(
                     true,
+                    Halt {
+                        go_to_town: true,
+                        check_for_navigation: false,
+                    },
                 );
-
                 if context
                     .settings_service
                     .settings()
@@ -74,11 +74,12 @@ impl EventHandler<WorldEvent> for WorldEventHandler {
             }
             WorldEvent::PlayerDied => {
                 if context.settings_service.settings().stop_on_player_die {
-                    context.operation_service.halt(
-                        context.resources,
-                        context.world,
-                        context.rotator,
-                        false,
+                    context.operation_service.queue_halt(
+                        true,
+                        Halt {
+                            go_to_town: false,
+                            check_for_navigation: false,
+                        },
                     );
                 }
             }
@@ -91,6 +92,7 @@ impl EventHandler<WorldEvent> for WorldEventHandler {
                     .resources
                     .notification
                     .schedule_notification(NotificationKind::FailOrMapChange);
+                context.operation_service.abort_halt();
 
                 if !context
                     .settings_service
@@ -111,7 +113,13 @@ impl EventHandler<WorldEvent> for WorldEventHandler {
                     return;
                 }
 
-                context.operation_service.queue_halt();
+                context.operation_service.queue_halt(
+                    false,
+                    Halt {
+                        go_to_town: true,
+                        check_for_navigation: true,
+                    },
+                );
             }
             WorldEvent::CaptureFailed => {
                 if context.resources.operation.halting() {
@@ -123,13 +131,9 @@ impl EventHandler<WorldEvent> for WorldEventHandler {
                     .settings()
                     .stop_on_fail_or_change_map
                 {
-                    context.operation_service.apply(
-                        context.resources,
-                        context.world,
-                        context.rotator,
-                        &context.settings_service.settings(),
-                        BotOperationUpdate::TemporaryHalt,
-                    );
+                    context
+                        .operation_service
+                        .update(context.resources, OperationUpdate::TemporaryHalt);
                 }
                 let _ = context
                     .resources

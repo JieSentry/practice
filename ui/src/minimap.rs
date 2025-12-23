@@ -4,7 +4,7 @@ use std::{
 };
 
 use backend::{
-    Action, ActionKey, ActionMove, BotOperation, BotOperationUpdate, DatabaseEvent, Map, Position,
+    Action, ActionKey, ActionMove, BotOperation, DatabaseEvent, Map, OperationUpdate, Position,
     RotationMode, create_map, database_event_receiver, delete_map, game_state_receiver, query_maps,
     redetect_minimap, update_map, update_operation, upsert_map,
 };
@@ -682,13 +682,13 @@ fn Buttons(state: ReadSignal<Option<MinimapState>>, map: ReadSignal<Option<Map>>
     let kind = use_memo(move || {
         state()
             .map(|state| match state.operation {
-                BotOperation::Halting => BotOperationUpdate::Halt,
-                BotOperation::TemporaryHalting(_) => BotOperationUpdate::TemporaryHalt,
+                BotOperation::Halting => OperationUpdate::Halt,
+                BotOperation::TemporaryHalting(_) => OperationUpdate::TemporaryHalt,
                 BotOperation::HaltUntil(_) | BotOperation::Running | BotOperation::RunUntil(_) => {
-                    BotOperationUpdate::Run
+                    OperationUpdate::Run
                 }
             })
-            .unwrap_or(BotOperationUpdate::Halt)
+            .unwrap_or(OperationUpdate::Halt)
     });
     let character = use_context::<AppState>().character;
     let disabled = use_memo(move || map().is_none() || character().is_none());
@@ -696,7 +696,7 @@ fn Buttons(state: ReadSignal<Option<MinimapState>>, map: ReadSignal<Option<Map>>
     let start_stop_text = use_memo(move || {
         if matches!(
             kind(),
-            BotOperationUpdate::Run | BotOperationUpdate::TemporaryHalt
+            OperationUpdate::Run | OperationUpdate::TemporaryHalt
         ) {
             "Stop"
         } else {
@@ -736,9 +736,9 @@ fn Buttons(state: ReadSignal<Option<MinimapState>>, map: ReadSignal<Option<Map>>
                 disabled: disabled(),
                 on_click: move || async move {
                     let kind = match *kind.peek() {
-                        BotOperationUpdate::Halt => BotOperationUpdate::Run,
-                        BotOperationUpdate::TemporaryHalt | BotOperationUpdate::Run => {
-                            BotOperationUpdate::Halt
+                        OperationUpdate::Halt => OperationUpdate::Run,
+                        OperationUpdate::TemporaryHalt | OperationUpdate::Run => {
+                            OperationUpdate::Halt
                         }
                     };
                     update_operation(kind).await;
@@ -751,9 +751,9 @@ fn Buttons(state: ReadSignal<Option<MinimapState>>, map: ReadSignal<Option<Map>>
                 disabled: suspend_resume_disabled(),
                 on_click: move || async move {
                     let kind = match *kind.peek() {
-                        BotOperationUpdate::Run => BotOperationUpdate::TemporaryHalt,
-                        BotOperationUpdate::TemporaryHalt | BotOperationUpdate::Halt => {
-                            BotOperationUpdate::Run
+                        OperationUpdate::Run => OperationUpdate::TemporaryHalt,
+                        OperationUpdate::TemporaryHalt | OperationUpdate::Halt => {
+                            OperationUpdate::Run
                         }
                     };
                     update_operation(kind).await;

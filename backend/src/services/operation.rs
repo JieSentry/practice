@@ -1,23 +1,38 @@
-use std::{fmt::Debug, time::Duration};
+use std::{
+    fmt::Debug,
+    time::{Duration, Instant},
+};
 
-use tokio::{spawn, task::JoinHandle, time::sleep};
+use log::info;
+use tokio::{
+    spawn,
+    sync::broadcast::{self, Receiver, Sender},
+    task::JoinHandle,
+    time::sleep,
+};
 
 use super::EventContext;
 use crate::{
-    BotOperationUpdate, Settings,
-    ecs::{Resources, World},
-    navigator::Navigator,
-    operation::Operation,
+    CycleRunStopMode, OperationUpdate,
+    ecs::Resources,
+    operation::{Operation, OperationConfiguration},
     player::{Panic, PanicTo, PlayerAction},
-    rotator::Rotator,
     services::{Event, EventHandler},
 };
 
 const PENDING_HALT_SECS: u64 = 12;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
+pub struct Halt {
+    pub go_to_town: bool,
+    pub check_for_navigation: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
 pub enum OperationEvent {
-    Halt,
+    Halt(Halt),
+    Update,
+    Configuration,
 }
 
 impl Event for OperationEvent {}
@@ -25,112 +40,141 @@ impl Event for OperationEvent {}
 /// A service to handle operation-related incoming requests.
 pub trait OperationService: Debug {
     /// Polls for any pending [`OperationEvent`].
-    fn poll(&mut self, navigator: &dyn Navigator) -> Option<OperationEvent>;
+    fn poll(&mut self) -> Option<OperationEvent>;
 
-    /// Applies the provided `update` to other arguments.
-    fn apply(
-        &mut self,
-        resources: &mut Resources,
-        world: &mut World,
-        rotator: &mut dyn Rotator,
-        settings: &Settings,
-        update: BotOperationUpdate,
-    );
+    /// Applies the new `update` to `resources` and sends an [`OperationEvent::Update`] event.
+    fn update(&self, resources: &mut Resources, update: OperationUpdate);
 
-    /// Halts the bot and optionally go to town.
-    fn halt(
-        &mut self,
-        resources: &mut Resources,
-        world: &mut World,
-        rotator: &mut dyn Rotator,
-        go_to_town: bool,
-    );
+    /// Applies the new `config` to `resources` and sends an [`OperationEvent::Configuration`]
+    /// event.
+    fn config(&self, resources: &mut Resources, config: OperationConfiguration);
 
-    /// Queues a halt that results in a [`OperationEvent::Halt`] when the timer ends.
-    fn queue_halt(&mut self);
+    /// Queues a [`OperationEvent::Halt`] event.
+    fn queue_halt(&mut self, immediate: bool, halt: Halt);
+
+    /// Aborts the previous [`OperationService::queue_halt`] if possible.
+    fn abort_halt(&mut self);
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct DefaultOperationService {
     pending_halt: Option<JoinHandle<()>>,
+    event_rx: Receiver<OperationEvent>, // TODO: Remove this field
+    event_tx: Sender<OperationEvent>,
 }
 
-impl DefaultOperationService {
-    fn clear_states(&mut self, world: &mut World, rotator: &mut dyn Rotator, should_idle: bool) {
-        rotator.reset_queue();
-        world.player.context.clear_actions_aborted(should_idle);
+impl Default for DefaultOperationService {
+    fn default() -> Self {
+        let (tx, rx) = broadcast::channel(5);
+
+        Self {
+            pending_halt: None,
+            event_rx: rx,
+            event_tx: tx,
+        }
+    }
+}
+
+impl OperationService for DefaultOperationService {
+    fn poll(&mut self) -> Option<OperationEvent> {
+        self.event_rx.try_recv().ok()
+    }
+
+    fn update(&self, resources: &mut Resources, update: OperationUpdate) {
+        resources.operation = update_operation(resources.operation, update);
+        let _ = self.event_tx.send(OperationEvent::Update);
+    }
+
+    fn config(&self, resources: &mut Resources, config: OperationConfiguration) {
+        resources.operation = config_operation(resources.operation, config);
+        let _ = self.event_tx.send(OperationEvent::Configuration);
+    }
+
+    fn queue_halt(&mut self, immediate: bool, halt: Halt) {
+        self.abort_halt();
+
+        let event = OperationEvent::Halt(halt);
+        let tx = self.event_tx.clone();
+
+        if immediate {
+            let _ = tx.send(event);
+        } else {
+            let duration = Duration::from_secs(PENDING_HALT_SECS);
+            let handle = spawn(async move {
+                sleep(duration).await;
+                let _ = tx.send(event);
+            });
+
+            self.pending_halt = Some(handle);
+        }
+    }
+
+    fn abort_halt(&mut self) {
         if let Some(handle) = self.pending_halt.take() {
             handle.abort();
         }
     }
 }
 
-impl OperationService for DefaultOperationService {
-    fn poll(&mut self, navigator: &dyn Navigator) -> Option<OperationEvent> {
-        if self
-            .pending_halt
-            .as_ref()
-            .is_some_and(|handle| handle.is_finished())
-        {
-            self.pending_halt = None;
-            if !navigator.was_last_point_available_or_completed() {
-                return Some(OperationEvent::Halt);
+fn update_operation(operation: Operation, update: OperationUpdate) -> Operation {
+    match update {
+        OperationUpdate::TemporaryHalt => {
+            if let Operation::RunUntil { instant, config } = operation {
+                Operation::TemporaryHalting {
+                    resume: instant.saturating_duration_since(Instant::now()),
+                    config,
+                }
+            } else {
+                Operation::Halting
             }
         }
-
-        None
+        OperationUpdate::Run => match operation {
+            Operation::TemporaryHalting { resume, config } => Operation::RunUntil {
+                instant: Instant::now() + resume,
+                config,
+            },
+            Operation::HaltUntil { config, .. } => Operation::run_until(config),
+            _ => {
+                info!(target: "operation", "invalid run update provided for the current state");
+                operation
+            }
+        },
+        OperationUpdate::Halt => Operation::Halting,
     }
+}
 
-    fn apply(
-        &mut self,
-        resources: &mut Resources,
-        world: &mut World,
-        rotator: &mut dyn Rotator,
-        settings: &Settings,
-        update: BotOperationUpdate,
-    ) {
-        let cycle_run_stop = settings.cycle_run_stop;
-        let cycle_run_duration_millis = settings.cycle_run_duration_millis;
-        let cycle_stop_duration_millis = settings.cycle_stop_duration_millis;
-
-        let operation = resources.operation;
-        resources.operation = operation.update_from_bot_update_and_mode(
-            update,
-            cycle_run_stop,
-            cycle_run_duration_millis,
-            cycle_stop_duration_millis,
-        );
-
-        if matches!(
-            update,
-            BotOperationUpdate::Halt | BotOperationUpdate::TemporaryHalt
-        ) {
-            self.clear_states(world, rotator, true);
+fn config_operation(operation: Operation, config: OperationConfiguration) -> Operation {
+    match operation {
+        Operation::HaltUntil {
+            instant,
+            config: current_config,
+        } => match config.mode {
+            CycleRunStopMode::None | CycleRunStopMode::Once => Operation::Halting,
+            CycleRunStopMode::Repeat => {
+                if current_config.stop_duration_millis == config.stop_duration_millis {
+                    Operation::HaltUntil { instant, config }
+                } else {
+                    Operation::halt_until(config)
+                }
+            }
+        },
+        Operation::TemporaryHalting {
+            resume,
+            config: current_config,
+        } => {
+            if current_config.run_duration_millis != config.run_duration_millis
+                || matches!(config.mode, CycleRunStopMode::None)
+            {
+                Operation::Halting
+            } else {
+                Operation::TemporaryHalting { resume, config }
+            }
         }
-    }
-
-    fn halt(
-        &mut self,
-        resources: &mut Resources,
-        world: &mut World,
-        rotator: &mut dyn Rotator,
-        go_to_town: bool,
-    ) {
-        self.clear_states(world, rotator, !go_to_town);
-
-        if !resources.operation.halting() {
-            resources.operation = Operation::Halting;
-        }
-
-        if go_to_town {
-            rotator.inject_action(PlayerAction::Panic(Panic { to: PanicTo::Town }));
-        }
-    }
-
-    fn queue_halt(&mut self) {
-        self.pending_halt = Some(spawn(async move {
-            sleep(Duration::from_secs(PENDING_HALT_SECS)).await;
-        }));
+        Operation::Halting => Operation::Halting,
+        Operation::Running | Operation::RunUntil { .. } => match config.mode {
+            CycleRunStopMode::None => Operation::Running,
+            CycleRunStopMode::Once | CycleRunStopMode::Repeat => Operation::run_until(config),
+        },
     }
 }
 
@@ -139,12 +183,36 @@ pub struct OperationEventHandler;
 impl EventHandler<OperationEvent> for OperationEventHandler {
     fn handle(&mut self, context: &mut EventContext<'_>, event: OperationEvent) {
         match event {
-            OperationEvent::Halt => context.operation_service.halt(
-                context.resources,
-                context.world,
-                context.rotator,
-                true,
-            ),
+            OperationEvent::Halt(Halt {
+                go_to_town,
+                check_for_navigation,
+            }) => {
+                if check_for_navigation && context.navigator.was_last_point_available_or_completed()
+                {
+                    return;
+                }
+
+                context.resources.operation =
+                    update_operation(context.resources.operation, OperationUpdate::TemporaryHalt);
+                context.rotator.reset_queue();
+                context
+                    .world
+                    .player
+                    .context
+                    .clear_actions_aborted(!go_to_town);
+
+                if go_to_town {
+                    context
+                        .rotator
+                        .inject_action(PlayerAction::Panic(Panic { to: PanicTo::Town }));
+                }
+            }
+            OperationEvent::Update | OperationEvent::Configuration => {
+                if context.resources.operation.halting() {
+                    context.rotator.reset_queue();
+                    context.world.player.context.clear_actions_aborted(true);
+                }
+            }
         }
     }
 }

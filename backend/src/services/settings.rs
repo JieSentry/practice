@@ -11,7 +11,6 @@ use platforms::{Window, capture::query_capture_name_window_pairs, input::InputKi
 use crate::{
     CaptureMode, InputMethod as DatabaseInputMethod, Settings,
     bridge::{Capture, Input, InputMethod, InputReceiver},
-    operation::Operation,
 };
 
 /// A service to handle [`Settings`]-related incoming requests.
@@ -27,7 +26,6 @@ pub trait SettingsService: Debug {
     /// current [`Settings`].
     fn apply_settings(
         &self,
-        operation: &mut Operation,
         input: &mut dyn Input,
         input_receiver: &mut dyn InputReceiver,
         capture: &mut dyn Capture,
@@ -136,17 +134,10 @@ impl SettingsService for DefaultSettingsService {
 
     fn apply_settings(
         &self,
-        operation: &mut Operation,
         input: &mut dyn Input,
         input_receiver: &mut dyn InputReceiver,
         capture: &mut dyn Capture,
     ) {
-        let settings = self.settings();
-        *operation = operation.update_from_mode(
-            settings.cycle_run_stop,
-            settings.cycle_run_duration_millis,
-            settings.cycle_stop_duration_millis,
-        );
         self.update_capture(capture, false);
         self.update_inputs(input, input_receiver, capture);
     }
@@ -196,7 +187,6 @@ impl SettingsService for DefaultSettingsService {
 
 #[cfg(test)]
 mod tests {
-    use std::assert_matches::assert_matches;
     use std::cell::RefCell;
     use std::rc::Rc;
 
@@ -313,14 +303,12 @@ mod tests {
             .expect_mode()
             .times(2)
             .return_const(CaptureMode::BitBlt);
-        let mut op = Operation::Running;
 
         service.update_settings(new_settings.clone());
-        service.apply_settings(&mut op, &mut mock_keys, &mut key_receiver, &mut capture);
+        service.apply_settings(&mut mock_keys, &mut key_receiver, &mut capture);
 
         let current = service.settings();
 
-        assert_matches!(op, Operation::RunUntil { once: true, .. });
         assert_eq!(current.input_method, InputMethod::Rpc);
         assert_eq!(current.input_method_rpc_server_url, "http://localhost:9000");
     }
@@ -351,9 +339,8 @@ mod tests {
             .expect_mode()
             .times(2)
             .return_const(CaptureMode::BitBltArea);
-        let mut op = Operation::Running;
 
         service.update_settings(new_settings.clone());
-        service.apply_settings(&mut op, &mut mock_keys, &mut key_receiver, &mut capture);
+        service.apply_settings(&mut mock_keys, &mut key_receiver, &mut capture);
     }
 }
