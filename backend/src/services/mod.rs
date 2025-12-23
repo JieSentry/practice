@@ -34,11 +34,13 @@ use crate::{
     },
 };
 
+mod capture;
 mod character;
 mod control;
 #[cfg(debug_assertions)]
 mod debug;
 mod game;
+mod input;
 mod localization;
 mod map;
 mod navigator;
