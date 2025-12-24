@@ -3,17 +3,10 @@ use std::{cell::Cell, ffi::OsString, os::windows::ffi::OsStringExt, ptr, str};
 use windows::{
     Win32::{
         Foundation::{HWND, LPARAM, POINT, RECT},
-        Graphics::{
-            Dwm::{DWMWA_CLOAKED, DwmGetWindowAttribute},
-            Gdi::{
-                ClientToScreen, GetMonitorInfoW, MONITOR_DEFAULTTONULL, MONITORINFO,
-                MonitorFromWindow,
-            },
+        Graphics::Gdi::{
+            ClientToScreen, GetMonitorInfoW, MONITOR_DEFAULTTONULL, MONITORINFO, MonitorFromWindow,
         },
-        UI::WindowsAndMessaging::{
-            EnumWindows, GWL_EXSTYLE, GWL_STYLE, GetClassNameW, GetWindowLongPtrW, GetWindowRect,
-            GetWindowTextW, IsWindowVisible, WS_DISABLED, WS_EX_TOOLWINDOW,
-        },
+        UI::WindowsAndMessaging::{EnumWindows, GetClassNameW, GetWindowRect, GetWindowTextW},
     },
     core::BOOL,
 };
@@ -71,11 +64,18 @@ impl Handle {
         Self { kind }
     }
 
-    pub fn as_inner(&self) -> Option<HWND> {
-        match self.kind {
-            HandleKind::Fixed(handle) => Some(handle),
-            HandleKind::Dynamic(class) => query_handle(class),
+    pub fn name(&self) -> Result<String> {
+        let handle = self.as_inner().ok_or(Error::WindowNotFound)?;
+        let mut buf = [0u16; 256];
+        let count = unsafe { GetWindowTextW(handle, &mut buf) } as usize;
+        if count == 0 {
+            return Err(Error::from_last_win_error());
         }
+
+        Ok(OsString::from_wide(&buf[..count])
+            .to_str()
+            .unwrap_or_default()
+            .to_string())
     }
 
     pub fn convert_coordinate(
@@ -129,50 +129,13 @@ impl Handle {
             y,
         })
     }
-}
 
-pub fn query_capture_name_handle_pairs() -> Vec<(String, Handle)> {
-    unsafe extern "system" fn callback(handle: HWND, params: LPARAM) -> BOOL {
-        if !unsafe { IsWindowVisible(handle) }.as_bool() {
-            return true.into();
+    pub fn as_inner(&self) -> Option<HWND> {
+        match self.kind {
+            HandleKind::Fixed(handle) => Some(handle),
+            HandleKind::Dynamic(class) => query_handle(class),
         }
-
-        let mut cloaked = 0u32;
-        let _ = unsafe {
-            DwmGetWindowAttribute(
-                handle,
-                DWMWA_CLOAKED,
-                (&raw mut cloaked).cast(),
-                std::mem::size_of::<u32>() as u32,
-            )
-        };
-        if cloaked != 0 {
-            return true.into();
-        }
-
-        let style = unsafe { GetWindowLongPtrW(handle, GWL_STYLE) } as u32;
-        let ex_style = unsafe { GetWindowLongPtrW(handle, GWL_EXSTYLE) } as u32;
-        if style & WS_DISABLED.0 != 0 || ex_style & WS_EX_TOOLWINDOW.0 != 0 {
-            return true.into();
-        }
-
-        // TODO: Windows maximum title length is 256 but can this overflow?
-        let mut buf = [0u16; 256];
-        let count = unsafe { GetWindowTextW(handle, &mut buf) } as usize;
-        if count == 0 {
-            return true.into();
-        }
-
-        let vec = unsafe { &mut *(params.0 as *mut Vec<(String, Handle)>) };
-        if let Some(name) = OsString::from_wide(&buf[..count]).to_str() {
-            vec.push((name.to_string(), Handle::new(HandleKind::Fixed(handle))));
-        }
-        true.into()
     }
-
-    let mut vec = Vec::new();
-    let _ = unsafe { EnumWindows(Some(callback), LPARAM(&raw mut vec as isize)) };
-    vec
 }
 
 #[inline]
@@ -208,7 +171,6 @@ fn query_handle(class: &'static str) -> Option<HWND> {
 
 #[inline]
 fn is_class_matched(handle: HWND, class: &'static str) -> bool {
-    // TODO: Windows maximum title length is 256 but can this overflow?
     let mut buf = [0u16; 256];
     let count = unsafe { GetClassNameW(handle, &mut buf) as usize };
     if count == 0 {

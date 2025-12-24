@@ -265,26 +265,26 @@ fn subscribe_key(context: &mut EventContext<'_>) -> Receiver<KeyBinding> {
 }
 
 fn refresh_capture_handles(context: &mut EventContext<'_>) {
-    context.settings_service.update_windows();
+    context.capture_service.update_windows();
     select_capture_handle(context, None);
 }
 
 fn query_capture_handles(context: &mut EventContext<'_>) -> (Vec<String>, Option<usize>) {
-    let settings_service = &mut context.settings_service;
-
     (
-        settings_service.window_names(),
-        settings_service.selected_window_index(),
+        context.capture_service.window_names(),
+        context.capture_service.selected_window_index(),
     )
 }
 
 fn select_capture_handle(context: &mut EventContext<'_>, index: Option<usize>) {
-    let settings_service = &mut context.settings_service;
-    settings_service.update_selected_window(index);
-    settings_service.apply_selected_window(
-        context.resources.input.as_mut(),
+    let capture_service = &mut context.capture_service;
+    capture_service.update_selected_window(index);
+    capture_service.apply_selected_window(context.capture);
+
+    context.input_service.apply_window(
+        context.resources.input.deref_mut(),
         context.game_service.input_receiver_mut(),
-        context.capture.deref_mut(),
+        capture_service.selected_window(),
     );
 }
 

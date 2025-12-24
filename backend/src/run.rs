@@ -11,7 +11,7 @@ use std::{
 };
 
 use anyhow::Result;
-use platforms::{Error, input::InputKind};
+use platforms::Error;
 use strum::IntoEnumIterator;
 use tokio::sync::broadcast::{Sender, channel};
 
@@ -84,10 +84,7 @@ fn systems_loop() {
 
     let mut service = Services::new(settings.clone(), localization.clone(), event_tx.subscribe());
     let window = service.selected_window();
-    let mut input = DefaultInput::new(
-        InputMethod::Default(window, InputKind::Focused),
-        rng.clone(),
-    );
+    let mut input = DefaultInput::new(window, InputMethod::FocusedDefault, rng.clone());
     let mut capture = DefaultCapture::new(window);
     service.update_window(&mut input, &mut capture);
 

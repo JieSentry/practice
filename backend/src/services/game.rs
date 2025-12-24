@@ -1,4 +1,4 @@
-use std::{fmt::Debug, ops::Deref};
+use std::{fmt::Debug, ops::DerefMut};
 
 use log::debug;
 #[cfg(test)]
@@ -11,13 +11,14 @@ use tokio::{
 
 use super::EventContext;
 use crate::{
-    BotOperation, BoundQuadrant, Character, DatabaseEvent, GameState, KeyBinding,
+    BotOperation, BoundQuadrant, CaptureMode, Character, DatabaseEvent, GameState, KeyBinding,
     KeyBindingConfiguration, Localization, Map, OperationUpdate, Settings,
-    bridge::InputReceiver,
+    bridge::{InputMethod, InputReceiver},
     database_event_receiver,
     ecs::{Resources, World},
     minimap::Minimap,
-    operation::Operation,
+    models::InputMethod as DatabaseInputMethod,
+    operation::{Operation, OperationConfiguration},
     player::Quadrant,
     services::{Event, EventHandler},
     skill::SkillKind,
@@ -226,18 +227,13 @@ impl EventHandler<GameEvent> for GameEventHandler {
                 context.ui_service.queue_update_character(character)
             }
             GameEvent::SettingsUpdated(settings) => {
-                let settings_service = &mut context.settings_service;
-                settings_service.update_settings(settings);
-                settings_service.apply_settings(
-                    context.resources.input.as_mut(),
-                    context.game_service.input_receiver_mut(),
-                    context.capture,
-                );
-
-                let settings = settings_service.settings();
+                let settings = {
+                    context.settings_service.update_settings(settings);
+                    context.settings_service.settings().clone()
+                };
                 context
                     .operation_service
-                    .config(context.resources, settings.deref().into());
+                    .config(context.resources, OperationConfiguration::from(&settings));
                 context.control_service.update(&settings);
                 context.rotator_service.apply(
                     context.rotator,
@@ -245,6 +241,8 @@ impl EventHandler<GameEvent> for GameEventHandler {
                     context.character_service.character(),
                     &settings,
                 );
+
+                update_capture_and_input(context);
             }
             GameEvent::LocalizationUpdated(localization) => context
                 .localization_service
@@ -252,6 +250,39 @@ impl EventHandler<GameEvent> for GameEventHandler {
             GameEvent::NavigationPathsUpdated => context.navigator.mark_dirty(true),
         }
     }
+}
+
+fn update_capture_and_input(context: &mut EventContext) {
+    let settings = context.settings_service.settings();
+    if context.capture.mode() == settings.capture_mode {
+        return;
+    }
+
+    context
+        .capture_service
+        .apply_mode(context.capture, settings.capture_mode);
+
+    let window = match settings.capture_mode {
+        CaptureMode::BitBltArea => context.capture.window(),
+        CaptureMode::WindowsGraphicsCapture | CaptureMode::BitBlt => {
+            context.capture_service.selected_window()
+        }
+    };
+    let method = match (settings.input_method, settings.capture_mode) {
+        (DatabaseInputMethod::Default, CaptureMode::BitBltArea) => InputMethod::ForegroundDefault,
+        (DatabaseInputMethod::Default, _) => InputMethod::FocusedDefault,
+        (DatabaseInputMethod::Rpc, CaptureMode::BitBltArea) => {
+            InputMethod::ForegroundRpc(settings.input_method_rpc_server_url.clone())
+        }
+        (DatabaseInputMethod::Rpc, _) => {
+            InputMethod::FocusedRpc(settings.input_method_rpc_server_url.clone())
+        }
+    };
+
+    let input = context.resources.input.deref_mut();
+    let input_rx = context.game_service.input_receiver_mut();
+    context.input_service.apply_window(input, input_rx, window);
+    context.input_service.apply_method(input, input_rx, method);
 }
 
 #[inline]

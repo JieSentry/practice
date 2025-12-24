@@ -2,7 +2,7 @@ use std::fmt::Debug;
 
 #[cfg(test)]
 use mockall::automock;
-use platforms::{Window, capture::query_capture_name_window_pairs};
+use platforms::{Window, capture::query_capture_windows};
 
 use crate::{CaptureMode, bridge::Capture};
 
@@ -36,9 +36,9 @@ pub trait CaptureService: Debug {
 }
 
 #[derive(Debug)]
-struct DefaultCaptureService {
+pub struct DefaultCaptureService {
     default_window: Window,
-    name_window_pairs: Vec<(String, Window)>,
+    capture_windows: Vec<Window>,
     selected_window_index: Option<usize>,
 }
 
@@ -52,7 +52,7 @@ impl DefaultCaptureService {
 
             return Self {
                 default_window: window,
-                name_window_pairs: query_capture_name_window_pairs().expect("supported platform"),
+                capture_windows: query_capture_windows().expect("supported platform"),
                 selected_window_index: None,
             };
         }
@@ -63,21 +63,18 @@ impl DefaultCaptureService {
 
 impl CaptureService for DefaultCaptureService {
     fn apply_mode(&self, capture: &mut dyn Capture, mode: CaptureMode) {
-        if capture.mode() != mode {
-            capture.set_mode(mode);
-        }
+        capture.set_mode(mode);
     }
 
     fn window_names(&self) -> Vec<String> {
-        self.name_window_pairs
+        self.capture_windows
             .iter()
-            .map(|(name, _)| name)
-            .cloned()
+            .map(|window| window.name().unwrap_or_default())
             .collect::<Vec<_>>()
     }
 
     fn update_windows(&mut self) {
-        self.name_window_pairs = query_capture_name_window_pairs().expect("supported platform");
+        self.capture_windows = query_capture_windows().expect("supported platform");
     }
 
     fn selected_window_index(&self) -> Option<usize> {
@@ -86,12 +83,7 @@ impl CaptureService for DefaultCaptureService {
 
     fn selected_window(&self) -> Window {
         self.selected_window_index
-            .and_then(|index| {
-                self.name_window_pairs
-                    .get(index)
-                    .map(|(_, handle)| handle)
-                    .copied()
-            })
+            .and_then(|index| self.capture_windows.get(index).copied())
             .unwrap_or(self.default_window)
     }
 

@@ -76,6 +76,15 @@ impl Window {
     }
 
     #[inline]
+    pub fn name(&self) -> Result<String> {
+        if cfg!(windows) {
+            return self.windows.name();
+        }
+
+        Err(Error::PlatformNotSupported)
+    }
+
+    #[inline]
     pub fn convert_coordinate(
         &self,
         x: i32,

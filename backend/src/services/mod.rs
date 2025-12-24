@@ -20,9 +20,11 @@ use crate::{
     navigator::Navigator,
     rotator::Rotator,
     services::{
+        capture::{CaptureService, DefaultCaptureService},
         character::{CharacterService, DefaultCharacterService},
         control::{ControlEventHandler, ControlService, DefaultControlService},
         game::{DefaultGameService, GameEventHandler, GameService},
+        input::{DefaultInputService, InputService},
         localization::{DefaultLocalizationService, LocalizationService},
         map::{DefaultMapService, MapService},
         navigator::{DefaultNavigatorService, NavigatorService},
@@ -98,6 +100,8 @@ struct EventContext<'a> {
     pub character_service: &'a mut Box<dyn CharacterService>,
     pub rotator_service: &'a mut Box<dyn RotatorService>,
     pub navigator_service: &'a mut Box<dyn NavigatorService>,
+    pub capture_service: &'a mut Box<dyn CaptureService>,
+    pub input_service: &'a mut Box<dyn InputService>,
     pub settings_service: &'a mut Box<dyn SettingsService>,
     pub localization_service: &'a mut Box<dyn LocalizationService>,
     pub control_service: &'a mut Box<dyn ControlService>,
@@ -116,6 +120,8 @@ pub struct Services {
     character: Box<dyn CharacterService>,
     rotator: Box<dyn RotatorService>,
     navigator: Box<dyn NavigatorService>,
+    capture: Box<dyn CaptureService>,
+    input: Box<dyn InputService>,
     settings: Box<dyn SettingsService>,
     localization: Box<dyn LocalizationService>,
     control: Box<dyn ControlService>,
@@ -131,9 +137,12 @@ impl Services {
         localization: Rc<RefCell<Arc<Localization>>>,
         event_rx: Receiver<WorldEvent>,
     ) -> Self {
+        let capture_service = DefaultCaptureService::new();
         let settings_service = DefaultSettingsService::new(settings.clone());
-        let window = settings_service.selected_window();
+
+        let window = capture_service.selected_window();
         let input_rx = DefaultInputReceiver::new(window, InputKind::Focused);
+
         let mut control = DefaultControlService::default();
         control.update(&settings_service.settings());
 
@@ -154,6 +163,8 @@ impl Services {
             character: Box::new(DefaultCharacterService::default()),
             rotator: Box::new(DefaultRotatorService::default()),
             navigator: Box::new(DefaultNavigatorService),
+            input: Box::new(DefaultInputService),
+            capture: Box::new(capture_service),
             settings: Box::new(settings_service),
             localization: Box::new(DefaultLocalizationService::new(localization)),
             control: Box::new(control),
@@ -165,12 +176,17 @@ impl Services {
     }
 
     pub fn selected_window(&self) -> Window {
-        self.settings.selected_window()
+        self.capture.selected_window()
     }
 
     pub fn update_window(&mut self, input: &mut dyn Input, capture: &mut dyn Capture) {
-        self.settings
-            .apply_selected_window(input, self.game.input_receiver_mut(), capture);
+        self.capture.apply_selected_window(capture);
+        self.capture
+            .apply_mode(capture, self.settings.settings().capture_mode);
+
+        let window = self.selected_window();
+        let input_rx = self.game.input_receiver_mut();
+        self.input.apply_window(input, input_rx, window);
     }
 
     #[inline]
@@ -221,6 +237,8 @@ impl Services {
             character_service: &mut self.character,
             rotator_service: &mut self.rotator,
             navigator_service: &mut self.navigator,
+            capture_service: &mut self.capture,
+            input_service: &mut self.input,
             settings_service: &mut self.settings,
             localization_service: &mut self.localization,
             control_service: &mut self.control,

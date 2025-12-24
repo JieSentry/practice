@@ -6,8 +6,16 @@ use std::{
     thread,
 };
 
-use windows::Win32::UI::WindowsAndMessaging::{
-    DispatchMessageW, GetMessageW, MSG, TranslateMessage,
+use windows::{
+    Win32::{
+        Foundation::{HWND, LPARAM},
+        Graphics::Dwm::{DWMWA_CLOAKED, DwmGetWindowAttribute},
+        UI::WindowsAndMessaging::{
+            DispatchMessageW, EnumWindows, GWL_EXSTYLE, GWL_STYLE, GetMessageW, GetWindowLongPtrW,
+            IsWindowVisible, MSG, TranslateMessage, WS_DISABLED, WS_EX_TOOLWINDOW,
+        },
+    },
+    core::BOOL,
 };
 
 mod bitblt;
@@ -73,4 +81,41 @@ impl From<windows::core::Error> for Error {
     fn from(error: windows::core::Error) -> Self {
         Error::Win32(error.code().0 as u32, error.message())
     }
+}
+
+pub fn query_capture_handles() -> Vec<Handle> {
+    unsafe extern "system" fn callback(handle: HWND, params: LPARAM) -> BOOL {
+        if !unsafe { IsWindowVisible(handle) }.as_bool() {
+            return true.into();
+        }
+
+        let mut cloaked = 0u32;
+        let _ = unsafe {
+            DwmGetWindowAttribute(
+                handle,
+                DWMWA_CLOAKED,
+                (&raw mut cloaked).cast(),
+                std::mem::size_of::<u32>() as u32,
+            )
+        };
+        if cloaked != 0 {
+            return true.into();
+        }
+
+        let style = unsafe { GetWindowLongPtrW(handle, GWL_STYLE) } as u32;
+        let ex_style = unsafe { GetWindowLongPtrW(handle, GWL_EXSTYLE) } as u32;
+        if style & WS_DISABLED.0 != 0 || ex_style & WS_EX_TOOLWINDOW.0 != 0 {
+            return true.into();
+        }
+
+        let vec_ptr = params.0 as *mut Vec<Handle>;
+        let vec = unsafe { &mut *vec_ptr };
+        vec.push(Handle::new(HandleKind::Fixed(handle)));
+
+        true.into()
+    }
+
+    let mut vec = Vec::new();
+    let _ = unsafe { EnumWindows(Some(callback), LPARAM(&raw mut vec as isize)) };
+    vec
 }
