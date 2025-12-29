@@ -1,5 +1,7 @@
+use std::{collections::HashMap, ops::Div};
+
 use log::debug;
-use opencv::core::{Point, Point2d, Rect};
+use opencv::core::{Point, Point_, Point2d, Rect};
 
 use crate::{
     bridge::MouseKind,
@@ -11,6 +13,63 @@ use crate::{
     },
     tracker::{ByteTracker, Detection, STrack},
 };
+
+type SpatialCell = (i32, i32);
+
+struct SpatialGrid<'a> {
+    grid: HashMap<SpatialCell, Vec<&'a STrack>>,
+    cell_size: i32,
+}
+
+impl<'a> SpatialGrid<'a> {
+    fn new(tracks: &'a [STrack]) -> Self {
+        let mut grid = HashMap::new();
+        let cell_size = median_bbox_diagonal(tracks) as i32;
+        for track in tracks {
+            let center = mid_point(track.rect());
+            let cell = (center.x / cell_size, center.y / cell_size);
+            grid.entry(cell).or_insert_with(Vec::new).push(track);
+        }
+
+        Self { grid, cell_size }
+    }
+
+    fn nearby_tracks(&self, point: Point) -> impl Iterator<Item = &'a STrack> {
+        let (cx, cy) = self.cell_of(point);
+
+        (-1..=1).flat_map(move |dx| {
+            (-1..=1).flat_map(move |dy| {
+                self.grid
+                    .get(&(cx + dx, cy + dy))
+                    .into_iter()
+                    .flatten()
+                    .copied()
+            })
+        })
+    }
+
+    fn cell_of(&self, point: Point) -> SpatialCell {
+        (point.x / self.cell_size, point.y / self.cell_size)
+    }
+}
+
+fn median_bbox_diagonal(tracks: &[STrack]) -> f64 {
+    let mut diags: Vec<f64> = tracks
+        .iter()
+        .map(|track| {
+            let bbox = track.rect();
+            let point = Point2d::new(bbox.width as f64, bbox.height as f64);
+            point.norm()
+        })
+        .collect();
+
+    if diags.is_empty() {
+        return 100.0;
+    }
+
+    diags.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    diags[diags.len() / 2]
+}
 
 /// Representing the current state of transparent shape (e.g. lie detector) solving.
 #[derive(Debug, Clone, Copy, Default)]
@@ -27,6 +86,7 @@ pub struct SolvingShape {
     lie_detector_region: Option<Rect>,
     current_track_id: Option<u64>,
     candidate_track_id: Option<u64>,
+    candidate_track_count: u32,
     last_cursor: Option<Point>,
     bg_direction: Point2d,
     bg_velocity: Point2d,
@@ -176,7 +236,7 @@ fn perform_solving(
             let Some(last_cursor) = solving_shape.last_cursor else {
                 return;
             };
-            let scaled = solving_shape.bg_velocity * 0.4;
+            let scaled = solving_shape.bg_velocity * 0.7;
             let next_cursor =
                 last_cursor + Point::new(-scaled.x.round() as i32, -scaled.y.round() as i32);
             let absolute_next_cursor = next_cursor + region.tl();
@@ -233,22 +293,33 @@ fn select_best_track<'a>(
 ) -> Option<&'a STrack> {
     let current_track_id = solving_shape.current_track_id?;
     let bg_direction = solving_shape.bg_direction;
-    let match_tracks = tracks
+    let match_track = tracks
         .iter()
-        .filter(|track| {
-            track.tracklet_len() >= 1
-                && track.track_id() != current_track_id
-                && is_track_opposite_background_direction(track, bg_direction)
+        .filter(|track| track.tracklet_len() >= 3 && track.track_id() != current_track_id)
+        .filter_map(|track| {
+            let dot = track_background_dot(track, bg_direction)?;
+            if dot >= 0.2 {
+                return None;
+            }
+
+            Some((track, dot))
         })
-        .collect::<Vec<&STrack>>();
-    if match_tracks.len() == 1 {
-        let track = match_tracks[0];
+        .min_by(|(_, a_dot), (_, b_dot)| a_dot.partial_cmp(b_dot).unwrap())
+        .map(|(track, _)| track)
+        .or_else(|| find_common_approaching_track(tracks, current_track_id, bg_direction));
+    if let Some(track) = match_track {
         if solving_shape.candidate_track_id == Some(track.track_id()) {
-            solving_shape.candidate_track_id = None;
-            return Some(track);
+            solving_shape.candidate_track_count += 1;
+        } else {
+            solving_shape.candidate_track_id = Some(track.track_id());
+            solving_shape.candidate_track_count = 0;
         }
 
-        solving_shape.candidate_track_id = Some(track.track_id());
+        if solving_shape.candidate_track_count >= 1 {
+            solving_shape.candidate_track_id = None;
+            solving_shape.candidate_track_count = 0;
+            return Some(track);
+        }
     }
 
     tracks
@@ -270,19 +341,23 @@ fn predicted_center(track: &STrack) -> Point {
     )
 }
 
-fn is_track_opposite_background_direction(track: &STrack, bg_direction: Point2d) -> bool {
-    let diff = mid_point(track.rect()) - mid_point(track.last_rect());
-    let norm = diff.norm();
-    if norm < 1e-3 {
-        return false;
-    }
-    let unit = diff.to::<f64>().unwrap() / norm;
-    let dot = unit.dot(bg_direction);
-    if dot >= -0.1 {
-        return false;
+fn track_background_dot(track: &STrack, bg_direction: Point2d) -> Option<f64> {
+    let history = track.rect_history();
+    let len = history.len();
+    if len < 2 {
+        return None;
     }
 
-    true
+    let window = 4.min(len - 1);
+    let start = len - 1 - window;
+    let mut displacement = Point2d::new(0.0, 0.0);
+    for i in (start + 1)..len {
+        let prev = mid_point(history[i - 1]);
+        let curr = mid_point(history[i]);
+        displacement += (curr - prev).to::<f64>().unwrap();
+    }
+
+    Some(unit(displacement)?.dot(bg_direction))
 }
 
 fn estimate_background_direction_velocity(tracks: &[STrack]) -> Option<(Point2d, Point2d)> {
@@ -299,15 +374,111 @@ fn estimate_background_direction_velocity(tracks: &[STrack]) -> Option<(Point2d,
     let velocity_sum = filtered
         .into_iter()
         .fold(Point2d::default(), |acc, v| acc + v);
-    let velocity_norm = velocity_sum.norm();
-    if velocity_norm < 1e-3 {
-        return None;
-    }
+    let velocity_unit = unit(velocity_sum)?;
 
-    Some((velocity_sum / velocity_norm, velocity_sum / len))
+    Some((velocity_unit, velocity_sum / len))
 }
 
 fn track_velocity(track: &STrack) -> Point2d {
     let (vx, vy) = track.kalman_velocity();
     Point2d::new(vx as f64, vy as f64)
+}
+
+fn find_common_approaching_track(
+    tracks: &[STrack],
+    current_track_id: u64,
+    bg_direction: Point2d,
+) -> Option<&STrack> {
+    let grid = SpatialGrid::new(tracks);
+    let mut votes = HashMap::<u64, u32>::new();
+    for a in tracks.iter().filter(|t| t.track_id() != current_track_id) {
+        let a_center = mid_point(a.rect());
+
+        for b in grid.nearby_tracks(a_center) {
+            if a.track_id() == b.track_id() {
+                continue;
+            }
+            if b.track_id() == current_track_id {
+                continue;
+            }
+
+            if !are_tracks_closing_distance(a, b) {
+                continue;
+            }
+            if !are_tracks_direction_against_background(a, b, bg_direction) {
+                continue;
+            }
+
+            *votes.entry(a.track_id()).or_insert(0) += 1;
+        }
+    }
+
+    votes
+        .into_iter()
+        .max_by_key(|(_, v)| *v)
+        .inspect(|(id, count)| {
+            debug!(target: "player", "solve shape common approaching track {id} {count}");
+        })
+        .map(|(id, _)| id)
+        .map(|id| {
+            tracks
+                .iter()
+                .find(|track| track.track_id() == id)
+                .expect("has track")
+        })
+}
+
+fn are_tracks_direction_against_background(a: &STrack, b: &STrack, bg_direction: Point2d) -> bool {
+    let va = track_velocity(a);
+    let Some(va_unit) = unit(va) else {
+        return false;
+    };
+
+    let ab = (mid_point(b.rect()) - mid_point(a.rect()))
+        .to::<f64>()
+        .unwrap();
+    let Some(ab_unit) = unit(ab) else {
+        return false;
+    };
+
+    if va_unit.dot(ab_unit) <= 0.0 {
+        return false;
+    }
+    if ab_unit.dot(bg_direction) >= -0.5 {
+        return false;
+    }
+
+    true
+}
+
+fn are_tracks_closing_distance(a: &STrack, b: &STrack) -> bool {
+    let a_history = a.rect_history();
+    let b_history = b.rect_history();
+    if a_history.len() < 2 || b_history.len() < 2 {
+        return false;
+    }
+
+    let a_prev = mid_point(a_history[a_history.len() - 2]);
+    let a_curr = mid_point(*a_history.last().unwrap());
+    let b_prev = mid_point(b_history[b_history.len() - 2]);
+    let b_curr = mid_point(*b_history.last().unwrap());
+
+    let prev_dist = (a_prev - b_prev).norm();
+    let curr_dist = (a_curr - b_curr).norm();
+
+    prev_dist - curr_dist >= 5.0
+}
+
+fn unit<T>(point: Point_<T>) -> Option<Point_<T>>
+where
+    T: Copy,
+    Point_<T>: Div<f64, Output = Point_<T>>,
+    f64: From<T>,
+{
+    let norm = point.norm();
+    if norm < 1e-3 {
+        return None;
+    }
+
+    Some(point / norm)
 }

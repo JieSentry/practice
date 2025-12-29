@@ -1,4 +1,7 @@
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::{
+    collections::VecDeque,
+    sync::atomic::{AtomicU64, Ordering},
+};
 
 use opencv::core::Rect;
 
@@ -6,6 +9,7 @@ use super::kalman_filter::KalmanXYAH;
 use crate::tracker::tlwh_to_xyah;
 
 static TRACK_ID_COUNTER: AtomicU64 = AtomicU64::new(1);
+const TLWH_HISTORY_SIZE: usize = 8;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TrackState {
@@ -24,7 +28,7 @@ pub struct STrack {
     pub(super) state: TrackState,
     pub(super) kalman: KalmanXYAH,
     pub(super) tlwh: [f32; 4],
-    pub(super) last_tlwh: [f32; 4],
+    pub(super) tlwh_history: VecDeque<[f32; 4]>,
 }
 
 impl STrack {
@@ -36,6 +40,9 @@ impl STrack {
             bbox.height as f32,
         ];
 
+        let mut history = VecDeque::with_capacity(TLWH_HISTORY_SIZE);
+        history.push_back(tlwh);
+
         Self {
             track_id: 0,
             tracklet_len: 0,
@@ -43,7 +50,7 @@ impl STrack {
             state: TrackState::Lost,
             kalman: KalmanXYAH::new(),
             tlwh,
-            last_tlwh: tlwh,
+            tlwh_history: history,
         }
     }
 
@@ -61,11 +68,15 @@ impl STrack {
         self.frame_id = frame_id;
         self.state = TrackState::Tracked;
 
+        self.tlwh_history.clear();
+        self.push_history(self.tlwh);
+
         let meas = tlwh_to_xyah(self.tlwh);
         self.kalman.initiate(meas);
     }
 
     pub(super) fn reactivate(&mut self, tlwh: [f32; 4], frame_id: u64) {
+        self.tlwh_history.clear();
         self.update(tlwh, frame_id);
         self.tracklet_len = 0;
     }
@@ -81,8 +92,8 @@ impl STrack {
     pub(super) fn update(&mut self, tlwh: [f32; 4], frame_id: u64) {
         self.frame_id = frame_id;
         self.tracklet_len += 1;
-        self.last_tlwh = self.tlwh;
         self.tlwh = tlwh;
+        self.push_history(tlwh);
         self.state = TrackState::Tracked;
 
         let meas = tlwh_to_xyah(self.tlwh);
@@ -102,13 +113,11 @@ impl STrack {
         )
     }
 
-    pub fn last_rect(&self) -> Rect {
-        Rect::new(
-            self.last_tlwh[0] as i32,
-            self.last_tlwh[1] as i32,
-            self.last_tlwh[2] as i32,
-            self.last_tlwh[3] as i32,
-        )
+    pub fn rect_history(&self) -> Vec<Rect> {
+        self.tlwh_history
+            .iter()
+            .map(|t| Rect::new(t[0] as i32, t[1] as i32, t[2] as i32, t[3] as i32))
+            .collect()
     }
 
     pub(super) fn kalman_tlwh(&self) -> [f32; 4] {
@@ -129,5 +138,12 @@ impl STrack {
         let vx = self.kalman.mean[4];
         let vy = self.kalman.mean[5];
         (vx, vy)
+    }
+
+    fn push_history(&mut self, tlwh: [f32; 4]) {
+        if self.tlwh_history.len() == TLWH_HISTORY_SIZE {
+            self.tlwh_history.pop_front();
+        }
+        self.tlwh_history.push_back(tlwh);
     }
 }

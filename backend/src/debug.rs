@@ -145,7 +145,14 @@ pub fn debug_tracks(
 
     let arrows = tracks
         .iter()
-        .map(|track| (mid_point(track.last_rect()), mid_point(track.rect())))
+        .map(|track| {
+            let rects = track.rect_history();
+            let last_rect = rects
+                .get(rects.len().saturating_sub(2))
+                .copied()
+                .unwrap_or(track.rect());
+            (mid_point(last_rect), mid_point(track.rect()))
+        })
         .collect::<Vec<_>>();
     let bboxes = tracks
         .into_iter()
