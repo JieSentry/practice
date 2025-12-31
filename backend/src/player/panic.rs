@@ -49,26 +49,29 @@ pub fn update_panicking_state(
     minimap_state: Minimap,
     mut panicking: Panicking,
 ) {
-    let change_channel_key = try_some_transition!(
-        player,
-        Player::Idle,
-        player.context.config.change_channel_key,
-        {
-            info!(target: "player", "aborted panicking because change channel key is not set");
-            player.context.clear_action_completed();
-        }
-    );
-    let to_town_key =
-        try_some_transition!(player, Player::Idle, player.context.config.to_town_key, {
-            info!(target: "player", "aborted panicking because to town key is not set");
-            player.context.clear_action_completed();
-        });
-
     match panicking.state {
         State::ChangingChannel(_, _) => {
-            update_changing_channel(resources, &mut panicking, minimap_state, change_channel_key)
+            let key = try_some_transition!(
+                player,
+                Player::Idle,
+                player.context.config.change_channel_key,
+                {
+                    info!(target: "player", "aborted panicking because change channel key is not set");
+                    player.context.clear_action_completed();
+                }
+            );
+
+            update_changing_channel(resources, &mut panicking, minimap_state, key)
         }
-        State::GoingToTown(_, _) => update_going_to_town(resources, &mut panicking, to_town_key),
+        State::GoingToTown(_, _) => {
+            let key =
+                try_some_transition!(player, Player::Idle, player.context.config.to_town_key, {
+                    info!(target: "player", "aborted panicking because to town key is not set");
+                    player.context.clear_action_completed();
+                });
+
+            update_going_to_town(resources, &mut panicking, key)
+        }
         State::Completing(_, _) => update_completing(&mut panicking, minimap_state),
     };
 
