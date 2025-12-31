@@ -261,10 +261,6 @@ fn select_best_track<'a>(
         }
 
         if solving_shape.candidate_track_count >= 2 {
-            println!(
-                "{}",
-                (predicted_center(track) - solving_shape.last_cursor.unwrap()).norm()
-            );
             solving_shape.candidate_track_id = None;
             solving_shape.candidate_track_count = 0;
             return Some(track);
