@@ -240,7 +240,7 @@ fn select_best_track<'a>(
     let bg_direction = solving_shape.bg_direction;
     let match_track = tracks
         .iter()
-        .filter(|track| track.tracklet_len() >= 2 && track.track_id() != current_track_id)
+        .filter(|track| track.tracklet_len() >= 2)
         .filter_map(|track| {
             let degree = track_background_degree(track, bg_direction)?;
             if degree <= 45.0 {
@@ -249,10 +249,15 @@ fn select_best_track<'a>(
 
             Some((track, degree))
         })
-        .max_by(|(_, a_dot), (_, b_dot)| a_dot.partial_cmp(b_dot).unwrap())
+        .max_by(|(_, a_degree), (_, b_degree)| a_degree.partial_cmp(b_degree).unwrap())
         .map(|(track, _)| track);
 
     if let Some(track) = match_track {
+        if track.track_id() == current_track_id {
+            solving_shape.candidate_track_id = None;
+            solving_shape.candidate_track_count = 0;
+        }
+
         if solving_shape.candidate_track_id == Some(track.track_id()) {
             solving_shape.candidate_track_count += 1;
         } else {
