@@ -168,12 +168,17 @@ fn update_open_menu(resources: &Resources, swapping: &mut FamiliarsSwapping, key
                 MouseKind::Move,
             );
         }),
-        Lifecycle::Ended => transition_if!(
-            swapping,
-            State::FindSlots,
-            State::Completing(Timeout::default(), false),
-            resources.detector().detect_familiar_menu_opened()
-        ),
+        Lifecycle::Ended => {
+            transition_if!(
+                swapping,
+                State::FindSlots,
+                resources.detector().detect_familiar_menu_opened()
+            );
+            transition!(swapping, State::Completing(Timeout::default(), false), {
+                // Do not count as success
+                swapping.success = true;
+            });
+        }
         Lifecycle::Updated(timeout) => transition!(swapping, State::OpenMenu(timeout), {
             if timeout.current == 30 {
                 resources.input.send_key(key);
@@ -197,16 +202,14 @@ fn update_find_slots(resources: &Resources, swapping: &mut FamiliarsSwapping) {
             debug!(target: "player", "familiar slots is not 3 but was {}, aborting...", vec.len());
             debug!(target: "player", "detected familiar slots were {vec:?}");
             // Weird spots with false positives
-            transition!(swapping, State::Completing(Timeout::default(), false));
+            transition!(swapping, State::Completing(Timeout::default(), false), {
+                // Do not count as success
+                swapping.success = true;
+            });
         }
     }
 
-    transition_if!(
-        swapping,
-        State::Completing(Timeout::default(), false),
-        State::FreeSlots(FAMILIAR_SLOTS - 1, false),
-        swapping.slots.is_empty()
-    );
+    transition!(swapping, State::FreeSlots(FAMILIAR_SLOTS - 1, false));
 }
 
 fn update_free_slots(resources: &Resources, swapping: &mut FamiliarsSwapping) {
