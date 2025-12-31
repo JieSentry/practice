@@ -72,7 +72,9 @@ pub fn update_unstucking_state(
 
     match unstucking.kind {
         UnstuckingKind::Esc => {
-            resources.input.send_key(KeyKind::Esc);
+            if resources.detector().detect_esc_settings() {
+                resources.input.send_key(KeyKind::Esc);
+            }
 
             match next_action(&player.context) {
                 Some(PlayerAction::Unstuck) => transition_from_action!(player, Player::Detecting),
