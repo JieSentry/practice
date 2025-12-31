@@ -139,21 +139,39 @@ pub fn debug_tracks(
     cursor: Point,
     bg_direction: Point2d,
 ) {
+    fn signed_angle_deg(a: Point2d, b: Point2d) -> f64 {
+        let dot = a.dot(b);
+        let det = a.cross(b);
+        det.atan2(dot).to_degrees()
+    }
+
     fn mid_point(rect: Rect) -> Point {
         rect.tl() + Point::new(rect.width / 2, rect.height / 2)
     }
 
     let arrows = tracks
         .iter()
-        .map(|track| {
-            let rects = track.rect_history();
-            let last_rect = rects
-                .get(rects.len().saturating_sub(2))
-                .copied()
-                .unwrap_or(track.rect());
-            (mid_point(last_rect), mid_point(track.rect()))
+        .filter_map(|track| {
+            if track.tracklet_len() <= 1 {
+                return None;
+            }
+
+            let center = mid_point(track.rect()).to::<f64>().unwrap();
+            let (vx, vy) = track.kalman_velocity();
+            let v = Point2d::new(vx as f64, vy as f64);
+
+            if v.norm() < 1e-3 {
+                return None;
+            }
+
+            let angle = signed_angle_deg(v, bg_direction);
+
+            let end = center + v * 5.0;
+
+            Some((center.to::<i32>().unwrap(), end.to::<i32>().unwrap(), angle))
         })
         .collect::<Vec<_>>();
+
     let bboxes = tracks
         .into_iter()
         .map(|track| (track.kalman_rect(), format!("Track {}", track.track_id())))
@@ -177,25 +195,29 @@ pub fn debug_tracks(
         0,
         0.25,
     );
-    for (arrow_start, arrow_end) in arrows {
-        let diff = arrow_end - arrow_start;
-        let norm = diff.norm();
-        if norm > 0.0 {
-            let unit = diff.to::<f64>().unwrap() / norm;
-            if unit.dot(bg_direction) >= -0.1 {
-                continue;
-            }
-        }
 
-        let _ = arrowed_line(
+    for (arrow_start, arrow_end, angle) in arrows {
+        let abs_angle = angle.abs();
+
+        // green = aligned, yellow = diagonal, red = opposite
+        let color = if abs_angle <= 45.0 {
+            Scalar::new(0.0, 255.0, 0.0, 0.0)
+        } else if abs_angle <= 90.0 {
+            Scalar::new(0.0, 255.0, 255.0, 0.0)
+        } else {
+            Scalar::new(0.0, 0.0, 255.0, 0.0)
+        };
+
+        let _ = arrowed_line(&mut mat, arrow_start, arrow_end, color, 2, LINE_8, 0, 0.25);
+
+        let label = format!("{:+.0}", angle);
+        let _ = put_text_def(
             &mut mat,
-            arrow_start,
-            arrow_end,
-            Scalar::new(0.0, 255.0, 0.0, 0.0),
-            2,
-            LINE_8,
-            0,
-            0.25,
+            &label,
+            arrow_end + Point::new(3, -3),
+            FONT_HERSHEY_SIMPLEX,
+            0.45,
+            color,
         );
     }
 
