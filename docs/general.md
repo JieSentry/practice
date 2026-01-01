@@ -198,7 +198,7 @@ Actions can be reordered using the up/down icons.
 ### Linked Key & Linked Action
 
 Useful for combo-oriented classes such as Blaster, Cadena, Ark, Mercedes, etc. Animation cancel timings
-depend on the class, which can be configured in `Characters` → `Others` → `Link key timing class`.
+depend on the class, which can be configured in `Characters` → `Others` → `Link key timing`.
 
 #### Link Key Types
 
@@ -209,9 +209,8 @@ depend on the class, which can be configured in `Characters` → `Others` → `L
 
 > **Notes:**  
 > - Even for `AtTheSame`, the link key is sent **first**.  
-> - For Blaster, if `After` is set and the link key is not `Jump`, an extra `Jump` will be sent to cancel Bobbing/Weaving.  
 > - Linked key can also be simulated via linked actions.
-> - `Along` type timing is fixed and unaffected by class.
+> - For Blaster, if Bobbing/Weaving cancellation is required, a linked action that sends `Jump` key should be added.  
 
 #### Linked Actions
 

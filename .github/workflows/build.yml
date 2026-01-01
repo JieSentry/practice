@@ -32,6 +32,7 @@ env:
   VCPKG_INSTALLED_DIR: ${{ github.workspace }}/vcpkg/installed
   VCPKGRS_TRIPLET: x64-windows-static
 
+  DIOXUS_CLI_VERSION: "0.7.2"
   PROTOC_VERSION: "33.0.0"
   CARGO_TERM_COLOR: always
   SCCACHE_GHA_ENABLED: "true"
@@ -52,6 +53,7 @@ jobs:
       # Need to add dx fmt
       - uses: ./.github/actions/setup
         with:
+          dioxus-cli-version: ${{ env.DIOXUS_CLI_VERSION }}
           vcpkg-version: ${{ env.VCPKG_VERSION }}
           vcpkg-root: ${{ env.VCPKG_ROOT }}
           protoc-version: ${{ env.PROTOC_VERSION }}
@@ -73,6 +75,7 @@ jobs:
 
       - uses: ./.github/actions/setup
         with:
+          dioxus-cli-version: ${{ env.DIOXUS_CLI_VERSION }}
           vcpkg-version: ${{ env.VCPKG_VERSION }}
           vcpkg-root: ${{ env.VCPKG_ROOT }}
           protoc-version: ${{ env.PROTOC_VERSION }}

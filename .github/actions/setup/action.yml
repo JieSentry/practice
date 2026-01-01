@@ -1,5 +1,7 @@
 name: Setup
 inputs:
+  dioxus-cli-version:
+    required: true
   vcpkg-version:
     required: true
   vcpkg-root:
@@ -29,8 +31,6 @@ runs:
         echo "set(VCPKG_BUILD_TYPE release)" >> triplets/x64-windows-static.cmake
         ./vcpkg.exe install --clean-after-build --recurse opencv4[contrib,nonfree]:x64-windows-static
 
-    - uses: mozilla-actions/sccache-action@v0.0.9
-
     - uses: actions/setup-node@v4
       with:
         node-version: latest
@@ -42,16 +42,12 @@ runs:
         cd ui
         npm install
 
+    - uses: mozilla-actions/sccache-action@v0.0.9
+
     - uses: cargo-bins/cargo-binstall@main
     - name: Install Dioxus CLI
       shell: pwsh
-      run: cargo binstall dioxus-cli@0.7.1 --no-confirm
-
-    - name: Install toolchain
-      uses: dtolnay/rust-toolchain@master
-      with:
-        toolchain: nightly-2025-11-09-x86_64-pc-windows-msvc
-        components: clippy, rustfmt
+      run: cargo binstall dioxus-cli@${{ inputs.dioxus-cli-version }} --no-confirm
 
     - name: Install protoc
       shell: pwsh
