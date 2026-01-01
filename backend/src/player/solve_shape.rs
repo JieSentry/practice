@@ -265,7 +265,7 @@ fn select_best_track<'a>(
             solving_shape.candidate_track_count = 0;
         }
 
-        if solving_shape.candidate_track_count >= 2 {
+        if solving_shape.candidate_track_count >= 3 {
             solving_shape.candidate_track_id = None;
             solving_shape.candidate_track_count = 0;
             return Some(track);

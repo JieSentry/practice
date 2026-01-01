@@ -1521,13 +1521,8 @@ fn exchange_hexa_booster_priority_action(
 #[inline]
 fn unstuck_priority_action() -> PriorityAction {
     let mut task: Option<Task<Result<bool>>> = None;
-    let task_fn = move |detector: Arc<dyn Detector>| -> Result<bool> {
-        if detector.detect_player_is_dead() {
-            return Ok(false);
-        }
-
-        Ok(detector.detect_esc_settings())
-    };
+    let task_fn =
+        move |detector: Arc<dyn Detector>| -> Result<bool> { Ok(detector.detect_esc_settings()) };
 
     PriorityAction {
         condition: Condition(Box::new(move |resources, world, info| {
