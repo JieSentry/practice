@@ -1475,7 +1475,7 @@ impl PlayerContext {
             return;
         };
         if is_dead && !self.is_dead {
-            let _ = resources
+            resources
                 .notification
                 .schedule_notification(NotificationKind::PlayerIsDead);
         }

@@ -53,7 +53,7 @@ impl EventHandler<WorldEvent> for WorldEventHandler {
                     .notifications
                     .notify_on_cycle_run_stop
                 {
-                    let _ = context
+                    context
                         .resources
                         .notification
                         .schedule_notification(NotificationKind::CycledToHalt);
@@ -66,7 +66,7 @@ impl EventHandler<WorldEvent> for WorldEventHandler {
                     .notifications
                     .notify_on_cycle_run_stop
                 {
-                    let _ = context
+                    context
                         .resources
                         .notification
                         .schedule_notification(NotificationKind::CycledToRun);
@@ -88,7 +88,7 @@ impl EventHandler<WorldEvent> for WorldEventHandler {
                     return;
                 }
 
-                let _ = context
+                context
                     .resources
                     .notification
                     .schedule_notification(NotificationKind::FailOrMapChange);
@@ -135,14 +135,14 @@ impl EventHandler<WorldEvent> for WorldEventHandler {
                         .operation_service
                         .update(context.resources, OperationUpdate::TemporaryHalt);
                 }
-                let _ = context
+                context
                     .resources
                     .notification
                     .schedule_notification(NotificationKind::FailOrMapChange);
             }
             WorldEvent::LieDetectorAppeared => {
                 if !context.resources.operation.halting() {
-                    let _ = context
+                    context
                         .resources
                         .notification
                         .schedule_notification(NotificationKind::LieDetectorAppear);
@@ -150,7 +150,7 @@ impl EventHandler<WorldEvent> for WorldEventHandler {
             }
             WorldEvent::EliteBossAppeared => {
                 if !context.resources.operation.halting() {
-                    let _ = context
+                    context
                         .resources
                         .notification
                         .schedule_notification(NotificationKind::EliteBossAppear);

@@ -400,7 +400,7 @@ fn update_rune_task(
 
     if was_none && rune.value.is_some() && !resources.operation.halting() {
         info!(target: "minimap", "sending notification for rune...");
-        let _ = resources
+        resources
             .notification
             .schedule_notification(NotificationKind::RuneAppear);
     }
@@ -430,7 +430,7 @@ fn update_other_player_task(
             OtherPlayerKind::Stranger => NotificationKind::PlayerStrangerAppear,
             OtherPlayerKind::Friend => NotificationKind::PlayerFriendAppear,
         };
-        let _ = resources.notification.schedule_notification(notification);
+        resources.notification.schedule_notification(notification);
     }
     threshold
 }
