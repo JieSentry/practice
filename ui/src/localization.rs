@@ -1,5 +1,5 @@
 use backend::{
-    GameTemplate, Localization, convert_image_to_base64, query_localization, query_template,
+    DetectionTemplate, Localization, convert_image_to_base64, query_localization, query_template,
     save_capture_image, upsert_localization,
 };
 use dioxus::{html::FileData, prelude::*};
@@ -187,7 +187,7 @@ fn SectionPopups() -> Element {
             div { class: "grid grid-cols-2  gap-4",
                 LocalizationTemplateInput {
                     label: "Confirm",
-                    template: GameTemplate::PopupConfirm,
+                    template: DetectionTemplate::PopupConfirm,
                     on_value: move |image: Option<Vec<u8>>| async move {
                         save_localization(Localization {
                             popup_confirm_base64: to_base64(image, true).await,
@@ -198,7 +198,7 @@ fn SectionPopups() -> Element {
                 }
                 LocalizationTemplateInput {
                     label: "Yes",
-                    template: GameTemplate::PopupYes,
+                    template: DetectionTemplate::PopupYes,
                     on_value: move |image: Option<Vec<u8>>| async move {
                         save_localization(Localization {
                             popup_yes_base64: to_base64(image, true).await,
@@ -209,7 +209,7 @@ fn SectionPopups() -> Element {
                 }
                 LocalizationTemplateInput {
                     label: "Next",
-                    template: GameTemplate::PopupNext,
+                    template: DetectionTemplate::PopupNext,
                     on_value: move |image: Option<Vec<u8>>| async move {
                         save_localization(Localization {
                             popup_next_base64: to_base64(image, true).await,
@@ -220,7 +220,7 @@ fn SectionPopups() -> Element {
                 }
                 LocalizationTemplateInput {
                     label: "End chat",
-                    template: GameTemplate::PopupEndChat,
+                    template: DetectionTemplate::PopupEndChat,
                     on_value: move |image: Option<Vec<u8>>| async move {
                         save_localization(Localization {
                             popup_end_chat_base64: to_base64(image, true).await,
@@ -231,7 +231,7 @@ fn SectionPopups() -> Element {
                 }
                 LocalizationTemplateInput {
                     label: "Ok (new)",
-                    template: GameTemplate::PopupOkNew,
+                    template: DetectionTemplate::PopupOkNew,
                     on_value: move |image: Option<Vec<u8>>| async move {
                         save_localization(Localization {
                             popup_ok_new_base64: to_base64(image, true).await,
@@ -242,7 +242,7 @@ fn SectionPopups() -> Element {
                 }
                 LocalizationTemplateInput {
                     label: "Ok (old)",
-                    template: GameTemplate::PopupOkOld,
+                    template: DetectionTemplate::PopupOkOld,
                     on_value: move |image: Option<Vec<u8>>| async move {
                         save_localization(Localization {
                             popup_ok_old_base64: to_base64(image, true).await,
@@ -253,7 +253,7 @@ fn SectionPopups() -> Element {
                 }
                 LocalizationTemplateInput {
                     label: "Cancel (new)",
-                    template: GameTemplate::PopupCancelNew,
+                    template: DetectionTemplate::PopupCancelNew,
                     on_value: move |image: Option<Vec<u8>>| async move {
                         save_localization(Localization {
                             popup_cancel_new_base64: to_base64(image, true).await,
@@ -264,7 +264,7 @@ fn SectionPopups() -> Element {
                 }
                 LocalizationTemplateInput {
                     label: "Cancel (old)",
-                    template: GameTemplate::PopupCancelOld,
+                    template: DetectionTemplate::PopupCancelOld,
                     on_value: move |image: Option<Vec<u8>>| async move {
                         save_localization(Localization {
                             popup_cancel_old_base64: to_base64(image, true).await,
@@ -289,7 +289,7 @@ fn SectionHexa() -> Element {
             div { class: "grid grid-cols-2 gap-4",
                 LocalizationTemplateInput {
                     label: "Erda conversion button",
-                    template: GameTemplate::HexaErdaConversionButton,
+                    template: DetectionTemplate::HexaErdaConversionButton,
                     on_value: move |image: Option<Vec<u8>>| async move {
                         save_localization(Localization {
                             hexa_erda_conversion_button_base64: to_base64(image, false).await,
@@ -300,7 +300,7 @@ fn SectionHexa() -> Element {
                 }
                 LocalizationTemplateInput {
                     label: "HEXA Booster button",
-                    template: GameTemplate::HexaBoosterButton,
+                    template: DetectionTemplate::HexaBoosterButton,
                     on_value: move |image: Option<Vec<u8>>| async move {
                         save_localization(Localization {
                             hexa_booster_button_base64: to_base64(image, false).await,
@@ -311,7 +311,7 @@ fn SectionHexa() -> Element {
                 }
                 LocalizationTemplateInput {
                     label: "Max button",
-                    template: GameTemplate::HexaMaxButton,
+                    template: DetectionTemplate::HexaMaxButton,
                     on_value: move |image: Option<Vec<u8>>| async move {
                         save_localization(Localization {
                             hexa_max_button_base64: to_base64(image, false).await,
@@ -322,7 +322,7 @@ fn SectionHexa() -> Element {
                 }
                 LocalizationTemplateInput {
                     label: "Convert button",
-                    template: GameTemplate::HexaConvertButton,
+                    template: DetectionTemplate::HexaConvertButton,
                     on_value: move |image: Option<Vec<u8>>| async move {
                         save_localization(Localization {
                             hexa_convert_button_base64: to_base64(image, false).await,
@@ -347,7 +347,7 @@ fn SectionFamiliars() -> Element {
             div { class: "grid grid-cols-2 gap-4",
                 LocalizationTemplateInput {
                     label: "Level sort button",
-                    template: GameTemplate::FamiliarsLevelSort,
+                    template: DetectionTemplate::FamiliarsLevelSort,
                     on_value: move |image: Option<Vec<u8>>| async move {
                         save_localization(Localization {
                             familiar_level_button_base64: to_base64(image, false).await,
@@ -358,7 +358,7 @@ fn SectionFamiliars() -> Element {
                 }
                 LocalizationTemplateInput {
                     label: "Save button",
-                    template: GameTemplate::FamiliarsSaveButton,
+                    template: DetectionTemplate::FamiliarsSaveButton,
                     on_value: move |image: Option<Vec<u8>>| async move {
                         save_localization(Localization {
                             familiar_save_button_base64: to_base64(image, false).await,
@@ -383,7 +383,7 @@ fn SectionOthers() -> Element {
             div { class: "grid grid-cols-2 gap-4",
                 LocalizationTemplateInput {
                     label: "Cash shop",
-                    template: GameTemplate::CashShop,
+                    template: DetectionTemplate::CashShop,
                     on_value: move |image: Option<Vec<u8>>| async move {
                         save_localization(Localization {
                             cash_shop_base64: to_base64(image, true).await,
@@ -394,7 +394,7 @@ fn SectionOthers() -> Element {
                 }
                 LocalizationTemplateInput {
                     label: "Change channel",
-                    template: GameTemplate::ChangeChannel,
+                    template: DetectionTemplate::ChangeChannel,
                     tooltip: "This template is in grayscale.",
                     on_value: move |image: Option<Vec<u8>>| async move {
                         save_localization(Localization {
@@ -406,7 +406,7 @@ fn SectionOthers() -> Element {
                 }
                 LocalizationTemplateInput {
                     label: "Timer",
-                    template: GameTemplate::Timer,
+                    template: DetectionTemplate::Timer,
                     tooltip: "This template is in grayscale.",
                     on_value: move |image: Option<Vec<u8>>| async move {
                         save_localization(Localization {
@@ -424,7 +424,7 @@ fn SectionOthers() -> Element {
 #[component]
 fn LocalizationTemplateInput(
     label: &'static str,
-    template: GameTemplate,
+    template: DetectionTemplate,
     #[props(default)] tooltip: Option<String>,
     on_value: Callback<Option<Vec<u8>>>,
     value: ReadSignal<Option<String>>,

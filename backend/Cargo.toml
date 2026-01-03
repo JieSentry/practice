@@ -5,6 +5,8 @@ edition.workspace = true
 
 [dependencies]
 tokio = { workspace = true }
+tokio-stream = { workspace = true }
+futures = { workspace = true }
 tonic = "0.13.1"
 bit-vec = "0.8"
 base64 = "0.22.1"

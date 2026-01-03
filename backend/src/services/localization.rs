@@ -1,7 +1,7 @@
 use std::{cell::RefCell, fmt::Debug, rc::Rc, sync::Arc};
 
 use crate::{
-    GameTemplate, Localization,
+    DetectionTemplate, Localization,
     detect::{
         CASH_SHOP_TEMPLATE, CHANGE_CHANNEL_TEMPLATE, FAMILIAR_LEVEL_BUTTON_TEMPLATE,
         FAMILIAR_SAVE_BUTTON_TEMPLATE, HEXA_BOOSTER_BUTTON_TEMPLATE, HEXA_CONVERT_BUTTON_TEMPLATE,
@@ -17,7 +17,7 @@ use crate::{
 /// A service for handling localization-related incoming requests.
 pub trait LocalizationService: Debug {
     /// Retrieves the default base64-encoded PNG for template `template`.
-    fn template(&self, template: GameTemplate) -> String;
+    fn template(&self, template: DetectionTemplate) -> String;
 
     /// Updates the currently in use [`Localization`] with new `localization`.
     fn update_localization(&mut self, localization: Localization);
@@ -38,25 +38,25 @@ impl DefaultLocalizationService {
 }
 
 impl LocalizationService for DefaultLocalizationService {
-    fn template(&self, template: GameTemplate) -> String {
+    fn template(&self, template: DetectionTemplate) -> String {
         let template = match template {
-            GameTemplate::CashShop => &CASH_SHOP_TEMPLATE,
-            GameTemplate::ChangeChannel => &CHANGE_CHANNEL_TEMPLATE,
-            GameTemplate::Timer => &TIMER_TEMPLATE,
-            GameTemplate::PopupConfirm => &POPUP_CONFIRM_TEMPLATE,
-            GameTemplate::PopupYes => &POPUP_YES_TEMPLATE,
-            GameTemplate::PopupNext => &POPUP_NEXT_TEMPLATE,
-            GameTemplate::PopupEndChat => &POPUP_END_CHAT_TEMPLATE,
-            GameTemplate::PopupOkNew => &POPUP_OK_NEW_TEMPLATE,
-            GameTemplate::PopupOkOld => &POPUP_OK_OLD_TEMPLATE,
-            GameTemplate::PopupCancelNew => &POPUP_CANCEL_NEW_TEMPLATE,
-            GameTemplate::PopupCancelOld => &POPUP_CANCEL_OLD_TEMPLATE,
-            GameTemplate::FamiliarsLevelSort => &FAMILIAR_LEVEL_BUTTON_TEMPLATE,
-            GameTemplate::FamiliarsSaveButton => &FAMILIAR_SAVE_BUTTON_TEMPLATE,
-            GameTemplate::HexaErdaConversionButton => &HEXA_ERDA_CONVERSION_BUTTON_TEMPLATE,
-            GameTemplate::HexaBoosterButton => &HEXA_BOOSTER_BUTTON_TEMPLATE,
-            GameTemplate::HexaMaxButton => &HEXA_MAX_BUTTON_TEMPLATE,
-            GameTemplate::HexaConvertButton => &HEXA_CONVERT_BUTTON_TEMPLATE,
+            DetectionTemplate::CashShop => &CASH_SHOP_TEMPLATE,
+            DetectionTemplate::ChangeChannel => &CHANGE_CHANNEL_TEMPLATE,
+            DetectionTemplate::Timer => &TIMER_TEMPLATE,
+            DetectionTemplate::PopupConfirm => &POPUP_CONFIRM_TEMPLATE,
+            DetectionTemplate::PopupYes => &POPUP_YES_TEMPLATE,
+            DetectionTemplate::PopupNext => &POPUP_NEXT_TEMPLATE,
+            DetectionTemplate::PopupEndChat => &POPUP_END_CHAT_TEMPLATE,
+            DetectionTemplate::PopupOkNew => &POPUP_OK_NEW_TEMPLATE,
+            DetectionTemplate::PopupOkOld => &POPUP_OK_OLD_TEMPLATE,
+            DetectionTemplate::PopupCancelNew => &POPUP_CANCEL_NEW_TEMPLATE,
+            DetectionTemplate::PopupCancelOld => &POPUP_CANCEL_OLD_TEMPLATE,
+            DetectionTemplate::FamiliarsLevelSort => &FAMILIAR_LEVEL_BUTTON_TEMPLATE,
+            DetectionTemplate::FamiliarsSaveButton => &FAMILIAR_SAVE_BUTTON_TEMPLATE,
+            DetectionTemplate::HexaErdaConversionButton => &HEXA_ERDA_CONVERSION_BUTTON_TEMPLATE,
+            DetectionTemplate::HexaBoosterButton => &HEXA_BOOSTER_BUTTON_TEMPLATE,
+            DetectionTemplate::HexaMaxButton => &HEXA_MAX_BUTTON_TEMPLATE,
+            DetectionTemplate::HexaConvertButton => &HEXA_CONVERT_BUTTON_TEMPLATE,
         };
 
         to_base64_from_mat(template).expect("convert successfully")

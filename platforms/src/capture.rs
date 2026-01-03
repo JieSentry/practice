@@ -1,6 +1,6 @@
 #[cfg(windows)]
 use crate::windows::{BitBltCapture, WgcCapture, WindowBoxCapture, WindowsCapture};
-use crate::{Error, Result, Window, windows::query_capture_name_handle_pairs};
+use crate::{Error, Result, Window, windows::query_capture_handles};
 
 #[derive(Debug, Clone)]
 pub struct Frame {
@@ -90,11 +90,11 @@ impl Capture {
     }
 }
 
-pub fn query_capture_name_window_pairs() -> Result<Vec<(String, Window)>> {
+pub fn query_capture_windows() -> Result<Vec<Window>> {
     if cfg!(windows) {
-        return Ok(query_capture_name_handle_pairs()
+        return Ok(query_capture_handles()
             .into_iter()
-            .map(|(name, handle)| (name, handle.into()))
+            .map(|handle| handle.into())
             .collect::<Vec<_>>());
     }
 

@@ -10,19 +10,16 @@ use tokio::{sync::mpsc::Receiver, task::spawn_blocking};
 
 use super::EventContext;
 use crate::{
-    ActionKeyDirection, ActionKeyWith, BotOperationUpdate, Settings, WaitAfterBuffered,
+    ActionKeyDirection, ActionKeyWith, OperationUpdate, Settings, WaitAfterBuffered,
     bridge::{KeyKind, LinkKeyKind},
     control::{BotAction, CommandKind, ControlEvent, DiscordBot},
     ecs::{Resources, World},
     player::{Chat, ChattingContent, Key, PlayerAction},
-    services::EventHandler,
+    services::{EventHandler, operation::Halt},
 };
 
 /// A service to handle control-related (e.g., Discord Bot) incoming requests.
 pub trait ControlService: Debug {
-    /// Polls for any pending [`ControlEvent`].
-    fn poll(&mut self) -> Option<ControlEvent>;
-
     /// Updates the currently in use control settings with provided `settings`.
     fn update(&mut self, settings: &Settings);
 }
@@ -30,28 +27,19 @@ pub trait ControlService: Debug {
 #[derive(Debug)]
 pub struct DefaultControlService {
     bot: DiscordBot,
-    bot_command_rx: Receiver<ControlEvent>,
 }
 
-impl Default for DefaultControlService {
-    fn default() -> Self {
-        let (bot, bot_command_receiver) = DiscordBot::new();
-        Self {
-            bot,
-            bot_command_rx: bot_command_receiver,
-        }
+impl DefaultControlService {
+    pub fn new() -> (Self, Receiver<ControlEvent>) {
+        let (bot, event_rx) = DiscordBot::new();
+        let service = Self { bot };
+        (service, event_rx)
     }
 }
 
 impl ControlService for DefaultControlService {
-    fn poll(&mut self) -> Option<ControlEvent> {
-        self.bot_command_rx.try_recv().ok()
-    }
-
     fn update(&mut self, settings: &Settings) {
-        if !settings.discord_bot_access_token.is_empty() {
-            let _ = self.bot.start(settings.discord_bot_access_token.clone());
-        }
+        self.bot.start(settings.discord_bot_access_token.clone());
     }
 }
 
@@ -80,36 +68,29 @@ impl EventHandler<ControlEvent> for ControlEventHandler {
                 let _ = event
                     .sender
                     .send(EditInteractionResponse::new().content("Bot started running."));
-                context.operation_service.apply(
-                    context.resources,
-                    context.world,
-                    context.rotator,
-                    &context.settings_service.settings(),
-                    BotOperationUpdate::Run,
-                );
+                context
+                    .operation_service
+                    .update(context.resources, OperationUpdate::Run);
             }
             CommandKind::Stop { go_to_town } => {
                 let _ = event
                     .sender
                     .send(EditInteractionResponse::new().content("Bot stopped running."));
-                context.operation_service.halt(
-                    context.resources,
-                    context.world,
-                    context.rotator,
-                    go_to_town,
+                context.operation_service.queue_halt(
+                    true,
+                    Halt {
+                        go_to_town,
+                        check_for_navigation: false,
+                    },
                 );
             }
             CommandKind::Suspend => {
                 let _ = event
                     .sender
                     .send(EditInteractionResponse::new().content("Bot attempted to suspend."));
-                context.operation_service.apply(
-                    context.resources,
-                    context.world,
-                    context.rotator,
-                    &context.settings_service.settings(),
-                    BotOperationUpdate::TemporaryHalt,
-                );
+                context
+                    .operation_service
+                    .update(context.resources, OperationUpdate::TemporaryHalt);
             }
             CommandKind::Status => {
                 let provider = state_and_frame_provider(context.resources, context.world);

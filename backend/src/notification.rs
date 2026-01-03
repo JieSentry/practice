@@ -233,7 +233,11 @@ impl DiscordNotification {
         }
     }
 
-    pub fn schedule_notification(&self, kind: NotificationKind) -> Result<(), Error> {
+    pub fn schedule_notification(&self, kind: NotificationKind) {
+        let _ = self.schedule_notification_inner(kind);
+    }
+
+    fn schedule_notification_inner(&self, kind: NotificationKind) -> Result<(), Error> {
         let settings = self.settings.borrow();
         if !kind.enabled(&settings) {
             bail!("notification not enabled");
@@ -377,7 +381,7 @@ mod test {
         })));
 
         assert!(
-            noti.schedule_notification(NotificationKind::FailOrMapChange)
+            noti.schedule_notification_inner(NotificationKind::FailOrMapChange)
                 .is_ok()
         );
         assert!(noti.scheduled.lock().unwrap().len() == 1);
@@ -389,11 +393,11 @@ mod test {
                 .unwrap()
         );
         assert!(
-            noti.schedule_notification(NotificationKind::FailOrMapChange)
+            noti.schedule_notification_inner(NotificationKind::FailOrMapChange)
                 .is_err()
         );
         assert!(
-            noti.schedule_notification(NotificationKind::RuneAppear)
+            noti.schedule_notification_inner(NotificationKind::RuneAppear)
                 .is_ok()
         );
     }
@@ -409,7 +413,7 @@ mod test {
         })));
 
         assert!(
-            noti.schedule_notification(NotificationKind::FailOrMapChange)
+            noti.schedule_notification_inner(NotificationKind::FailOrMapChange)
                 .is_err()
         );
     }

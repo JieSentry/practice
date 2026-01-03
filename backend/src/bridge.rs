@@ -5,6 +5,7 @@ use std::{
 };
 
 use anyhow::{Result, bail};
+use futures::stream::BoxStream;
 #[cfg(test)]
 use mockall::automock;
 #[cfg(windows)]
@@ -18,6 +19,7 @@ use platforms::{
         KeyState as PlatformKeyState, MouseKind as PlatformMouseKind,
     },
 };
+use serenity::futures::StreamExt;
 
 use crate::{
     models::{CaptureMode, KeyBinding, LinkKeyBinding},
@@ -600,32 +602,53 @@ impl From<LinkKeyBinding> for LinkKeyKind {
 /// This is a bridge trait for [`KeyKind`].
 #[cfg_attr(test, automock)]
 pub trait InputReceiver: Debug + 'static {
-    fn set_window_and_input_kind(&mut self, window: Window, kind: PlatformInputKind);
+    fn set_window(&mut self, window: Window);
 
-    fn try_recv(&mut self) -> Result<KeyKind>;
+    fn set_method(&mut self, method: InputMethod);
+
+    fn as_stream(&self) -> BoxStream<'static, KeyKind>;
 }
 
 #[derive(Debug)]
 pub struct DefaultInputReceiver {
+    window: Window,
+    kind: PlatformInputKind,
     inner: PlatformInputReceiver,
 }
 
 impl DefaultInputReceiver {
     pub fn new(window: Window, kind: PlatformInputKind) -> Self {
         Self {
+            window,
+            kind,
             inner: PlatformInputReceiver::new(window, kind).expect("supported platform"),
         }
     }
 }
 
 impl InputReceiver for DefaultInputReceiver {
-    fn set_window_and_input_kind(&mut self, window: Window, kind: PlatformInputKind) {
-        self.inner = PlatformInputReceiver::new(window, kind).expect("supported platform")
+    fn set_window(&mut self, window: Window) {
+        self.window = window;
+        self.inner = PlatformInputReceiver::new(window, self.kind).expect("supported platform")
     }
 
-    #[inline]
-    fn try_recv(&mut self) -> Result<KeyKind> {
-        Ok(self.inner.try_recv()?.into())
+    fn set_method(&mut self, method: InputMethod) {
+        self.kind = match method {
+            InputMethod::ForegroundRpc(_) | InputMethod::ForegroundDefault => {
+                PlatformInputKind::Foreground
+            }
+            InputMethod::FocusedRpc(_) | InputMethod::FocusedDefault => PlatformInputKind::Focused,
+        };
+        self.inner =
+            PlatformInputReceiver::new(self.window, self.kind).expect("supported platform");
+    }
+
+    fn as_stream(&self) -> BoxStream<'static, KeyKind> {
+        self.inner
+            .as_stream()
+            .expect("supported platform")
+            .map(KeyKind::from)
+            .boxed()
     }
 }
 
@@ -649,9 +672,12 @@ impl InputKeyDownOptions {
 /// Input method to use.
 ///
 /// This is a bridge enum between platform-specific and gRPC input options.
+#[derive(Clone, Debug)]
 pub enum InputMethod {
-    Rpc(Window, String),
-    Default(Window, PlatformInputKind),
+    ForegroundRpc(String),
+    FocusedRpc(String),
+    ForegroundDefault,
+    FocusedDefault,
 }
 
 /// Inner kind of [`InputMethod`].
@@ -660,7 +686,7 @@ pub enum InputMethod {
 /// sending structure.
 #[derive(Debug)]
 enum InputMethodInner {
-    Rpc(Window, Option<RefCell<InputService>>),
+    Rpc(Option<RefCell<InputService>>),
     Default(PlatformInput),
 }
 
@@ -677,6 +703,9 @@ enum InputDelay {
 pub trait Input: Debug {
     /// Performs a tick update.
     fn update(&mut self, tick: u64);
+
+    /// Overwrites the current input window with new `window`.
+    fn set_window(&mut self, window: Window);
 
     /// Overwrites the current input method with new `method`.
     fn set_method(&mut self, method: InputMethod);
@@ -712,6 +741,7 @@ pub trait Input: Debug {
 /// Default implementation of [`Input`].
 #[derive(Debug)]
 pub struct DefaultInput {
+    window: Window,
     kind: InputMethodInner,
     delay_rng: Rng,
     delay_mean_std_pair: (f32, f32),
@@ -719,9 +749,10 @@ pub struct DefaultInput {
 }
 
 impl DefaultInput {
-    pub fn new(method: InputMethod, rng: Rng) -> Self {
+    pub fn new(window: Window, method: InputMethod, rng: Rng) -> Self {
         Self {
-            kind: input_method_inner_from(method, rng.rng_seed()),
+            window,
+            kind: input_method_inner_from(window, method, rng.rng_seed()),
             delay_rng: rng,
             delay_mean_std_pair: (BASE_MEAN_MS_DELAY, BASE_STD_MS_DELAY),
             delay_map: RefCell::new(HashMap::new()),
@@ -731,7 +762,7 @@ impl DefaultInput {
     #[inline]
     fn key_state(&self, kind: KeyKind) -> Result<KeyState> {
         match &self.kind {
-            InputMethodInner::Rpc(_, service) => {
+            InputMethodInner::Rpc(service) => {
                 if let Some(cell) = service {
                     Ok(cell.borrow_mut().key_state(kind.into())?.into())
                 } else {
@@ -745,7 +776,7 @@ impl DefaultInput {
     #[inline]
     fn send_key_inner(&self, kind: KeyKind) -> Result<()> {
         match &self.kind {
-            InputMethodInner::Rpc(_, service) => {
+            InputMethodInner::Rpc(service) => {
                 if let Some(cell) = service {
                     cell.borrow_mut()
                         .send_key(kind.into(), self.random_input_delay_tick_count().0)?;
@@ -764,7 +795,7 @@ impl DefaultInput {
     #[inline]
     fn send_key_up_inner(&self, kind: KeyKind, forced: bool) -> Result<()> {
         match &self.kind {
-            InputMethodInner::Rpc(_, service) => {
+            InputMethodInner::Rpc(service) => {
                 if let Some(cell) = service {
                     cell.borrow_mut().send_key_up(kind.into())?;
                 }
@@ -785,7 +816,7 @@ impl DefaultInput {
             // NOTE: For unknown reason, hardware custom input (e.g. KMBox, Arduino) seems to only
             // require sending down stroke once and it will continue correctly. But `SendInput`
             // requires repeatedly sending the stroke to simulate flying for some classes.
-            InputMethodInner::Rpc(_, service) => {
+            InputMethodInner::Rpc(service) => {
                 if let Some(cell) = service {
                     cell.borrow_mut().send_key_down(kind.into())?;
                 }
@@ -885,20 +916,24 @@ impl Input for DefaultInput {
         self.update(tick);
     }
 
+    fn set_window(&mut self, window: Window) {
+        self.window = window;
+    }
+
     fn set_method(&mut self, method: InputMethod) {
-        self.kind = input_method_inner_from(method, self.delay_rng.rng_seed());
+        self.kind = input_method_inner_from(self.window, method, self.delay_rng.rng_seed());
     }
 
     fn send_mouse(&self, x: i32, y: i32, kind: MouseKind) {
         match &self.kind {
-            InputMethodInner::Rpc(window, service) => {
+            InputMethodInner::Rpc(service) => {
                 if let Some(cell) = service {
                     let mut borrow = cell.borrow_mut();
                     let relative = match borrow.mouse_coordinate() {
                         RpcCoordinate::Screen => CoordinateRelative::Monitor,
                         RpcCoordinate::Relative => CoordinateRelative::Window,
                     };
-                    let Ok(coordinates) = window.convert_coordinate(x, y, relative) else {
+                    let Ok(coordinates) = self.window.convert_coordinate(x, y, relative) else {
                         return;
                     };
 
@@ -1012,19 +1047,22 @@ impl Capture for DefaultCapture {
 }
 
 #[inline]
-fn input_method_inner_from(method: InputMethod, seed: &[u8]) -> InputMethodInner {
+fn input_method_inner_from(window: Window, method: InputMethod, seed: &[u8]) -> InputMethodInner {
     match method {
-        InputMethod::Rpc(handle, url) => {
+        InputMethod::ForegroundRpc(url) | InputMethod::FocusedRpc(url) => {
             let mut service = InputService::connect(url);
             if let Ok(ref mut service) = service {
                 let _ = service.init(seed);
             }
 
-            InputMethodInner::Rpc(handle, service.ok().map(RefCell::new))
+            InputMethodInner::Rpc(service.ok().map(RefCell::new))
         }
-        InputMethod::Default(handle, kind) => {
-            InputMethodInner::Default(PlatformInput::new(handle, kind).expect("supported platform"))
-        }
+        InputMethod::ForegroundDefault => InputMethodInner::Default(
+            PlatformInput::new(window, PlatformInputKind::Foreground).expect("supported platform"),
+        ),
+        InputMethod::FocusedDefault => InputMethodInner::Default(
+            PlatformInput::new(window, PlatformInputKind::Focused).expect("supported platform"),
+        ),
     }
 }
 
@@ -1041,7 +1079,8 @@ mod tests {
 
     fn test_key_sender() -> DefaultInput {
         DefaultInput::new(
-            InputMethod::Default(Window::new("Handle"), PlatformInputKind::Focused),
+            Window::new("Handle"),
+            InputMethod::FocusedDefault,
             Rng::new(SEED, 1337),
         )
     }
