@@ -39,8 +39,8 @@ impl Event for OperationEvent {}
 
 /// A service to handle operation-related incoming requests.
 pub trait OperationService: Debug {
-    /// Polls for any pending [`OperationEvent`].
-    fn poll(&mut self) -> Option<OperationEvent>;
+    /// Subscribes for [`OperationEvent`].
+    fn subscribe(&self) -> Receiver<OperationEvent>;
 
     /// Applies the new `update` to `resources` and sends an [`OperationEvent::Update`] event.
     fn update(&self, resources: &mut Resources, update: OperationUpdate);
@@ -59,25 +59,23 @@ pub trait OperationService: Debug {
 #[derive(Debug)]
 pub struct DefaultOperationService {
     pending_halt: Option<JoinHandle<()>>,
-    event_rx: Receiver<OperationEvent>, // TODO: Remove this field
     event_tx: Sender<OperationEvent>,
 }
 
 impl Default for DefaultOperationService {
     fn default() -> Self {
-        let (tx, rx) = broadcast::channel(5);
+        let (tx, _) = broadcast::channel(5);
 
         Self {
             pending_halt: None,
-            event_rx: rx,
             event_tx: tx,
         }
     }
 }
 
 impl OperationService for DefaultOperationService {
-    fn poll(&mut self) -> Option<OperationEvent> {
-        self.event_rx.try_recv().ok()
+    fn subscribe(&self) -> Receiver<OperationEvent> {
+        self.event_tx.subscribe()
     }
 
     fn update(&self, resources: &mut Resources, update: OperationUpdate) {

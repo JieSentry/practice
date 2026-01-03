@@ -8,7 +8,10 @@ use rusqlite::{Connection, Params, Statement, types::Null};
 use serde::{Serialize, de::DeserializeOwned};
 use tokio::sync::broadcast::{Receiver, Sender, channel};
 
-use crate::models::{Character, Identifiable, Localization, Map, NavigationPaths, Seeds, Settings};
+use crate::{
+    models::{Character, Identifiable, Localization, Map, NavigationPaths, Seeds, Settings},
+    services::Event,
+};
 
 const MAPS: &str = "maps";
 const NAVIGATION_PATHS: &str = "navigation_paths";
@@ -73,6 +76,8 @@ pub enum DatabaseEvent {
     CharacterUpdated(Character),
     CharacterDeleted(i64),
 }
+
+impl Event for DatabaseEvent {}
 
 pub fn database_event_receiver() -> Receiver<DatabaseEvent> {
     EVENT.subscribe()

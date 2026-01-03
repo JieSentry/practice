@@ -120,7 +120,7 @@ impl Default for WindowBoxCapture {
         });
         barrier.wait();
         let handle = HWND(handle.lock().unwrap().unwrap().get() as *mut c_void);
-        let handle = Handle::new(HandleKind::Fixed(handle));
+        let handle = Handle::new(HandleKind::Fixed(handle.into()));
         let capture = BitBltCapture::new(handle, true);
 
         Self {

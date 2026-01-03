@@ -4,9 +4,9 @@ use std::{
 };
 
 use backend::{
-    Action, ActionKey, ActionMove, BotOperation, DatabaseEvent, Map, OperationUpdate, Position,
-    RotationMode, create_map, database_event_receiver, delete_map, game_state_receiver, query_maps,
-    redetect_minimap, update_map, update_operation, upsert_map,
+    Action, ActionKey, ActionMove, DatabaseEvent, Map, Operation, OperationUpdate, Position,
+    RotationMode, create_map, database_event_receiver, delete_map, query_maps, redetect_minimap,
+    state_receiver, update_map, update_operation, upsert_map,
 };
 use dioxus::{document::EvalError, html::FileData, prelude::*};
 use futures_util::StreamExt;
@@ -292,7 +292,7 @@ struct MinimapState {
     normal_action: Option<String>,
     priority_action: Option<String>,
     erda_shower_state: String,
-    operation: BotOperation,
+    operation: Operation,
     detected_size: Option<(usize, usize)>,
 }
 
@@ -527,7 +527,7 @@ fn Canvas(
     // Draw map and update game state
     use_future(move || async move {
         let mut canvas = document::eval(MINIMAP_JS);
-        let mut receiver = game_state_receiver().await;
+        let mut receiver = state_receiver().await;
         loop {
             let Ok(current_state) = receiver.recv().await else {
                 continue;
@@ -628,9 +628,9 @@ fn Info(state: ReadSignal<Option<MinimapState>>, map: ReadSignal<Option<Map>>) -
             info.state = state.state;
             info.erda_shower_state = state.erda_shower_state;
             info.cycle_duration = match state.operation {
-                BotOperation::Halting | BotOperation::Running => "None".to_string(),
-                BotOperation::TemporaryHalting(duration) => duration_from(duration),
-                BotOperation::HaltUntil(instant) | BotOperation::RunUntil(instant) => {
+                Operation::Halting | Operation::Running => "None".to_string(),
+                Operation::TemporaryHalting(duration) => duration_from(duration),
+                Operation::HaltUntil(instant) | Operation::RunUntil(instant) => {
                     duration_from(instant.saturating_duration_since(Instant::now()))
                 }
             };
@@ -682,9 +682,9 @@ fn Buttons(state: ReadSignal<Option<MinimapState>>, map: ReadSignal<Option<Map>>
     let kind = use_memo(move || {
         state()
             .map(|state| match state.operation {
-                BotOperation::Halting => OperationUpdate::Halt,
-                BotOperation::TemporaryHalting(_) => OperationUpdate::TemporaryHalt,
-                BotOperation::HaltUntil(_) | BotOperation::Running | BotOperation::RunUntil(_) => {
+                Operation::Halting => OperationUpdate::Halt,
+                Operation::TemporaryHalting(_) => OperationUpdate::TemporaryHalt,
+                Operation::HaltUntil(_) | Operation::Running | Operation::RunUntil(_) => {
                     OperationUpdate::Run
                 }
             })
@@ -706,11 +706,11 @@ fn Buttons(state: ReadSignal<Option<MinimapState>>, map: ReadSignal<Option<Map>>
     let suspend_resume_text = use_memo(move || {
         state()
             .map(|state| match state.operation {
-                BotOperation::TemporaryHalting(_) => "Resume",
-                BotOperation::Halting
-                | BotOperation::HaltUntil(_)
-                | BotOperation::Running
-                | BotOperation::RunUntil(_) => "Suspend",
+                Operation::TemporaryHalting(_) => "Resume",
+                Operation::Halting
+                | Operation::HaltUntil(_)
+                | Operation::Running
+                | Operation::RunUntil(_) => "Suspend",
             })
             .unwrap_or("Suspend")
     });
@@ -722,7 +722,7 @@ fn Buttons(state: ReadSignal<Option<MinimapState>>, map: ReadSignal<Option<Map>>
             .map(|state| {
                 !matches!(
                     state.operation,
-                    BotOperation::TemporaryHalting(_) | BotOperation::RunUntil(_)
+                    Operation::TemporaryHalting(_) | Operation::RunUntil(_)
                 )
             })
             .unwrap_or_default()

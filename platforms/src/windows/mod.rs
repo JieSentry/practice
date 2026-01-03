@@ -110,7 +110,7 @@ pub fn query_capture_handles() -> Vec<Handle> {
 
         let vec_ptr = params.0 as *mut Vec<Handle>;
         let vec = unsafe { &mut *vec_ptr };
-        vec.push(Handle::new(HandleKind::Fixed(handle)));
+        vec.push(Handle::new(HandleKind::Fixed(handle.into())));
 
         true.into()
     }

@@ -1,4 +1,4 @@
-use std::{cell::Cell, ffi::OsString, os::windows::ffi::OsStringExt, ptr, str};
+use std::{cell::Cell, ffi::OsString, ops::Deref, os::windows::ffi::OsStringExt, ptr, str};
 
 use windows::{
     Win32::{
@@ -13,10 +13,29 @@ use windows::{
 
 use crate::{ConvertedCoordinates, Error, Result};
 
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub struct RawHandle(HWND);
+
+impl Deref for RawHandle {
+    type Target = HWND;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<HWND> for RawHandle {
+    fn from(handle: HWND) -> Self {
+        RawHandle(handle)
+    }
+}
+
+unsafe impl Send for RawHandle {}
+
 #[derive(Clone, Debug)]
 pub struct HandleCell {
     inner: Handle,
-    inner_cell: Cell<Option<HWND>>,
+    inner_cell: Cell<Option<RawHandle>>,
 }
 
 impl HandleCell {
@@ -30,13 +49,13 @@ impl HandleCell {
     #[inline]
     pub fn as_inner(&self) -> Option<HWND> {
         match self.inner.kind {
-            HandleKind::Fixed(handle) => Some(handle),
+            HandleKind::Fixed(handle) => Some(handle.0),
             HandleKind::Dynamic(class) => {
                 if self.inner_cell.get().is_none() {
-                    self.inner_cell.set(query_handle(class));
+                    self.inner_cell.set(query_handle(class).map(RawHandle));
                 }
 
-                let handle = self.inner_cell.get()?;
+                let handle = self.inner_cell.get()?.0;
                 if is_class_matched(handle, class) {
                     Some(handle)
                 } else {
@@ -50,7 +69,7 @@ impl HandleCell {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HandleKind {
-    Fixed(HWND),
+    Fixed(RawHandle),
     Dynamic(&'static str),
 }
 
@@ -130,9 +149,9 @@ impl Handle {
         })
     }
 
-    pub fn as_inner(&self) -> Option<HWND> {
+    fn as_inner(&self) -> Option<HWND> {
         match self.kind {
-            HandleKind::Fixed(handle) => Some(handle),
+            HandleKind::Fixed(handle) => Some(handle.0),
             HandleKind::Dynamic(class) => query_handle(class),
         }
     }

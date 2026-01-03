@@ -5,6 +5,7 @@ use std::{
 };
 
 use anyhow::{Result, bail};
+use futures::stream::BoxStream;
 #[cfg(test)]
 use mockall::automock;
 #[cfg(windows)]
@@ -18,6 +19,7 @@ use platforms::{
         KeyState as PlatformKeyState, MouseKind as PlatformMouseKind,
     },
 };
+use serenity::futures::StreamExt;
 
 use crate::{
     models::{CaptureMode, KeyBinding, LinkKeyBinding},
@@ -604,7 +606,7 @@ pub trait InputReceiver: Debug + 'static {
 
     fn set_method(&mut self, method: InputMethod);
 
-    fn try_recv(&mut self) -> Result<KeyKind>;
+    fn as_stream(&self) -> BoxStream<'static, KeyKind>;
 }
 
 #[derive(Debug)]
@@ -641,9 +643,12 @@ impl InputReceiver for DefaultInputReceiver {
             PlatformInputReceiver::new(self.window, self.kind).expect("supported platform");
     }
 
-    #[inline]
-    fn try_recv(&mut self) -> Result<KeyKind> {
-        Ok(self.inner.try_recv()?.into())
+    fn as_stream(&self) -> BoxStream<'static, KeyKind> {
+        self.inner
+            .as_stream()
+            .expect("supported platform")
+            .map(KeyKind::from)
+            .boxed()
     }
 }
 

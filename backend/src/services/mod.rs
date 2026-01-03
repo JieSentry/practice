@@ -7,15 +7,19 @@ use std::{
     sync::Arc,
 };
 
-use log::debug;
+use log::{debug, error};
 use platforms::{Window, input::InputKind};
-use tokio::sync::broadcast::Receiver;
+use tokio::{
+    select, spawn,
+    sync::{broadcast::Receiver, mpsc},
+};
 
 #[cfg(debug_assertions)]
 use crate::services::debug::DebugService;
 use crate::{
     Localization, Settings,
     bridge::{Capture, DefaultInputReceiver, Input},
+    database_event_receiver,
     ecs::{Resources, World, WorldEvent},
     navigator::Navigator,
     rotator::Rotator,
@@ -23,33 +27,33 @@ use crate::{
         capture::{CaptureService, DefaultCaptureService},
         character::{CharacterService, DefaultCharacterService},
         control::{ControlEventHandler, ControlService, DefaultControlService},
-        game::{DefaultGameService, GameEventHandler, GameService},
-        input::{DefaultInputService, InputService},
+        database::DatabaseEventHandler,
+        input::{DefaultInputService, InputEventHandler, InputService},
         localization::{DefaultLocalizationService, LocalizationService},
         map::{DefaultMapService, MapService},
+        mediator::{DefaultMediatorService, MediatorEventHandler, MediatorService},
         navigator::{DefaultNavigatorService, NavigatorService},
         operation::{DefaultOperationService, OperationEventHandler, OperationService},
         rotator::{DefaultRotatorService, RotatorService},
         settings::{DefaultSettingsService, SettingsService},
-        ui::{DefaultUiService, UiEventHandler, UiService},
-        world::{DefaultWorldService, WorldEventHandler, WorldService},
+        world::WorldEventHandler,
     },
 };
 
 mod capture;
 mod character;
 mod control;
+mod database;
 #[cfg(debug_assertions)]
 mod debug;
-mod game;
 mod input;
 mod localization;
 mod map;
+mod mediator;
 mod navigator;
 mod operation;
 mod rotator;
 mod settings;
-mod ui;
 mod world;
 
 pub trait Event: Any + Send + Sync + Debug + 'static {}
@@ -95,7 +99,6 @@ struct EventContext<'a> {
     pub rotator: &'a mut dyn Rotator,
     pub navigator: &'a mut dyn Navigator,
     pub capture: &'a mut dyn Capture,
-    pub game_service: &'a mut Box<dyn GameService>,
     pub map_service: &'a mut Box<dyn MapService>,
     pub character_service: &'a mut Box<dyn CharacterService>,
     pub rotator_service: &'a mut Box<dyn RotatorService>,
@@ -106,7 +109,7 @@ struct EventContext<'a> {
     pub localization_service: &'a mut Box<dyn LocalizationService>,
     pub control_service: &'a mut Box<dyn ControlService>,
     pub operation_service: &'a mut Box<dyn OperationService>,
-    pub ui_service: &'a mut Box<dyn UiService>,
+    pub mediator_service: &'a mut Box<dyn MediatorService>,
     #[cfg(debug_assertions)]
     pub debug_service: &'a mut DebugService,
 }
@@ -114,8 +117,7 @@ struct EventContext<'a> {
 #[derive(Debug)]
 pub struct Services {
     event_bus: EventBus,
-    world: Box<dyn WorldService>,
-    game: Box<dyn GameService>,
+    event_rx: mpsc::UnboundedReceiver<Box<dyn Event>>,
     map: Box<dyn MapService>,
     character: Box<dyn CharacterService>,
     rotator: Box<dyn RotatorService>,
@@ -126,7 +128,7 @@ pub struct Services {
     localization: Box<dyn LocalizationService>,
     control: Box<dyn ControlService>,
     operation: Box<dyn OperationService>,
-    ui: Box<dyn UiService>,
+    mediator: Box<dyn MediatorService>,
     #[cfg(debug_assertions)]
     debug: DebugService,
 }
@@ -135,41 +137,70 @@ impl Services {
     pub fn new(
         settings: Rc<RefCell<Settings>>,
         localization: Rc<RefCell<Arc<Localization>>>,
-        event_rx: Receiver<WorldEvent>,
+        mut world_event_rx: Receiver<WorldEvent>,
     ) -> Self {
         let capture_service = DefaultCaptureService::new();
         let settings_service = DefaultSettingsService::new(settings.clone());
 
         let window = capture_service.selected_window();
         let input_rx = DefaultInputReceiver::new(window, InputKind::Focused);
+        let input_service = DefaultInputService::new(input_rx);
+        let mut input_event_rx = input_service.subscribe_event();
 
-        let mut control = DefaultControlService::default();
+        let (mut control, mut control_event_rx) = DefaultControlService::new();
         control.update(&settings_service.settings());
+
+        let operation_service = DefaultOperationService::default();
+        let mut operation_event_rx = operation_service.subscribe();
+
+        let mut database_event_rx = database_event_receiver();
+        let (mediator_service, mut mediator_event_rx) = DefaultMediatorService::new();
 
         let mut event_bus = EventBus {
             handlers: HashMap::default(),
         };
-        event_bus.subscribe(UiEventHandler);
-        event_bus.subscribe(GameEventHandler);
+        event_bus.subscribe(MediatorEventHandler);
+        event_bus.subscribe(DatabaseEventHandler);
         event_bus.subscribe(ControlEventHandler);
         event_bus.subscribe(WorldEventHandler);
         event_bus.subscribe(OperationEventHandler);
+        event_bus.subscribe(InputEventHandler);
+
+        let (event_tx, event_rx) = mpsc::unbounded_channel();
+        spawn(async move {
+            loop {
+                let event: Box<dyn Event> = select! {
+                    Some(event) = mediator_event_rx.recv() => Box::new(event),
+                    Some(event) = control_event_rx.recv() => Box::new(event),
+                    Ok(event) = world_event_rx.recv() => Box::new(event),
+                    Ok(event) = operation_event_rx.recv() => Box::new(event),
+                    Ok(event) = input_event_rx.recv() => Box::new(event),
+                    Ok(event) = database_event_rx.recv() => Box::new(event),
+                };
+                match event_tx.send(event) {
+                    Ok(_) => (),
+                    Err(err) => {
+                        error!(target: "services", "error when occured trying to send event {err}");
+                        break;
+                    }
+                }
+            }
+        });
 
         Self {
             event_bus,
-            world: Box::new(DefaultWorldService::new(event_rx)),
-            game: Box::new(DefaultGameService::new(input_rx)),
+            event_rx,
             map: Box::new(DefaultMapService::default()),
             character: Box::new(DefaultCharacterService::default()),
             rotator: Box::new(DefaultRotatorService::default()),
             navigator: Box::new(DefaultNavigatorService),
-            input: Box::new(DefaultInputService),
             capture: Box::new(capture_service),
+            input: Box::new(input_service),
             settings: Box::new(settings_service),
             localization: Box::new(DefaultLocalizationService::new(localization)),
             control: Box::new(control),
             operation: Box::new(DefaultOperationService::default()),
-            ui: Box::new(DefaultUiService::default()),
+            mediator: Box::new(mediator_service),
             #[cfg(debug_assertions)]
             debug: DebugService::default(),
         }
@@ -185,8 +216,7 @@ impl Services {
             .apply_mode(capture, self.settings.settings().capture_mode);
 
         let window = self.selected_window();
-        let input_rx = self.game.input_receiver_mut();
-        self.input.apply_window(input, input_rx, window);
+        self.input.apply_window(input, window);
     }
 
     #[inline]
@@ -198,64 +228,34 @@ impl Services {
         navigator: &mut dyn Navigator,
         capture: &mut dyn Capture,
     ) {
-        let mut events = Vec::<Box<dyn Event>>::new();
-        if let Some(event) = self.ui.poll() {
-            events.push(Box::new(event));
-        }
-        self.game
-            .poll(
-                &self.settings.settings(),
-                self.map.map().and_then(|map| map.id),
-                self.character
-                    .character()
-                    .and_then(|character| character.id),
-            )
-            .into_iter()
-            .for_each(|event| {
-                events.push(Box::new(event));
-            });
-        if let Some(event) = self.operation.poll() {
-            events.push(Box::new(event));
-        }
-        if let Some(event) = self.world.poll() {
-            events.push(Box::new(event));
-        }
-        if let Some(event) = self.control.poll() {
-            events.push(Box::new(event));
-        }
-        #[cfg(debug_assertions)]
-        self.debug.poll(resources);
-
-        let mut context = EventContext {
-            resources,
-            world,
-            rotator,
-            navigator,
-            capture,
-            game_service: &mut self.game,
-            map_service: &mut self.map,
-            character_service: &mut self.character,
-            rotator_service: &mut self.rotator,
-            navigator_service: &mut self.navigator,
-            capture_service: &mut self.capture,
-            input_service: &mut self.input,
-            settings_service: &mut self.settings,
-            localization_service: &mut self.localization,
-            control_service: &mut self.control,
-            operation_service: &mut self.operation,
-            ui_service: &mut self.ui,
-            #[cfg(debug_assertions)]
-            debug_service: &mut self.debug,
-        };
-        for event in events {
+        if let Ok(event) = self.event_rx.try_recv() {
+            let mut context = EventContext {
+                resources,
+                world,
+                rotator,
+                navigator,
+                capture,
+                map_service: &mut self.map,
+                character_service: &mut self.character,
+                rotator_service: &mut self.rotator,
+                navigator_service: &mut self.navigator,
+                capture_service: &mut self.capture,
+                input_service: &mut self.input,
+                settings_service: &mut self.settings,
+                localization_service: &mut self.localization,
+                control_service: &mut self.control,
+                operation_service: &mut self.operation,
+                mediator_service: &mut self.mediator,
+                #[cfg(debug_assertions)]
+                debug_service: &mut self.debug,
+            };
             debug!(target: "services", "processing event {event:?}");
             self.event_bus.emit(&mut context, event);
         }
 
-        context.game_service.broadcast_state(
-            context.resources,
-            context.world,
-            context.map_service.map(),
-        );
+        #[cfg(debug_assertions)]
+        self.debug.poll(resources);
+        self.mediator
+            .broadcast_state(resources, world, self.map.map());
     }
 }

@@ -1,6 +1,7 @@
 #![feature(new_range_api)]
 #![feature(slice_pattern)]
 #![feature(box_into_inner)]
+#![feature(never_type)]
 #![feature(map_try_insert)]
 #![feature(variant_count)]
 #![feature(iter_array_chunks)]
@@ -10,14 +11,14 @@
 #![feature(assert_matches)]
 
 use std::{
-    sync::{LazyLock, Mutex},
+    sync::LazyLock,
     time::{Duration, Instant},
 };
 
 use strum::Display;
 use tokio::{
     sync::{
-        broadcast, mpsc,
+        Mutex, broadcast, mpsc,
         oneshot::{self, Sender},
     },
     task::spawn_blocking,
@@ -105,12 +106,12 @@ enum Request {
     NavigationSnapshotAsGrayscale(String),
     UpdateCharacter(Option<Character>),
     RedetectMinimap,
-    GameStateReceiver,
+    StateReceiver,
     KeyReceiver,
     RefreshCaptureHandles,
     QueryCaptureHandles,
     SelectCaptureHandle(Option<usize>),
-    QueryTemplate(GameTemplate),
+    QueryTemplate(DetectionTemplate),
     ConvertImageToBase64(Vec<u8>, bool),
     SaveCaptureImage(bool),
     #[cfg(debug_assertions)]
@@ -141,7 +142,7 @@ enum Response {
     NavigationSnapshotAsGrayscale(String),
     UpdateCharacter,
     RedetectMinimap,
-    GameStateReceiver(broadcast::Receiver<GameState>),
+    StateReceiver(broadcast::Receiver<State>),
     KeyReceiver(broadcast::Receiver<KeyBinding>),
     RefreshCaptureHandles,
     QueryCaptureHandles((Vec<String>, Option<usize>)),
@@ -164,7 +165,7 @@ enum Response {
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
-pub enum GameTemplate {
+pub enum DetectionTemplate {
     CashShop,
     ChangeChannel,
     Timer,
@@ -201,9 +202,9 @@ pub struct DebugState {
     pub is_rune_auto_saving: bool,
 }
 
-/// A struct for storing game information.
+/// A struct for storing current's bot state information.
 #[derive(Clone, Debug)]
-pub struct GameState {
+pub struct State {
     pub position: Option<(i32, i32)>,
     pub health: Option<(u32, u32)>,
     pub state: String,
@@ -211,7 +212,7 @@ pub struct GameState {
     pub priority_action: Option<String>,
     pub erda_shower_state: String,
     pub destinations: Vec<(i32, i32)>,
-    pub operation: BotOperation,
+    pub operation: Operation,
     pub frame: Option<(Vec<u8>, usize, usize)>,
     pub platforms_bound: Option<Bound>,
     pub portals: Vec<Bound>,
@@ -219,7 +220,7 @@ pub struct GameState {
 }
 
 #[derive(PartialEq, Clone, Copy, Debug)]
-pub enum BotOperation {
+pub enum Operation {
     Halting,
     TemporaryHalting(Duration),
     HaltUntil(Instant),
@@ -404,8 +405,8 @@ pub async fn redetect_minimap() {
     send_request!(RedetectMinimap)
 }
 
-pub async fn game_state_receiver() -> broadcast::Receiver<GameState> {
-    send_request!(GameStateReceiver => (receiver))
+pub async fn state_receiver() -> broadcast::Receiver<State> {
+    send_request!(StateReceiver => (receiver))
 }
 
 pub async fn key_receiver() -> broadcast::Receiver<KeyBinding> {
@@ -424,7 +425,7 @@ pub async fn select_capture_handle(index: Option<usize>) {
     send_request!(SelectCaptureHandle(index))
 }
 
-pub async fn query_template(template: GameTemplate) -> String {
+pub async fn query_template(template: DetectionTemplate) -> String {
     send_request!(QueryTemplate(template) => (base64))
 }
 
@@ -466,6 +467,6 @@ pub async fn test_spin_rune() {
     send_request!(TestSpinRune)
 }
 
-fn poll_request() -> Option<PendingRequest> {
-    LazyLock::force(&REQUESTS).1.lock().unwrap().try_recv().ok()
+async fn recv_request() -> Option<PendingRequest> {
+    LazyLock::force(&REQUESTS).1.lock().await.recv().await
 }

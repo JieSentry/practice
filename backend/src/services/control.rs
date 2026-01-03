@@ -20,9 +20,6 @@ use crate::{
 
 /// A service to handle control-related (e.g., Discord Bot) incoming requests.
 pub trait ControlService: Debug {
-    /// Polls for any pending [`ControlEvent`].
-    fn poll(&mut self) -> Option<ControlEvent>;
-
     /// Updates the currently in use control settings with provided `settings`.
     fn update(&mut self, settings: &Settings);
 }
@@ -30,28 +27,19 @@ pub trait ControlService: Debug {
 #[derive(Debug)]
 pub struct DefaultControlService {
     bot: DiscordBot,
-    bot_command_rx: Receiver<ControlEvent>,
 }
 
-impl Default for DefaultControlService {
-    fn default() -> Self {
-        let (bot, bot_command_receiver) = DiscordBot::new();
-        Self {
-            bot,
-            bot_command_rx: bot_command_receiver,
-        }
+impl DefaultControlService {
+    pub fn new() -> (Self, Receiver<ControlEvent>) {
+        let (bot, event_rx) = DiscordBot::new();
+        let service = Self { bot };
+        (service, event_rx)
     }
 }
 
 impl ControlService for DefaultControlService {
-    fn poll(&mut self) -> Option<ControlEvent> {
-        self.bot_command_rx.try_recv().ok()
-    }
-
     fn update(&mut self, settings: &Settings) {
-        if !settings.discord_bot_access_token.is_empty() {
-            let _ = self.bot.start(settings.discord_bot_access_token.clone());
-        }
+        self.bot.start(settings.discord_bot_access_token.clone());
     }
 }
 

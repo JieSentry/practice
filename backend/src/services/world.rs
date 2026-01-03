@@ -1,7 +1,3 @@
-use std::fmt::Debug;
-
-use tokio::sync::broadcast::Receiver;
-
 use super::EventContext;
 use crate::{
     OperationUpdate,
@@ -10,29 +6,6 @@ use crate::{
     player::{PanicTo, Panicking, Player},
     services::{EventHandler, operation::Halt},
 };
-
-/// A service to handle world-related incoming requests.
-pub trait WorldService: Debug {
-    /// Polls for any pending [`WorldEvent`].
-    fn poll(&mut self) -> Option<WorldEvent>;
-}
-
-#[derive(Debug)]
-pub struct DefaultWorldService {
-    event_rx: Receiver<WorldEvent>,
-}
-
-impl DefaultWorldService {
-    pub fn new(event_rx: Receiver<WorldEvent>) -> Self {
-        Self { event_rx }
-    }
-}
-
-impl WorldService for DefaultWorldService {
-    fn poll(&mut self) -> Option<WorldEvent> {
-        self.event_rx.try_recv().ok()
-    }
-}
 
 pub struct WorldEventHandler;
 

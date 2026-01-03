@@ -99,7 +99,15 @@ impl DiscordBot {
         (bot, rx)
     }
 
-    pub fn start(&mut self, token: String) -> Result<()> {
+    pub fn start(&mut self, token: String) {
+        if token.is_empty() {
+            return;
+        }
+
+        let _ = self.start_inner(token);
+    }
+
+    fn start_inner(&mut self, token: String) -> Result<()> {
         self.shutdown();
 
         let sender = self.command_sender.clone();

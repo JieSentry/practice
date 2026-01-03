@@ -222,6 +222,7 @@ dependencies = [
  "anyhow",
  "base64 0.22.1",
  "bit-vec",
+ "futures",
  "include_dir",
  "lapjv",
  "log",
@@ -242,6 +243,7 @@ dependencies = [
  "serenity",
  "strum",
  "tokio",
+ "tokio-stream",
  "tonic",
  "tonic-build",
 ]
@@ -1688,6 +1690,7 @@ checksum = "65bc07b1a8bc7c85c5f2e110c476c7389b4554ba72af57d8445ea63a576b0876"
 dependencies = [
  "futures-channel",
  "futures-core",
+ "futures-executor",
  "futures-io",
  "futures-sink",
  "futures-task",
@@ -4048,11 +4051,13 @@ name = "platforms"
 version = "0.24.0"
 dependencies = [
  "bit-vec",
+ "futures",
  "softbuffer",
  "tao 0.33.0",
  "tauri-winres",
  "thiserror 2.0.12",
  "tokio",
+ "tokio-stream",
  "windows 0.61.3",
 ]
 
@@ -5796,6 +5801,7 @@ dependencies = [
  "futures-core",
  "pin-project-lite",
  "tokio",
+ "tokio-util",
 ]
 
 [[package]]

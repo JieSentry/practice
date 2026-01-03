@@ -7,7 +7,9 @@ use std::{
 };
 
 use bit_vec::BitVec;
-use tokio::sync::broadcast::{self, Receiver, Sender};
+use futures::{StreamExt, future, stream::BoxStream};
+use tokio::sync::broadcast::{self, Sender};
+use tokio_stream::wrappers::BroadcastStream;
 use windows::{
     Win32::{
         Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM},
@@ -78,40 +80,29 @@ pub fn init() -> Owned<HHOOK> {
 
 #[derive(Debug)]
 pub struct WindowsInputReceiver {
-    handle: HandleCell,
+    handle_cell: HandleCell,
     input_kind: InputKind,
-    rx: Receiver<KeyKind>,
 }
 
 impl WindowsInputReceiver {
     pub fn new(handle: Handle, input_kind: InputKind) -> Self {
         Self {
-            handle: HandleCell::new(handle),
+            handle_cell: HandleCell::new(handle),
             input_kind,
-            rx: KEY_CHANNEL.subscribe(),
         }
     }
 
-    pub fn try_recv(&mut self) -> Option<KeyKind> {
-        self.rx
-            .try_recv()
-            .ok()
-            .and_then(|key| self.can_process_key().then_some(key))
-    }
+    pub fn as_stream(&self) -> BoxStream<'static, KeyKind> {
+        let cell = self.handle_cell.clone();
+        let kind = self.input_kind;
 
-    // TODO: Is this good?
-    fn can_process_key(&self) -> bool {
-        let fg = unsafe { GetForegroundWindow() };
-        let mut fg_pid = 0;
-        unsafe { GetWindowThreadProcessId(fg, Some(&raw mut fg_pid)) };
-        if fg_pid == *PROCESS_ID {
-            return true;
-        }
-
-        self.handle
-            .as_inner()
-            .map(|handle| is_foreground(handle, self.input_kind))
-            .unwrap_or_default()
+        BroadcastStream::new(KEY_CHANNEL.subscribe())
+            .filter_map(|result| match result {
+                Ok(key) => future::ready(Some(key)),
+                Err(_) => future::ready(None),
+            })
+            .filter(move |_| future::ready(can_process_key(&cell, kind)))
+            .boxed()
     }
 }
 
@@ -424,7 +415,19 @@ fn client_to_absolute_coordinate_raw(handle: HWND, x: i32, y: i32) -> Result<(i3
     Ok((dx, dy))
 }
 
-// TODO: Is this good?
+fn can_process_key(cell: &HandleCell, kind: InputKind) -> bool {
+    let fg = unsafe { GetForegroundWindow() };
+    let mut fg_pid = 0;
+    unsafe { GetWindowThreadProcessId(fg, Some(&raw mut fg_pid)) };
+    if fg_pid == *PROCESS_ID {
+        return true;
+    }
+
+    cell.as_inner()
+        .map(|handle| is_foreground(handle, kind))
+        .unwrap_or_default()
+}
+
 #[inline]
 fn is_foreground(handle: HWND, kind: InputKind) -> bool {
     let handle_fg = unsafe { GetForegroundWindow() };

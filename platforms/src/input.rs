@@ -1,3 +1,5 @@
+use futures::stream::BoxStream;
+
 use crate::{Error, Result, Window};
 #[cfg(windows)]
 use crate::{windows::WindowsInput, windows::WindowsInputReceiver};
@@ -189,9 +191,9 @@ impl InputReceiver {
     }
 
     /// Attempts to receive a key stroke previously sent from the OS.
-    pub fn try_recv(&mut self) -> Result<KeyKind> {
+    pub fn as_stream(&self) -> Result<BoxStream<'static, KeyKind>> {
         if cfg!(windows) {
-            return self.windows.try_recv().ok_or(Error::KeyNotReceived);
+            return Ok(self.windows.as_stream());
         }
 
         Err(Error::PlatformNotSupported)
