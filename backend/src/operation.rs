@@ -27,88 +27,93 @@ impl From<&Settings> for OperationConfiguration {
     }
 }
 
-/// Current operating state of the bot.
 #[derive(Debug, Clone, Copy)]
-pub enum Operation {
-    HaltUntil {
-        instant: Instant,
-        config: OperationConfiguration,
-    },
-    TemporaryHalting {
-        resume: Duration,
-        config: OperationConfiguration,
-    },
+pub enum OperationState {
+    HaltUntil { instant: Instant },
+    TemporaryHalting { resume: Duration },
     Halting,
     Running,
-    RunUntil {
-        instant: Instant,
-        config: OperationConfiguration,
-    },
+    RunUntil { instant: Instant },
+}
+
+impl OperationState {
+    #[inline]
+    pub fn halt_until(config: OperationConfiguration) -> OperationState {
+        OperationState::HaltUntil {
+            instant: Instant::now() + Duration::from_millis(config.stop_duration_millis),
+        }
+    }
+
+    #[inline]
+    pub fn run_until(config: OperationConfiguration) -> OperationState {
+        OperationState::RunUntil {
+            instant: Instant::now() + Duration::from_millis(config.run_duration_millis),
+        }
+    }
+}
+
+/// Current operating state of the bot.
+#[derive(Debug, Clone, Copy)]
+pub struct Operation {
+    pub config: OperationConfiguration,
+    pub state: OperationState,
 }
 
 impl Operation {
     #[inline]
     pub fn halting(&self) -> bool {
         matches!(
-            self,
-            Operation::Halting | Operation::HaltUntil { .. } | Operation::TemporaryHalting { .. }
+            self.state,
+            OperationState::Halting
+                | OperationState::HaltUntil { .. }
+                | OperationState::TemporaryHalting { .. }
         )
     }
 
-    #[inline]
-    pub fn halt_until(config: OperationConfiguration) -> Operation {
-        Operation::HaltUntil {
-            instant: Instant::now() + Duration::from_millis(config.stop_duration_millis),
-            config,
-        }
-    }
-
-    #[inline]
-    pub fn run_until(config: OperationConfiguration) -> Operation {
-        Operation::RunUntil {
-            instant: Instant::now() + Duration::from_millis(config.run_duration_millis),
-            config,
-        }
-    }
-
-    pub fn update_tick(self) -> Operation {
+    pub fn update_tick(&mut self) {
         let now = Instant::now();
-        match self {
-            Operation::HaltUntil { instant, config } => {
+        let config = self.config;
+        let current_state = self.state;
+        let next_state = match current_state {
+            OperationState::HaltUntil { instant } => {
                 if now < instant {
-                    self
+                    current_state
                 } else {
-                    Operation::run_until(config)
+                    OperationState::run_until(config)
                 }
             }
-            Operation::RunUntil { instant, config } => {
+            OperationState::RunUntil { instant } => {
                 if now < instant {
-                    self
+                    current_state
                 } else if matches!(config.mode, CycleRunStopMode::Once) {
-                    Operation::Halting
+                    OperationState::Halting
                 } else {
-                    Operation::halt_until(config)
+                    OperationState::halt_until(config)
                 }
             }
-            Operation::Halting | Operation::TemporaryHalting { .. } | Operation::Running => self,
-        }
+            OperationState::Halting
+            | OperationState::TemporaryHalting { .. }
+            | OperationState::Running => current_state,
+        };
+
+        self.state = next_state;
     }
 }
 
 impl Display for Operation {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match *self {
-            Operation::HaltUntil { instant, .. } => {
+        match self.state {
+            OperationState::HaltUntil { instant, .. } => {
                 write!(f, "Halting for {}", duration_from_instant(instant))
             }
-            Operation::TemporaryHalting { resume, .. } => write!(
+            OperationState::TemporaryHalting { resume, .. } => write!(
                 f,
                 "Halting temporarily with {} remaining",
                 duration_from(resume)
             ),
-            Operation::Halting => write!(f, "Halting"),
-            Operation::Running => write!(f, "Running"),
-            Operation::RunUntil { instant, .. } => {
+            OperationState::Halting => write!(f, "Halting"),
+            OperationState::Running => write!(f, "Running"),
+            OperationState::RunUntil { instant, .. } => {
                 write!(f, "Running for {}", duration_from_instant(instant))
             }
         }

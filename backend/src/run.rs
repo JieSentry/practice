@@ -27,7 +27,7 @@ use crate::{
     minimap::{self, Minimap, MinimapContext, MinimapEntity},
     navigator::{DefaultNavigator, Navigator},
     notification::DiscordNotification,
-    operation::Operation,
+    operation::{Operation, OperationConfiguration, OperationState},
     player::{self, Player, PlayerContext, PlayerEntity},
     rng::Rng,
     rotator::{DefaultRotator, Rotator},
@@ -98,7 +98,10 @@ fn systems_loop() {
         rng,
         notification,
         detector: None,
-        operation: Operation::Halting,
+        operation: Operation {
+            config: OperationConfiguration::from(&*settings.borrow()),
+            state: OperationState::Halting,
+        },
         tick: 0,
     };
 
@@ -164,13 +167,15 @@ fn systems_loop() {
                 ));
         resources.tick += 1;
         if let Ok(detector) = detector {
-            let was_running_cycle = matches!(resources.operation, Operation::RunUntil { .. });
-            let was_stopping_cycle = matches!(resources.operation, Operation::HaltUntil { .. });
+            let was_running_cycle =
+                matches!(resources.operation.state, OperationState::RunUntil { .. });
+            let was_stopping_cycle =
+                matches!(resources.operation.state, OperationState::HaltUntil { .. });
             let was_player_alive = !world.player.context.is_dead();
             let was_minimap_idle = matches!(world.minimap.state, Minimap::Idle(_));
 
             resources.detector = Some(Arc::new(detector));
-            resources.operation = resources.operation.update_tick();
+            resources.operation.update_tick();
 
             minimap::run_system(&resources, &mut world.minimap, world.player.state.clone());
             player::run_system(&resources, &mut world.player, &world.minimap, &world.buffs);
@@ -187,7 +192,8 @@ fn systems_loop() {
             }
 
             let did_cycled_to_stop = resources.operation.halting();
-            let did_cycled_to_run = matches!(resources.operation, Operation::RunUntil { .. });
+            let did_cycled_to_run =
+                matches!(resources.operation.state, OperationState::RunUntil { .. });
             // Go to town on stop cycle
             if was_running_cycle && did_cycled_to_stop {
                 let _ = event_tx.send(WorldEvent::CycledToHalt);

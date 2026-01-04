@@ -22,7 +22,7 @@ use crate::{
     ecs::{Resources, World},
     minimap::Minimap,
     models::Map,
-    operation::Operation as InternalOperation,
+    operation::OperationState,
     player::Quadrant,
     recv_request,
     services::{Event, EventContext, EventHandler},
@@ -119,14 +119,12 @@ impl MediatorService for DefaultMediatorService {
             .map(|idle| idle.portals().into_iter().map(Into::into).collect())
             .unwrap_or_default();
 
-        let operation = match resources.operation {
-            InternalOperation::HaltUntil { instant, .. } => Operation::HaltUntil(instant),
-            InternalOperation::TemporaryHalting { resume, .. } => {
-                Operation::TemporaryHalting(resume)
-            }
-            InternalOperation::Halting => Operation::Halting,
-            InternalOperation::Running => Operation::Running,
-            InternalOperation::RunUntil { instant, .. } => Operation::RunUntil(instant),
+        let operation = match resources.operation.state {
+            OperationState::HaltUntil { instant, .. } => Operation::HaltUntil(instant),
+            OperationState::TemporaryHalting { resume, .. } => Operation::TemporaryHalting(resume),
+            OperationState::Halting => Operation::Halting,
+            OperationState::Running => Operation::Running,
+            OperationState::RunUntil { instant, .. } => Operation::RunUntil(instant),
         };
 
         let auto_mob_quadrant =
