@@ -220,7 +220,7 @@ fn systems_loop() {
             let _ = event_tx.send(WorldEvent::CaptureFailed);
         }
 
-        resources.input.update(resources.tick);
+        resources.input.update_tick(resources.tick);
         resources
             .notification
             .update(resources.detector.as_ref().map(|detector| detector.mat()));

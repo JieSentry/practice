@@ -4,8 +4,9 @@ use std::{
     fmt::Debug,
 };
 
-use anyhow::{Result, bail};
+use anyhow::{Result, anyhow};
 use futures::stream::BoxStream;
+use log::info;
 #[cfg(test)]
 use mockall::automock;
 #[cfg(windows)]
@@ -597,9 +598,6 @@ impl From<LinkKeyBinding> for LinkKeyKind {
     }
 }
 
-/// A receiver to receive to platform keystroke event.
-///
-/// This is a bridge trait for [`KeyKind`].
 #[cfg_attr(test, automock)]
 pub trait InputReceiver: Debug + 'static {
     fn set_window(&mut self, window: Window);
@@ -671,7 +669,7 @@ impl InputKeyDownOptions {
 
 /// Input method to use.
 ///
-/// This is a bridge enum between platform-specific and gRPC input options.
+/// This is a bridge enum between platform-specific, database and gRPC input options.
 #[derive(Clone, Debug)]
 pub enum InputMethod {
     ForegroundRpc(String),
@@ -685,8 +683,9 @@ pub enum InputMethod {
 /// The above [`InputMethod`] will be converted to this inner kind that contains the actual
 /// sending structure.
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
 enum InputMethodInner {
-    Rpc(Option<RefCell<InputService>>),
+    Rpc(RefCell<InputService>),
     Default(PlatformInput),
 }
 
@@ -702,7 +701,7 @@ enum InputDelay {
 #[cfg_attr(test, automock)]
 pub trait Input: Debug {
     /// Performs a tick update.
-    fn update(&mut self, tick: u64);
+    fn update_tick(&mut self, tick: u64);
 
     /// Overwrites the current input window with new `window`.
     fn set_window(&mut self, window: Window);
@@ -762,13 +761,11 @@ impl DefaultInput {
     #[inline]
     fn key_state(&self, kind: KeyKind) -> Result<KeyState> {
         match &self.kind {
-            InputMethodInner::Rpc(service) => {
-                if let Some(cell) = service {
-                    Ok(cell.borrow_mut().key_state(kind.into())?.into())
-                } else {
-                    bail!("service not connected")
-                }
-            }
+            InputMethodInner::Rpc(service) => service
+                .borrow_mut()
+                .key_state(kind.into())
+                .map(KeyState::from)
+                .ok_or(anyhow!("service not connected")),
             InputMethodInner::Default(input) => Ok(input.key_state(kind.into())?.into()),
         }
     }
@@ -777,10 +774,9 @@ impl DefaultInput {
     fn send_key_inner(&self, kind: KeyKind) -> Result<()> {
         match &self.kind {
             InputMethodInner::Rpc(service) => {
-                if let Some(cell) = service {
-                    cell.borrow_mut()
-                        .send_key(kind.into(), self.random_input_delay_tick_count().0)?;
-                }
+                service
+                    .borrow_mut()
+                    .send_key(kind.into(), self.random_input_delay_tick_count().0);
             }
             InputMethodInner::Default(input) => match self.track_input_delay(kind) {
                 InputDelay::Untracked => input.send_key(kind.into())?,
@@ -796,9 +792,7 @@ impl DefaultInput {
     fn send_key_up_inner(&self, kind: KeyKind, forced: bool) -> Result<()> {
         match &self.kind {
             InputMethodInner::Rpc(service) => {
-                if let Some(cell) = service {
-                    cell.borrow_mut().send_key_up(kind.into())?;
-                }
+                service.borrow_mut().send_key_up(kind.into());
             }
             InputMethodInner::Default(input) => {
                 if forced || !self.has_input_delay(kind) {
@@ -817,9 +811,7 @@ impl DefaultInput {
             // require sending down stroke once and it will continue correctly. But `SendInput`
             // requires repeatedly sending the stroke to simulate flying for some classes.
             InputMethodInner::Rpc(service) => {
-                if let Some(cell) = service {
-                    cell.borrow_mut().send_key_down(kind.into())?;
-                }
+                service.borrow_mut().send_key_down(kind.into());
             }
             InputMethodInner::Default(input) => {
                 if !self.has_input_delay(kind) {
@@ -912,7 +904,7 @@ impl DefaultInput {
 }
 
 impl Input for DefaultInput {
-    fn update(&mut self, tick: u64) {
+    fn update_tick(&mut self, tick: u64) {
         self.update(tick);
     }
 
@@ -927,24 +919,22 @@ impl Input for DefaultInput {
     fn send_mouse(&self, x: i32, y: i32, kind: MouseKind) {
         match &self.kind {
             InputMethodInner::Rpc(service) => {
-                if let Some(cell) = service {
-                    let mut borrow = cell.borrow_mut();
-                    let relative = match borrow.mouse_coordinate() {
-                        RpcCoordinate::Screen => CoordinateRelative::Monitor,
-                        RpcCoordinate::Relative => CoordinateRelative::Window,
-                    };
-                    let Ok(coordinates) = self.window.convert_coordinate(x, y, relative) else {
-                        return;
-                    };
+                let mut borrow = service.borrow_mut();
+                let relative = match borrow.mouse_coordinate() {
+                    RpcCoordinate::Screen => CoordinateRelative::Monitor,
+                    RpcCoordinate::Relative => CoordinateRelative::Window,
+                };
+                let Ok(coordinates) = self.window.convert_coordinate(x, y, relative) else {
+                    return;
+                };
 
-                    let _ = borrow.send_mouse(
-                        coordinates.width,
-                        coordinates.height,
-                        coordinates.x,
-                        coordinates.y,
-                        kind.into(),
-                    );
-                }
+                borrow.send_mouse(
+                    coordinates.width,
+                    coordinates.height,
+                    coordinates.x,
+                    coordinates.y,
+                    kind.into(),
+                );
             }
             InputMethodInner::Default(keys) => {
                 let kind = match kind {
@@ -1050,12 +1040,17 @@ impl Capture for DefaultCapture {
 fn input_method_inner_from(window: Window, method: InputMethod, seed: &[u8]) -> InputMethodInner {
     match method {
         InputMethod::ForegroundRpc(url) | InputMethod::FocusedRpc(url) => {
-            let mut service = InputService::connect(url);
-            if let Ok(ref mut service) = service {
-                let _ = service.init(seed);
+            let result = InputService::new(url, seed.to_vec());
+            if result.is_err() {
+                info!(target: "rpc", "failed to connect to input server possibly because of incorrect URL, fallback to default input method...");
+
+                return InputMethodInner::Default(
+                    PlatformInput::new(window, PlatformInputKind::Focused)
+                        .expect("supported platform"),
+                );
             }
 
-            InputMethodInner::Rpc(service.ok().map(RefCell::new))
+            InputMethodInner::Rpc(RefCell::new(result.unwrap()))
         }
         InputMethod::ForegroundDefault => InputMethodInner::Default(
             PlatformInput::new(window, PlatformInputKind::Foreground).expect("supported platform"),

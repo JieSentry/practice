@@ -284,7 +284,7 @@ mod tests {
 
         let updated = update_operation(op, OperationUpdate::Halt);
 
-        assert!(matches!(updated.state, OperationState::Halting));
+        assert_matches!(updated.state, OperationState::Halting);
     }
 
     #[test]

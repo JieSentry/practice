@@ -1,158 +1,220 @@
-use std::time::Duration;
+use std::future::Future;
 
-use anyhow::{Error, Ok, bail};
+use anyhow::Error;
 use bit_vec::BitVec;
+use futures::FutureExt;
 use input::key_input_client::KeyInputClient;
 pub use input::{Coordinate, Key, KeyState, MouseAction};
 use input::{KeyDownRequest, KeyInitRequest, KeyRequest, KeyUpRequest, MouseRequest};
+use log::info;
 use tokio::runtime::Handle;
-use tokio::task::block_in_place;
-use tokio::time::timeout;
-use tonic::Request;
+use tokio::spawn;
+use tokio::task::{JoinHandle, block_in_place};
 use tonic::transport::{Channel, Endpoint};
+use tonic::{Request, Status};
 
-use crate::rpc::input::KeyStateRequest;
+use crate::rpc::input::{KeyInitResponse, KeyStateRequest};
 
 mod input {
     tonic::include_proto!("input");
 }
 
+type RpcConnectingFuture = JoinHandle<Option<(KeyInputClient<Channel>, KeyInitResponse)>>;
+
+#[derive(Debug)]
+enum State {
+    Disconnected,
+    Connecting(RpcConnectingFuture),
+    Connected(KeyInputClient<Channel>),
+}
+
 #[derive(Debug)]
 pub struct InputService {
-    client: KeyInputClient<Channel>,
-    key_down: BitVec, // TODO: is a bit wrong good?
+    state: State,
+    endpoint: Endpoint,
+    seed: Vec<u8>,
+    key_down: BitVec,
     mouse_coordinate: Coordinate,
 }
 
 impl InputService {
-    pub fn connect<D>(dest: D) -> Result<Self, Error>
+    pub fn new<D>(dest: D, seed: Vec<u8>) -> Result<Self, Error>
     where
         D: TryInto<Endpoint>,
         D: AsRef<str>,
         D::Error: std::error::Error + Send + Sync + 'static,
     {
-        let endpoint = TryInto::<Endpoint>::try_into(dest.as_ref().to_string())?;
-        let client = block_future(async move {
-            timeout(Duration::from_secs(3), KeyInputClient::connect(endpoint)).await
-        })??;
         Ok(Self {
-            client,
+            state: State::Disconnected,
+            endpoint: TryInto::<Endpoint>::try_into(dest.as_ref().to_string())?,
+            seed,
             key_down: BitVec::from_elem(128, false),
             mouse_coordinate: Coordinate::Screen,
         })
-    }
-
-    fn reset(&mut self) {
-        for i in 0..self.key_down.len() {
-            if Key::try_from(i as i32).is_ok() {
-                let _ = block_future(async {
-                    self.client
-                        .send_up(Request::new(KeyUpRequest { key: i as i32 }))
-                        .await
-                });
-            }
-        }
-        self.key_down.clear();
-    }
-
-    pub fn init(&mut self, seed: &[u8]) -> Result<(), Error> {
-        let response = block_future(async {
-            self.client
-                .init(KeyInitRequest {
-                    seed: seed.to_vec(),
-                })
-                .await
-        })?
-        .into_inner();
-        self.mouse_coordinate = response.mouse_coordinate();
-        Ok(())
     }
 
     pub fn mouse_coordinate(&self) -> Coordinate {
         self.mouse_coordinate
     }
 
-    pub fn key_state(&mut self, key: Key) -> Result<KeyState, Error> {
-        block_future(async move {
-            let request = Request::new(KeyStateRequest { key: key.into() });
-            let response = self.client.key_state(request).await?.into_inner();
+    pub fn key_state(&mut self, key: Key) -> Option<KeyState> {
+        let mut state = None;
 
-            Ok(KeyState::try_from(response.state)?)
-        })
-    }
+        self.with_client(|client| {
+            let response = block_future(async {
+                client
+                    .key_state(Request::new(KeyStateRequest { key: key.into() }))
+                    .await
+            })?;
 
-    pub fn send_mouse(
-        &mut self,
-        width: i32,
-        height: i32,
-        x: i32,
-        y: i32,
-        action: MouseAction,
-    ) -> Result<(), Error> {
-        Ok(block_future(async move {
-            self.client
-                .send_mouse(Request::new(MouseRequest {
-                    width,
-                    height,
-                    x,
-                    y,
-                    action: action.into(),
-                }))
-                .await?;
+            state = KeyState::try_from(response.into_inner().state).ok();
             Ok(())
-        })?)
+        });
+
+        state
     }
 
-    pub fn send_key(&mut self, key: Key, down_ms: f32) -> Result<(), Error> {
-        Ok(block_future(async move {
-            let request = Request::new(KeyRequest {
-                key: key.into(),
-                down_ms,
-            });
-
-            self.client.send(request).await?;
-            self.key_down.set(i32::from(key) as usize, false);
+    pub fn send_mouse(&mut self, width: i32, height: i32, x: i32, y: i32, action: MouseAction) {
+        self.with_client(|client| {
+            block_future(async {
+                client
+                    .send_mouse(Request::new(MouseRequest {
+                        width,
+                        height,
+                        x,
+                        y,
+                        action: action.into(),
+                    }))
+                    .await
+            })?;
             Ok(())
-        })?)
+        });
     }
 
-    pub fn send_key_up(&mut self, key: Key) -> Result<(), Error> {
-        if !self.can_send_key(key, false) {
-            bail!("key not sent");
-        }
-        Ok(block_future(async move {
-            let request = Request::new(KeyUpRequest { key: key.into() });
-
-            self.client.send_up(request).await?;
-            self.key_down.set(i32::from(key) as usize, false);
+    pub fn send_key(&mut self, key: Key, down_ms: f32) {
+        self.with_client(|client| {
+            block_future(async {
+                client
+                    .send(Request::new(KeyRequest {
+                        key: key.into(),
+                        down_ms,
+                    }))
+                    .await
+            })?;
             Ok(())
-        })?)
+        });
+
+        self.key_down.set(i32::from(key) as usize, false);
     }
 
-    pub fn send_key_down(&mut self, key: Key) -> Result<(), Error> {
+    pub fn send_key_down(&mut self, key: Key) {
         if !self.can_send_key(key, true) {
-            bail!("key not sent");
+            return;
         }
-        Ok(block_future(async move {
-            let request = Request::new(KeyDownRequest { key: key.into() });
 
-            self.client.send_down(request).await?;
-            self.key_down.set(i32::from(key) as usize, true);
+        self.with_client(|client| {
+            block_future(async {
+                client
+                    .send_down(Request::new(KeyDownRequest { key: key.into() }))
+                    .await
+            })?;
             Ok(())
-        })?)
+        });
+
+        self.key_down.set(i32::from(key) as usize, true);
+    }
+
+    pub fn send_key_up(&mut self, key: Key) {
+        if !self.can_send_key(key, false) {
+            return;
+        }
+
+        self.with_client(|client| {
+            block_future(async {
+                client
+                    .send_up(Request::new(KeyUpRequest { key: key.into() }))
+                    .await
+            })?;
+            Ok(())
+        });
+
+        self.key_down.set(i32::from(key) as usize, false);
     }
 
     #[inline]
     fn can_send_key(&self, key: Key, is_down: bool) -> bool {
-        let key_num = i32::from(key) as usize;
-        let was_down = self.key_down.get(key_num).unwrap();
+        let idx = i32::from(key) as usize;
+        let was_down = self.key_down.get(idx).unwrap();
         !matches!((was_down, is_down), (true, true) | (false, false))
+    }
+
+    fn with_client<F>(&mut self, f: F)
+    where
+        F: FnOnce(&mut KeyInputClient<Channel>) -> Result<(), Status>,
+    {
+        if !self.ensure_connected() {
+            return;
+        }
+
+        let State::Connected(client) = &mut self.state else {
+            return;
+        };
+
+        if let Err(status) = f(client) {
+            info!(target: "rpc", "rpc call failed: {status}");
+            self.state = State::Disconnected;
+        }
+    }
+
+    fn ensure_connected(&mut self) -> bool {
+        match &mut self.state {
+            State::Connected(_) => return true,
+            State::Connecting(handle) => {
+                if !handle.is_finished() {
+                    return false;
+                }
+
+                if let Some((client, response)) = handle
+                    .now_or_never()
+                    .and_then(|result| result.ok().flatten())
+                {
+                    self.mouse_coordinate = response.mouse_coordinate();
+                    self.state = State::Connected(client);
+                    return true;
+                }
+            }
+            State::Disconnected => (),
+        }
+
+        let endpoint = self.endpoint.clone();
+        let seed = self.seed.clone();
+        info!(target: "rpc", "connecting to input server {}", endpoint.uri());
+
+        let task = spawn(async move {
+            let mut client = KeyInputClient::connect(endpoint).await.ok()?;
+            let response = client.init(KeyInitRequest { seed }).await.ok()?;
+            Some((client, response.into_inner()))
+        });
+
+        self.state = State::Connecting(task);
+        false
     }
 }
 
 impl Drop for InputService {
     fn drop(&mut self) {
-        self.reset();
+        for i in 0..self.key_down.len() {
+            if Key::try_from(i as i32).is_ok() {
+                self.with_client(|client| {
+                    block_future(async {
+                        client
+                            .send_up(Request::new(KeyUpRequest { key: i as i32 }))
+                            .await
+                    })?;
+                    Ok(())
+                });
+            }
+        }
     }
 }
 
@@ -162,6 +224,4 @@ fn block_future<F: Future>(f: F) -> F::Output {
 }
 
 #[cfg(test)]
-mod test {
-    // TODO HOW TO?
-}
+mod test {}
