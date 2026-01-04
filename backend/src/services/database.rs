@@ -79,9 +79,6 @@ impl EventHandler<DatabaseEvent> for DatabaseEventHandler {
 
 fn update_capture_and_input(context: &mut EventContext) {
     let settings = context.settings_service.settings();
-    if context.capture.mode() == settings.capture_mode {
-        return;
-    }
 
     context
         .capture_service
