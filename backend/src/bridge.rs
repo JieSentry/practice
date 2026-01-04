@@ -828,15 +828,6 @@ impl DefaultInput {
         self.delay_map.borrow().contains_key(&kind)
     }
 
-    /// Tracks input delay for a key that is about to be pressed for both down and up key strokes.
-    ///
-    /// Upon returning [`InputDelay::Tracked`], it is expected that only key down is sent. Later,
-    /// it will be automatically released by [`Self::update_input_delay`] once the input delay has
-    /// timed out. If [`InputDelay::Untracked`] is returned, it is expected that both down and up
-    /// key strokes are sent.
-    ///
-    /// This function should only be used for [`Self::send_key`] as the other two should be handled
-    /// by the external caller.
     fn track_input_delay(&self, kind: KeyKind) -> InputDelay {
         let mut map = self.delay_map.borrow_mut();
         let entry = map.entry(kind);
@@ -853,7 +844,6 @@ impl DefaultInput {
         InputDelay::Tracked
     }
 
-    /// Updates the input delay (key up timing) for held down keys and delay std/mean pair.
     #[inline]
     fn update(&mut self, game_tick: u64) {
         const UPDATE_MEAN_STD_PAIR_INTERVAL: u64 = 200;
