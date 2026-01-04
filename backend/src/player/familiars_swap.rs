@@ -69,12 +69,12 @@ pub struct FamiliarsSwapping {
 impl Display for FamiliarsSwapping {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.state {
-            State::OpenMenu(_) => write!(f, "Opening"),
-            State::FindSlots => write!(f, "Find Slots"),
+            State::OpenMenu(_) => write!(f, "OpenMenu"),
+            State::FindSlots => write!(f, "FindSlots"),
             State::FreeSlots(_, _) | State::FreeSlot(_, _) => {
-                write!(f, "Freeing Slots")
+                write!(f, "FreeSlots")
             }
-            State::FindCards(_) => write!(f, "Finding Cards"),
+            State::FindCards(_) => write!(f, "FindCards"),
             State::Swapping(_, _) => write!(f, "Swapping"),
             State::Scrolling(_, _, _) => write!(f, "Scrolling"),
             State::Saving(_) => write!(f, "Saving"),

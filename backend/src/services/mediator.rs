@@ -104,6 +104,7 @@ impl MediatorService for DefaultMediatorService {
             .map(|pos| (pos.x, pos.y))
             .collect();
 
+        let input_state = resources.input.state();
         let erda_shower_state = world.skills[SkillKind::ErdaShower].state.to_string();
 
         let idle = match world.minimap.state {
@@ -155,6 +156,7 @@ impl MediatorService for DefaultMediatorService {
                 normal_action,
                 priority_action,
                 erda_shower_state,
+                input_state,
                 destinations,
                 operation,
                 frame,

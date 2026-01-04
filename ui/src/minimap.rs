@@ -292,6 +292,7 @@ struct MinimapState {
     normal_action: Option<String>,
     priority_action: Option<String>,
     erda_shower_state: String,
+    input_state: String,
     operation: Operation,
     detected_size: Option<(usize, usize)>,
 }
@@ -546,6 +547,7 @@ fn Canvas(
                 normal_action: current_state.normal_action,
                 priority_action: current_state.priority_action,
                 erda_shower_state: current_state.erda_shower_state,
+                input_state: current_state.input_state,
                 operation: current_state.operation,
                 detected_size: frame.as_ref().map(|(_, width, height)| (*width, *height)),
             };
@@ -602,6 +604,7 @@ fn Info(state: ReadSignal<Option<MinimapState>>, map: ReadSignal<Option<Map>>) -
         normal_action: String,
         priority_action: String,
         erda_shower_state: String,
+        input_state: String,
         detected_map_size: String,
         selected_map_size: String,
         cycle_duration: String,
@@ -615,6 +618,7 @@ fn Info(state: ReadSignal<Option<MinimapState>>, map: ReadSignal<Option<Map>>) -
             normal_action: "None".to_string(),
             priority_action: "None".to_string(),
             erda_shower_state: "Unknown".to_string(),
+            input_state: "Unknown".to_string(),
             detected_map_size: "Unknown".to_string(),
             selected_map_size: "Unknown".to_string(),
             cycle_duration: "None".to_string(),
@@ -627,6 +631,7 @@ fn Info(state: ReadSignal<Option<MinimapState>>, map: ReadSignal<Option<Map>>) -
         if let Some(state) = state() {
             info.state = state.state;
             info.erda_shower_state = state.erda_shower_state;
+            info.input_state = state.input_state;
             info.cycle_duration = match state.operation {
                 Operation::Halting | Operation::Running => "None".to_string(),
                 Operation::TemporaryHalting(duration) => duration_from(duration),
@@ -665,6 +670,7 @@ fn Info(state: ReadSignal<Option<MinimapState>>, map: ReadSignal<Option<Map>>) -
             InfoItem { name: "Detected size", value: info().detected_map_size }
             InfoItem { name: "Selected size", value: info().selected_map_size }
             InfoItem { name: "Run/stop cycle", value: info().cycle_duration }
+            InfoItem { name: "Input method", value: info().input_state }
         }
     }
 }

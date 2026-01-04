@@ -211,6 +211,7 @@ pub struct State {
     pub normal_action: Option<String>,
     pub priority_action: Option<String>,
     pub erda_shower_state: String,
+    pub input_state: String,
     pub destinations: Vec<(i32, i32)>,
     pub operation: Operation,
     pub frame: Option<(Vec<u8>, usize, usize)>,

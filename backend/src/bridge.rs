@@ -21,6 +21,7 @@ use platforms::{
     },
 };
 use serenity::futures::StreamExt;
+use strum::Display;
 
 use crate::{
     models::{CaptureMode, KeyBinding, LinkKeyBinding},
@@ -105,7 +106,7 @@ impl From<MouseKind> for PlatformMouseKind {
 /// The kind of key to sent.
 ///
 /// This is a bridge enum between platform-specific, gRPC and database.
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy, Display)]
 #[cfg_attr(test, derive(Default))]
 pub enum KeyKind {
     #[cfg_attr(test, default)]
@@ -709,6 +710,9 @@ pub trait Input: Debug {
     /// Overwrites the current input method with new `method`.
     fn set_method(&mut self, method: InputMethod);
 
+    /// The current state of input represented as a [`String`].
+    fn state(&self) -> String;
+
     /// Sends mouse `kind` to `(x, y)` relative to the client coordinate (e.g. capture area).
     ///
     /// `(0, 0)` is top-left and `(width, height)` is bottom-right.
@@ -904,6 +908,13 @@ impl Input for DefaultInput {
 
     fn set_method(&mut self, method: InputMethod) {
         self.kind = input_method_inner_from(self.window, method, self.delay_rng.rng_seed());
+    }
+
+    fn state(&self) -> String {
+        match &self.kind {
+            InputMethodInner::Rpc(service) => format!("RPC({})", service.borrow().state()),
+            InputMethodInner::Default(_) => "SendInput".to_string(),
+        }
     }
 
     fn send_mouse(&self, x: i32, y: i32, kind: MouseKind) {

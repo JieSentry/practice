@@ -43,6 +43,19 @@ pub struct Key {
     pub wait_after_buffered: WaitAfterBuffered,
 }
 
+impl fmt::Display for Key {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.position {
+            Some(position) => {
+                write!(f, "Key({} / {}, {})", self.key, position.x, position.y)
+            }
+            None => {
+                write!(f, "Key({})", self.key)
+            }
+        }
+    }
+}
+
 impl From<ActionKey> for Key {
     fn from(
         ActionKey {
@@ -98,6 +111,12 @@ pub struct Move {
     pub wait_after_move_ticks: u32,
 }
 
+impl fmt::Display for Move {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Move({}, {})", self.position.x, self.position.y)
+    }
+}
+
 impl From<ActionMove> for Move {
     fn from(
         ActionMove {
@@ -131,7 +150,7 @@ pub struct AutoMob {
 
 impl fmt::Display for AutoMob {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}, {}", self.position.x, self.position.y)
+        write!(f, "AutoMob({}, {})", self.position.x, self.position.y)
     }
 }
 
@@ -159,6 +178,15 @@ pub struct PingPong {
     /// This bound is in player relative coordinate.
     pub bound: Rect,
     pub direction: PingPongDirection,
+}
+
+impl fmt::Display for PingPong {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.direction {
+            PingPongDirection::Left => write!(f, "PingPong(Left)"),
+            PingPongDirection::Right => write!(f, "PingPong(Right)"),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -212,17 +240,20 @@ pub struct ExchangeBooster {
 #[derive(Clone, Debug, Display)]
 pub enum PlayerAction {
     /// Fixed key action provided by the user.
+    #[strum(to_string = "{0}")]
     Key(Key),
     /// Fixed move action provided by the user.
+    #[strum(to_string = "{0}")]
     Move(Move),
     /// Solves rune action.
     SolveRune,
     /// Solves the lie detector's transparent shape.
     SolveShape,
     /// Auto-mobbing action.
-    #[strum(to_string = "AutoMob({0})")]
+    #[strum(to_string = "{0}")]
     AutoMob(AutoMob),
     /// Ping pong action.
+    #[strum(to_string = "{0}")]
     PingPong(PingPong),
     /// Swaps familiars action.
     FamiliarsSwap(FamiliarsSwap),

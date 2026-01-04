@@ -7,11 +7,16 @@ use input::key_input_client::KeyInputClient;
 pub use input::{Coordinate, Key, KeyState, MouseAction};
 use input::{KeyDownRequest, KeyInitRequest, KeyRequest, KeyUpRequest, MouseRequest};
 use log::info;
-use tokio::runtime::Handle;
-use tokio::spawn;
-use tokio::task::{JoinHandle, block_in_place};
-use tonic::transport::{Channel, Endpoint};
-use tonic::{Request, Status};
+use strum::Display;
+use tokio::{
+    runtime::Handle,
+    spawn,
+    task::{JoinHandle, block_in_place},
+};
+use tonic::{
+    Request, Status,
+    transport::{Channel, Endpoint},
+};
 
 use crate::rpc::input::{KeyInitResponse, KeyStateRequest};
 
@@ -21,7 +26,7 @@ mod input {
 
 type RpcConnectingFuture = JoinHandle<Option<(KeyInputClient<Channel>, KeyInitResponse)>>;
 
-#[derive(Debug)]
+#[derive(Debug, Display)]
 enum State {
     Disconnected,
     Connecting(RpcConnectingFuture),
@@ -51,6 +56,10 @@ impl InputService {
             key_down: BitVec::from_elem(128, false),
             mouse_coordinate: Coordinate::Screen,
         })
+    }
+
+    pub fn state(&self) -> String {
+        self.state.to_string()
     }
 
     pub fn mouse_coordinate(&self) -> Coordinate {
