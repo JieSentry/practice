@@ -980,22 +980,18 @@ pub trait Capture: Debug + 'static {
 
     fn set_window(&mut self, window: Window);
 
-    fn mode(&self) -> CaptureMode;
-
     fn set_mode(&mut self, mode: CaptureMode);
 }
 
 #[derive(Debug)]
 pub struct DefaultCapture {
     inner: PlatformCapture,
-    mode: CaptureMode,
 }
 
 impl DefaultCapture {
     pub fn new(window: Window) -> Self {
         Self {
             inner: PlatformCapture::new(window).expect("supported platform"),
-            mode: CaptureMode::BitBlt,
         }
     }
 }
@@ -1017,14 +1013,7 @@ impl Capture for DefaultCapture {
     }
 
     #[inline]
-    fn mode(&self) -> CaptureMode {
-        self.mode
-    }
-
-    #[inline]
     fn set_mode(&mut self, mode: CaptureMode) {
-        self.mode = mode;
-
         if cfg!(windows) {
             let kind = match mode {
                 CaptureMode::BitBlt => WindowsCaptureKind::BitBlt,
