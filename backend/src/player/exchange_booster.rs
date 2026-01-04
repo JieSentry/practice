@@ -3,7 +3,6 @@ use rand_distr::num_traits::clamp;
 
 use super::{Player, timeout::Timeout};
 use crate::{
-    array::Array,
     bridge::{KeyKind, MouseKind},
     ecs::{Resources, transition, try_ok_transition, try_some_transition},
     player::{
@@ -12,6 +11,25 @@ use crate::{
         transition_from_action,
     },
 };
+
+#[derive(Debug, Clone)]
+enum ExchangeAmount {
+    All,
+    Specific(ExchangeAmountSpecific),
+}
+
+#[derive(Debug, Clone)]
+struct ExchangeAmountSpecific {
+    index: usize,
+    keys: Vec<KeyKind>,
+}
+
+impl ExchangeAmountSpecific {
+    fn increment_index(mut self) -> ExchangeAmountSpecific {
+        self.index += 1;
+        self
+    }
+}
 
 /// States of exchanging HEXA booster.
 #[derive(Debug, Clone, Copy)]
@@ -30,10 +48,10 @@ enum State {
     Completing(Timeout, bool),
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct ExchangingBooster {
     state: State,
-    amount: Option<ExchangeAmount>,
+    amount: ExchangeAmount,
     success: bool,
 }
 
@@ -41,13 +59,12 @@ impl ExchangingBooster {
     // TODO: These args should probably be represented by an enum?
     pub fn new(amount: u32, all: bool) -> Self {
         let amount = if all {
-            None
+            ExchangeAmount::All
         } else {
             let amount = clamp(amount, 1, 20);
             let str = amount.to_string();
 
-            let mut keys =
-                ExchangeAmountContent::from_iter([KeyKind::Backspace, KeyKind::Backspace]);
+            let mut keys = vec![KeyKind::Backspace, KeyKind::Backspace];
             let keys_from_chars = str.chars().map(|char| match char {
                 '0' => KeyKind::Zero,
                 '1' => KeyKind::One,
@@ -65,7 +82,7 @@ impl ExchangingBooster {
                 keys.push(key);
             }
 
-            Some(ExchangeAmount { index: 0, keys })
+            ExchangeAmount::Specific(ExchangeAmountSpecific { index: 0, keys })
         };
 
         Self {
@@ -76,24 +93,9 @@ impl ExchangingBooster {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-struct ExchangeAmount {
-    index: usize,
-    keys: ExchangeAmountContent,
-}
-
-impl ExchangeAmount {
-    fn increment_index(mut self) -> ExchangeAmount {
-        self.index += 1;
-        self
-    }
-}
-
-type ExchangeAmountContent = Array<KeyKind, 4>;
-
 /// Updates [`Player::ExchangingBooster`] contextual state.
 pub fn update_exchanging_booster_state(resources: &Resources, player: &mut PlayerEntity) {
-    let Player::ExchangingBooster(mut exchanging) = player.state else {
+    let Player::ExchangingBooster(mut exchanging) = player.state.clone() else {
         panic!("state is not exchanging booster")
     };
 
@@ -106,6 +108,7 @@ pub fn update_exchanging_booster_state(resources: &Resources, player: &mut Playe
         State::Completing(_, _) => update_completing(resources, &mut exchanging),
     };
 
+    let did_success = exchanging.success;
     let player_next_state = if matches!(exchanging.state, State::Completing(_, true)) {
         Player::Idle
     } else {
@@ -115,7 +118,7 @@ pub fn update_exchanging_booster_state(resources: &Resources, player: &mut Playe
 
     match next_action(&player.context) {
         Some(_) => {
-            if is_terminal && exchanging.success {
+            if is_terminal && did_success {
                 player.context.clear_booster_fail_count(Booster::Hexa);
             }
             transition_from_action!(player, player_next_state, is_terminal)
@@ -224,14 +227,15 @@ fn update_exchanging(resources: &Resources, exchanging: &mut ExchangingBooster) 
     let State::Exchanging(timeout, bbox) = exchanging.state else {
         panic!("exchanging booster state is not exchanging")
     };
-    let amount = exchanging.amount;
-    let max_timeout = if amount.is_some() { 60 } else { 20 };
+    let amount = exchanging.amount.clone();
+    let is_specific_amount = matches!(amount, ExchangeAmount::Specific(_));
+    let max_timeout = if is_specific_amount { 60 } else { 20 };
 
     match next_timeout_lifecycle(timeout, max_timeout) {
         Lifecycle::Started(timeout) => {
             transition!(exchanging, State::Exchanging(timeout, bbox), {
                 let (mut x, y) = bbox_click_point(bbox);
-                if amount.is_some() {
+                if is_specific_amount {
                     x += 100; // Clicking the input box
                 }
 
@@ -248,12 +252,15 @@ fn update_exchanging(resources: &Resources, exchanging: &mut ExchangingBooster) 
             transition!(exchanging, State::Confirming(Timeout::default(), bbox))
         }
         Lifecycle::Updated(timeout) => {
-            if let Some(amount) = amount
+            if let ExchangeAmount::Specific(inner) = amount
                 && timeout.current.is_multiple_of(TYPE_INTERVAL)
-                && amount.index < amount.keys.len()
+                && inner.index < inner.keys.len()
             {
-                exchanging.amount = Some(amount.increment_index());
-                resources.input.send_key(amount.keys[amount.index]);
+                let key = inner.keys[inner.index];
+                let next = ExchangeAmount::Specific(inner.increment_index());
+
+                exchanging.amount = next;
+                resources.input.send_key(key);
             }
 
             transition!(exchanging, State::Exchanging(timeout, bbox))
@@ -461,9 +468,13 @@ mod tests {
             exchanging.state = State::Exchanging(timeout, rect(10, 10));
             update_exchanging(&resources, &mut exchanging);
         }
+        let index = match exchanging.amount {
+            ExchangeAmount::All => unreachable!(),
+            ExchangeAmount::Specific(specific) => specific.index,
+        };
 
         assert_eq!(
-            exchanging.amount.unwrap().index,
+            index,
             expected_keys.len(),
             "All input keys should have been typed"
         );
