@@ -92,11 +92,11 @@ impl OperationService for DefaultOperationService {
         self.abort_halt();
 
         let event = OperationEvent::Halt(halt);
-        let tx = self.event_tx.clone();
 
         if immediate {
-            let _ = tx.send(event);
+            let _ = self.event_tx.send(event);
         } else {
+            let tx = self.event_tx.clone();
             let duration = Duration::from_secs(PENDING_HALT_SECS);
             let handle = spawn(async move {
                 sleep(duration).await;

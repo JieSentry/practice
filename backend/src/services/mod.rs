@@ -199,7 +199,7 @@ impl Services {
             settings: Box::new(settings_service),
             localization: Box::new(DefaultLocalizationService::new(localization)),
             control: Box::new(control),
-            operation: Box::new(DefaultOperationService::default()),
+            operation: Box::new(operation_service),
             mediator: Box::new(mediator_service),
             #[cfg(debug_assertions)]
             debug: DebugService::default(),

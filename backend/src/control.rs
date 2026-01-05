@@ -16,7 +16,7 @@ use tokio::{
     spawn,
     sync::{
         Mutex,
-        mpsc::{Receiver, Sender, channel},
+        mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel},
         oneshot,
     },
     task::{JoinHandle, block_in_place},
@@ -84,13 +84,13 @@ impl Event for ControlEvent {}
 
 #[derive(Debug)]
 pub struct DiscordBot {
-    command_sender: Sender<ControlEvent>,
+    command_sender: UnboundedSender<ControlEvent>,
     shard_manager: Option<Arc<ShardManager>>,
 }
 
 impl DiscordBot {
-    pub fn new() -> (Self, Receiver<ControlEvent>) {
-        let (tx, rx) = channel(3);
+    pub fn new() -> (Self, UnboundedReceiver<ControlEvent>) {
+        let (tx, rx) = unbounded_channel();
         let bot = Self {
             command_sender: tx,
             shard_manager: None,
@@ -141,7 +141,7 @@ impl DiscordBot {
 
 #[derive(Debug)]
 struct DefaultEventHandler {
-    command_sender: Sender<ControlEvent>,
+    command_sender: UnboundedSender<ControlEvent>,
     stream_handle: Arc<Mutex<Option<JoinHandle<()>>>>,
 }
 
@@ -302,14 +302,14 @@ impl EventHandler for DefaultEventHandler {
 }
 
 async fn single_command(
-    sender: &Sender<ControlEvent>,
+    sender: &UnboundedSender<ControlEvent>,
     context: &Context,
     command: &CommandInteraction,
     kind: CommandKind,
 ) {
     let (tx, rx) = oneshot::channel();
     let inner = ControlEvent { kind, sender: tx };
-    if sender.send(inner).await.is_err() {
+    if sender.send(inner).is_err() {
         response_with(context, command, "Command failed, please try again.").await;
         return;
     }

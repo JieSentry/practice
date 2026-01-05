@@ -6,7 +6,7 @@ use opencv::{
 };
 use serenity::all::{CreateAttachment, EditInteractionResponse};
 use strum::EnumMessage;
-use tokio::{sync::mpsc::Receiver, task::spawn_blocking};
+use tokio::{sync::mpsc::UnboundedReceiver, task::spawn_blocking};
 
 use super::EventContext;
 use crate::{
@@ -30,7 +30,7 @@ pub struct DefaultControlService {
 }
 
 impl DefaultControlService {
-    pub fn new() -> (Self, Receiver<ControlEvent>) {
+    pub fn new() -> (Self, UnboundedReceiver<ControlEvent>) {
         let (bot, event_rx) = DiscordBot::new();
         let service = Self { bot };
         (service, event_rx)
