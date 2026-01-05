@@ -130,7 +130,7 @@ struct LinkedAction {
 }
 
 /// The rotator's rotation mode.
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone, Copy)]
 pub enum RotatorMode {
     StartToEnd,
     #[default]
@@ -139,11 +139,12 @@ pub enum RotatorMode {
     PingPong(MobbingKey, Bound),
 }
 
-#[derive(Debug)]
-pub struct RotatorBuildArgs<'a> {
+#[derive(Debug, Default, Clone)]
+pub struct RotatorBuildArgs {
     pub mode: RotatorMode,
-    pub actions: &'a [Action],
-    pub buffs: &'a [(BuffKind, KeyKind)],
+    pub character_actions: Vec<Action>,
+    pub map_actions: Vec<Action>,
+    pub buffs: Vec<(BuffKind, KeyKind)>,
     pub familiars: Familiars,
     pub familiar_essence_key: KeyKind,
     pub elite_boss_behavior: EliteBossBehavior,
@@ -163,7 +164,7 @@ pub struct RotatorBuildArgs<'a> {
 #[cfg_attr(test, automock)]
 pub trait Rotator: Debug + 'static {
     #[cfg_attr(test, concretize)]
-    fn build_actions(&mut self, args: RotatorBuildArgs<'_>);
+    fn build_actions(&mut self, args: RotatorBuildArgs);
 
     /// Resets priority and normal actions queues.
     ///
@@ -815,11 +816,12 @@ impl DefaultRotator {
 
 impl Rotator for DefaultRotator {
     #[cfg_attr(test, concretize)]
-    fn build_actions(&mut self, args: RotatorBuildArgs<'_>) {
+    fn build_actions(&mut self, args: RotatorBuildArgs) {
         info!(target: "rotator", "preparing actions {args:?}");
         let RotatorBuildArgs {
             mode,
-            actions,
+            character_actions,
+            map_actions,
             buffs,
             familiars,
             familiar_essence_key,
@@ -883,6 +885,7 @@ impl Rotator for DefaultRotator {
 
         // Mid priority
         let mut i = 0;
+        let actions = [character_actions, map_actions].concat();
         while i < actions.len() {
             let action = actions[i];
             let condition = action.condition();
@@ -890,7 +893,7 @@ impl Rotator for DefaultRotator {
                 Action::Move(_) => false,
                 Action::Key(ActionKey { queue_to_front, .. }) => queue_to_front.unwrap_or_default(),
             };
-            let (action, offset) = rotator_action(action, i, actions);
+            let (action, offset) = rotator_action(action, i, &actions);
             debug_assert!(i != 0 || !matches!(condition, ActionCondition::Linked));
             // Should not move i below the match because it could cause
             // infinite loop due to auto mobbing ignoring Any condition
@@ -1725,8 +1728,9 @@ mod tests {
         let buffs = vec![(BuffKind::Rune, KeyKind::A); 4];
         let args = RotatorBuildArgs {
             mode: RotatorMode::default(),
-            actions: &actions,
-            buffs: &buffs,
+            map_actions: actions,
+            character_actions: vec![],
+            buffs,
             familiars: Familiars::default(),
             familiar_essence_key: KeyKind::A,
             elite_boss_behavior: EliteBossBehavior::CycleChannel,

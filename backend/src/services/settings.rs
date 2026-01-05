@@ -4,13 +4,9 @@ use std::{
     rc::Rc,
 };
 
-#[cfg(test)]
-use mockall::automock;
-
 use crate::Settings;
 
 /// A service to handle [`Settings`]-related incoming requests.
-#[cfg_attr(test, automock)]
 pub trait SettingsService: Debug {
     /// Gets the current [`Settings`] in use.
     fn settings(&self) -> Ref<'_, Settings>;

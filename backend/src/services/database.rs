@@ -58,12 +58,8 @@ impl EventHandler<DatabaseEvent> for DatabaseEventHandler {
                     .operation_service
                     .config(context.resources, OperationConfiguration::from(&settings));
                 context.control_service.update(&settings);
-                context.rotator_service.apply(
-                    context.rotator,
-                    context.map_service.map(),
-                    context.character_service.character(),
-                    &settings,
-                );
+                context.rotator_service.update_from_settings(&settings);
+                context.rotator_service.apply(context.rotator);
 
                 update_capture_and_input(context);
             }

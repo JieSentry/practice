@@ -106,10 +106,9 @@ impl From<MouseKind> for PlatformMouseKind {
 /// The kind of key to sent.
 ///
 /// This is a bridge enum between platform-specific, gRPC and database.
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy, Display)]
-#[cfg_attr(test, derive(Default))]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy, Display, Default)]
 pub enum KeyKind {
-    #[cfg_attr(test, default)]
+    #[default]
     A,
     B,
     C,

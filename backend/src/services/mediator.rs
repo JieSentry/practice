@@ -300,14 +300,10 @@ fn update_map(context: &mut EventContext<'_>, preset: Option<String>, map: Optio
     map_service.apply(&mut world.minimap.context, &mut world.player.context);
 
     let rotator_service = &mut context.rotator_service;
-    let character_service = &context.character_service;
     let map = map_service.map();
     let preset = map_service.preset();
-    let character = character_service.character();
-    let settings_service = &context.settings_service;
-    let settings = settings_service.settings();
-    rotator_service.update_actions(map, preset, character);
-    rotator_service.apply(context.rotator.deref_mut(), map, character, &settings);
+    rotator_service.update_from_map(map, preset);
+    rotator_service.apply(context.rotator);
 
     context
         .navigator
@@ -349,21 +345,15 @@ fn update_character(context: &mut EventContext<'_>, character: Option<Character>
     character_service.apply_character(&mut context.world.player.context);
 
     let character = character_service.character();
-
-    let map_service = &context.map_service;
-    let map = map_service.map();
-    let preset = map_service.preset();
     let settings = context.settings_service.settings();
-
     let rotator_service = &mut context.rotator_service;
-    rotator_service.update_actions(map, preset, character);
-    rotator_service.update_buffs(character);
+    rotator_service.update_from_characters(character);
     if let Some(character) = character {
         context.world.buffs.iter_mut().for_each(|buff| {
             buff.context.update_enabled_state(character, &settings);
         });
     }
-    rotator_service.apply(context.rotator.deref_mut(), map, character, &settings);
+    rotator_service.apply(context.rotator);
 }
 
 fn subscribe_game_state(context: &mut EventContext<'_>) -> broadcast::Receiver<State> {

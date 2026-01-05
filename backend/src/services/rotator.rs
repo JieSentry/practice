@@ -1,7 +1,5 @@
 use std::fmt::Debug;
 
-#[cfg(test)]
-use mockall::{automock, concretize};
 use strum::IntoEnumIterator;
 
 use crate::bridge::KeyKind;
@@ -15,117 +13,79 @@ use crate::{
 };
 
 /// A service to handle [`Rotator`]-related incoming requests.
-#[cfg_attr(test, automock)]
 pub trait RotatorService: Debug {
-    /// Builds a new actions list to be used.
-    fn update_actions<'a>(
-        &mut self,
-        map: Option<&'a Map>,
-        preset: Option<String>,
-        character: Option<&'a Character>,
-    );
+    /// Updates the current [`RotatorBuildArgs`] with new data from `map` and `preset`.
+    fn update_from_map(&mut self, map: Option<&Map>, preset: Option<String>);
 
-    /// Builds a new buffs list to be used.
-    #[cfg_attr(test, concretize)]
-    fn update_buffs(&mut self, character: Option<&Character>);
+    /// Updates the current [`RotatorBuildArgs`] with new data from `character`.
+    fn update_from_characters(&mut self, character: Option<&Character>);
 
-    /// Updates `rotator` with data from `map`, `character`, `settings`, and the currently
-    /// in-use actions and buffs.
-    fn apply<'a>(
-        &self,
-        rotator: &mut dyn Rotator,
-        map: Option<&'a Map>,
-        character: Option<&'a Character>,
-        settings: &Settings,
-    );
+    /// Updates the current [`RotatorBuildArgs`] with new data from `settings`.
+    fn update_from_settings(&mut self, settings: &Settings);
+
+    /// Updates `rotator` with the currently in-use [`RotatorBuildArgs`].
+    fn apply(&self, rotator: &mut dyn Rotator);
 }
 
-// TODO: Whether to use Rc<RefCell<Rotator>> like Settings
 #[derive(Debug, Default)]
 pub struct DefaultRotatorService {
-    actions: Vec<Action>,
-    buffs: Vec<(BuffKind, KeyKind)>,
+    args: RotatorBuildArgs,
 }
 
 impl RotatorService for DefaultRotatorService {
-    fn update_actions<'a>(
-        &mut self,
-        map: Option<&'a Map>,
-        preset: Option<String>,
-        character: Option<&'a Character>,
-    ) {
-        let character_actions = character.map(actions_from).unwrap_or_default();
-        let map_actions = map
+    fn update_from_map(&mut self, map: Option<&Map>, preset: Option<String>) {
+        self.args.map_actions = map
             .zip(preset)
             .and_then(|(minimap, preset)| minimap.actions.get(&preset).cloned())
             .unwrap_or_default();
-
-        self.actions = [character_actions, map_actions].concat();
-    }
-
-    #[cfg_attr(test, concretize)]
-    fn update_buffs(&mut self, character: Option<&Character>) {
-        self.buffs = character.map(buffs_from).unwrap_or_default();
-    }
-
-    fn apply<'a>(
-        &self,
-        rotator: &mut dyn Rotator,
-        map: Option<&'a Map>,
-        character: Option<&'a Character>,
-        settings: &Settings,
-    ) {
-        let mode = rotator_mode_from(map);
-        let reset_normal_actions_on_erda = map
+        self.args.mode = rotator_mode_from(map);
+        self.args.enable_reset_normal_actions_on_erda = map
             .map(|map| map.actions_any_reset_on_erda_condition)
             .unwrap_or_default();
-        let familiar_essence_key = character
-            .map(|character| character.familiar_essence_key.key)
-            .unwrap_or_default();
-        let elite_boss_behavior = character
-            .map(|character| character.elite_boss_behavior)
-            .unwrap_or_default();
-        let elite_boss_behavior_key = character
-            .map(|character| character.elite_boss_behavior_key)
-            .unwrap_or_default();
-        let hexa_booster_exchange_condition = character
-            .map(|character| character.hexa_booster_exchange_condition)
-            .unwrap_or_default();
-        let hexa_booster_exchange_amount = character
-            .map(|character| character.hexa_booster_exchange_amount)
-            .unwrap_or(1);
-        let hexa_booster_exchange_all = character
-            .map(|character| character.hexa_booster_exchange_all)
-            .unwrap_or_default();
-        let enable_using_generic_booster = character
-            .map(|character| character.generic_booster_key.enabled)
-            .unwrap_or_default();
-        let enable_using_hexa_booster = character
-            .map(|character| character.hexa_booster_key.enabled)
-            .unwrap_or_default();
-        let familiars = character
+    }
+
+    fn update_from_characters(&mut self, character: Option<&Character>) {
+        self.args.character_actions = character.map(actions_from).unwrap_or_default();
+        self.args.buffs = character.map(buffs_from).unwrap_or_default();
+        self.args.familiars = character
             .map(|character| character.familiars.clone())
             .unwrap_or_default();
-        let args = RotatorBuildArgs {
-            mode,
-            actions: &self.actions,
-            buffs: &self.buffs,
-            familiars,
-            familiar_essence_key: familiar_essence_key.into(),
-            elite_boss_behavior,
-            elite_boss_behavior_key: elite_boss_behavior_key.into(),
-            hexa_booster_exchange_condition,
-            hexa_booster_exchange_amount,
-            hexa_booster_exchange_all,
-            enable_panic_mode: settings.enable_panic_mode,
-            enable_rune_solving: settings.enable_rune_solving,
-            enable_transparent_shape_solving: settings.enable_transparent_shape_solving,
-            enable_reset_normal_actions_on_erda: reset_normal_actions_on_erda,
-            enable_using_generic_booster,
-            enable_using_hexa_booster,
-        };
+        self.args.familiar_essence_key = character
+            .map(|character| character.familiar_essence_key.key)
+            .unwrap_or_default()
+            .into();
+        self.args.elite_boss_behavior = character
+            .map(|character| character.elite_boss_behavior)
+            .unwrap_or_default();
+        self.args.elite_boss_behavior_key = character
+            .map(|character| character.elite_boss_behavior_key)
+            .unwrap_or_default()
+            .into();
+        self.args.hexa_booster_exchange_condition = character
+            .map(|character| character.hexa_booster_exchange_condition)
+            .unwrap_or_default();
+        self.args.hexa_booster_exchange_amount = character
+            .map(|character| character.hexa_booster_exchange_amount)
+            .unwrap_or(1);
+        self.args.hexa_booster_exchange_all = character
+            .map(|character| character.hexa_booster_exchange_all)
+            .unwrap_or_default();
+        self.args.enable_using_generic_booster = character
+            .map(|character| character.generic_booster_key.enabled)
+            .unwrap_or_default();
+        self.args.enable_using_hexa_booster = character
+            .map(|character| character.hexa_booster_key.enabled)
+            .unwrap_or_default();
+    }
 
-        rotator.build_actions(args);
+    fn update_from_settings(&mut self, settings: &Settings) {
+        self.args.enable_panic_mode = settings.enable_panic_mode;
+        self.args.enable_rune_solving = settings.enable_rune_solving;
+        self.args.enable_transparent_shape_solving = settings.enable_transparent_shape_solving;
+    }
+
+    fn apply(&self, rotator: &mut dyn Rotator) {
+        rotator.build_actions(self.args.clone());
     }
 }
 
@@ -287,15 +247,14 @@ mod tests {
     use strum::IntoEnumIterator;
 
     use super::*;
-    use crate::{ActionCondition, ActionConfiguration, ActionConfigurationCondition, ActionKey};
     use crate::{
-        Bound, EliteBossBehavior, FamiliarRarity, KeyBindingConfiguration, SwappableFamiliars,
-        rotator::MockRotator,
+        ActionConfiguration, ActionConfigurationCondition, Bound, EliteBossBehavior,
+        FamiliarRarity, KeyBindingConfiguration, SwappableFamiliars,
     };
 
     #[test]
     fn update_rotator_mode() {
-        let mut minimap = Map {
+        let mut map = Map {
             rotation_auto_mob_bound: Bound {
                 x: 1,
                 y: 1,
@@ -303,78 +262,53 @@ mod tests {
                 height: 1,
             },
             rotation_ping_pong_bound: Bound {
-                x: 1,
-                y: 1,
-                width: 1,
-                height: 1,
+                x: 2,
+                y: 2,
+                width: 2,
+                height: 2,
             },
             ..Default::default()
         };
-        let character = Character::default();
-        let service = DefaultRotatorService::default();
 
         for mode in RotationMode::iter() {
-            minimap.rotation_mode = mode;
-            let mut rotator = MockRotator::new();
-            rotator
-                .expect_build_actions()
-                .withf(move |args| {
-                    let mut key_bound = None;
-                    let original_mode = match args.mode {
-                        RotatorMode::StartToEnd => RotationMode::StartToEnd,
-                        RotatorMode::StartToEndThenReverse => RotationMode::StartToEndThenReverse,
-                        RotatorMode::AutoMobbing(key, bound) => {
-                            key_bound = Some((key, bound));
-                            RotationMode::AutoMobbing
-                        }
-                        RotatorMode::PingPong(key, bound) => {
-                            key_bound = Some((key, bound));
-                            RotationMode::PingPong
-                        }
-                    };
-                    let key_bound_match = match key_bound {
-                        Some((key, bound)) => {
-                            let bound_match = if original_mode == RotationMode::AutoMobbing {
-                                bound == minimap.rotation_auto_mob_bound
-                            } else {
-                                bound == minimap.rotation_ping_pong_bound
-                            };
-                            key == minimap.rotation_mobbing_key && bound_match
-                        }
-                        None => true,
-                    };
+            map.rotation_mode = mode;
 
-                    mode == original_mode && key_bound_match
-                })
-                .once()
-                .return_const(());
+            let mut service = DefaultRotatorService::default();
+            service.update_from_map(Some(&map), None);
 
-            service.apply(
-                &mut rotator,
-                Some(&minimap),
-                Some(&character),
-                &Settings::default(),
-            );
+            match (mode, &service.args.mode) {
+                (RotationMode::StartToEnd, RotatorMode::StartToEnd) => {}
+                (RotationMode::StartToEndThenReverse, RotatorMode::StartToEndThenReverse) => {}
+                (RotationMode::AutoMobbing, RotatorMode::AutoMobbing(key, bound)) => {
+                    assert_eq!(*key, map.rotation_mobbing_key);
+                    assert_eq!(*bound, map.rotation_auto_mob_bound);
+                }
+                (RotationMode::PingPong, RotatorMode::PingPong(key, bound)) => {
+                    assert_eq!(*key, map.rotation_mobbing_key);
+                    assert_eq!(*bound, map.rotation_ping_pong_bound);
+                }
+                _ => panic!("rotation mode mismatch"),
+            }
         }
     }
 
     #[test]
     fn update_with_buffs() {
-        let buffs = vec![(BuffKind::SayramElixir, KeyKind::F1)];
-
-        let buffs_clone = buffs.clone();
-        let mut rotator = MockRotator::new();
-        rotator
-            .expect_build_actions()
-            .withf(move |args| args.buffs == buffs_clone)
-            .once()
-            .return_const(());
-
-        let service = DefaultRotatorService {
-            buffs,
+        let character = Character {
+            sayram_elixir_key: KeyBindingConfiguration {
+                key: KeyBinding::F1,
+                enabled: true,
+            },
             ..Default::default()
         };
-        service.apply(&mut rotator, None, None, &Settings::default());
+
+        let mut service = DefaultRotatorService::default();
+        service.update_from_characters(Some(&character));
+
+        assert_eq!(
+            service.args.buffs,
+            vec![(BuffKind::SayramElixir, KeyKind::F1)]
+        );
     }
 
     #[test]
@@ -387,15 +321,10 @@ mod tests {
             ..Default::default()
         };
 
-        let mut rotator = MockRotator::new();
-        rotator
-            .expect_build_actions()
-            .withf(|args| args.familiar_essence_key == KeyKind::Z)
-            .once()
-            .return_const(());
+        let mut service = DefaultRotatorService::default();
+        service.update_from_characters(Some(&character));
 
-        let service = DefaultRotatorService::default();
-        service.apply(&mut rotator, None, Some(&character), &Settings::default());
+        assert_eq!(service.args.familiar_essence_key, KeyKind::Z);
     }
 
     #[test]
@@ -407,16 +336,10 @@ mod tests {
         character.familiars.swap_check_millis = 5000;
         character.familiars.enable_familiars_swapping = true;
 
-        let character_clone = character.clone();
-        let mut rotator = MockRotator::new();
-        rotator
-            .expect_build_actions()
-            .withf(move |args| args.familiars == character_clone.familiars)
-            .once()
-            .return_const(());
+        let mut service = DefaultRotatorService::default();
+        service.update_from_characters(Some(&character));
 
-        let service = DefaultRotatorService::default();
-        service.apply(&mut rotator, None, Some(&character), &Settings::default());
+        assert_eq!(service.args.familiars, character.familiars);
     }
 
     #[test]
@@ -427,36 +350,27 @@ mod tests {
             ..Default::default()
         };
 
-        let mut rotator = MockRotator::new();
-        rotator
-            .expect_build_actions()
-            .withf(|args| {
-                args.elite_boss_behavior == EliteBossBehavior::CycleChannel
-                    && args.elite_boss_behavior_key == KeyKind::X
-            })
-            .once()
-            .return_const(());
+        let mut service = DefaultRotatorService::default();
+        service.update_from_characters(Some(&character));
 
-        let service = DefaultRotatorService::default();
-        service.apply(&mut rotator, None, Some(&character), &Settings::default());
+        assert_eq!(
+            service.args.elite_boss_behavior,
+            EliteBossBehavior::CycleChannel
+        );
+        assert_eq!(service.args.elite_boss_behavior_key, KeyKind::X);
     }
 
     #[test]
     fn update_with_reset_normal_actions_on_erda() {
-        let minimap = Map {
+        let map = Map {
             actions_any_reset_on_erda_condition: true,
             ..Default::default()
         };
 
-        let mut rotator = MockRotator::new();
-        rotator
-            .expect_build_actions()
-            .withf(|args| args.enable_reset_normal_actions_on_erda)
-            .once()
-            .return_const(());
+        let mut service = DefaultRotatorService::default();
+        service.update_from_map(Some(&map), None);
 
-        let service = DefaultRotatorService::default();
-        service.apply(&mut rotator, Some(&minimap), None, &Settings::default());
+        assert!(service.args.enable_reset_normal_actions_on_erda);
     }
 
     #[test]
@@ -467,20 +381,16 @@ mod tests {
             ..Default::default()
         };
 
-        let mut rotator = MockRotator::new();
-        rotator
-            .expect_build_actions()
-            .withf(|args| args.enable_panic_mode && args.enable_rune_solving)
-            .once()
-            .return_const(());
+        let mut service = DefaultRotatorService::default();
+        service.update_from_settings(&settings);
 
-        let service = DefaultRotatorService::default();
-        service.apply(&mut rotator, None, None, &settings);
+        assert!(service.args.enable_panic_mode);
+        assert!(service.args.enable_rune_solving);
     }
 
     #[test]
     fn update_combine_actions_and_fixed_actions() {
-        let actions = vec![
+        let map_actions = vec![
             Action::Key(ActionKey {
                 key: KeyBinding::A,
                 ..Default::default()
@@ -490,6 +400,7 @@ mod tests {
                 ..Default::default()
             }),
         ];
+
         let character = Character {
             actions: vec![
                 ActionConfiguration {
@@ -515,14 +426,17 @@ mod tests {
             ],
             ..Default::default()
         };
-        let mut minimap = Map::default();
-        minimap.actions.insert("preset".to_string(), actions);
-        let mut service = DefaultRotatorService::default();
 
-        service.update_actions(Some(&minimap), Some("preset".to_string()), Some(&character));
+        let mut map = Map::default();
+        map.actions
+            .insert("preset".to_string(), map_actions.clone());
+
+        let mut service = DefaultRotatorService::default();
+        service.update_from_map(Some(&map), Some("preset".to_string()));
+        service.update_from_characters(Some(&character));
 
         assert_matches!(
-            service.actions.as_slice(),
+            service.args.character_actions.as_slice(),
             [
                 Action::Key(ActionKey {
                     key: KeyBinding::C,
@@ -542,72 +456,10 @@ mod tests {
                     key: KeyBinding::F,
                     ..
                 }),
-                Action::Key(ActionKey {
-                    key: KeyBinding::A,
-                    ..
-                }),
-                Action::Key(ActionKey {
-                    key: KeyBinding::B,
-                    ..
-                }),
             ]
         );
-    }
 
-    #[test]
-    fn update_include_actions_while_fixed_actions_disabled() {
-        let actions = vec![
-            Action::Key(ActionKey {
-                key: KeyBinding::A,
-                ..Default::default()
-            }),
-            Action::Key(ActionKey {
-                key: KeyBinding::B,
-                ..Default::default()
-            }),
-        ];
-        let character = Character {
-            actions: vec![
-                ActionConfiguration {
-                    key: KeyBinding::C,
-                    ..Default::default()
-                },
-                ActionConfiguration {
-                    key: KeyBinding::D,
-                    condition: ActionConfigurationCondition::Linked,
-                    ..Default::default()
-                },
-                ActionConfiguration {
-                    key: KeyBinding::E,
-                    condition: ActionConfigurationCondition::Linked,
-                    ..Default::default()
-                },
-                ActionConfiguration {
-                    key: KeyBinding::F,
-                    ..Default::default()
-                },
-            ],
-            ..Default::default()
-        };
-        let mut minimap = Map::default();
-        minimap.actions.insert("preset".to_string(), actions);
-        let mut service = DefaultRotatorService::default();
-
-        service.update_actions(Some(&minimap), Some("preset".to_string()), Some(&character));
-
-        assert_matches!(
-            service.actions.as_slice(),
-            [
-                Action::Key(ActionKey {
-                    key: KeyBinding::A,
-                    ..
-                }),
-                Action::Key(ActionKey {
-                    key: KeyBinding::B,
-                    ..
-                }),
-            ]
-        );
+        assert_eq!(service.args.map_actions, map_actions);
     }
 
     #[test]
@@ -637,12 +489,12 @@ mod tests {
             ],
             ..Default::default()
         };
-        let mut service = DefaultRotatorService::default();
 
-        service.update_actions(None, None, Some(&character));
+        let mut service = DefaultRotatorService::default();
+        service.update_from_characters(Some(&character));
 
         assert_matches!(
-            service.actions.as_slice(),
+            service.args.character_actions.as_slice(),
             [
                 Action::Key(ActionKey {
                     key: KeyBinding::C,
