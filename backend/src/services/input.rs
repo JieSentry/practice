@@ -1,8 +1,6 @@
 use std::fmt::Debug;
 
 use futures::StreamExt;
-#[cfg(test)]
-use mockall::automock;
 use platforms::Window;
 use tokio::{
     spawn,
@@ -24,7 +22,6 @@ pub enum InputEvent {
 impl Event for InputEvent {}
 
 /// A service to handle input-related incoming requests.
-#[cfg_attr(test, automock)]
 pub trait InputService: Debug {
     fn subscribe_event(&self) -> Receiver<InputEvent>;
 

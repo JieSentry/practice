@@ -1,8 +1,5 @@
 use std::fmt::Debug;
 
-#[cfg(test)]
-use mockall::automock;
-
 use crate::{
     minimap::{Minimap, MinimapContext, MinimapEntity},
     models::Map,
@@ -11,14 +8,12 @@ use crate::{
 };
 
 /// A service to handle map-related incoming requests.
-#[cfg_attr(test, automock)]
 pub trait MapService: Debug {
     /// Creates a new [`Map`] from currently detected minimap with `name`.
     fn create(&self, minimap_state: Minimap, name: String) -> Option<Map>;
 
     /// Gets the currently in use [`Map`].
-    #[allow(clippy::needless_lifetimes)]
-    fn map<'a>(&'a self) -> Option<&'a Map>;
+    fn map(&self) -> Option<&Map>;
 
     /// Gets the currently in use preset.
     fn preset(&self) -> Option<String>;
@@ -81,22 +76,21 @@ impl MapService for DefaultMapService {
         minimap_context.set_platforms(platforms);
 
         player_context.reset();
-        if let Some(minimap) = self.map() {
-            player_context.config.rune_platforms_pathing = minimap.rune_platforms_pathing;
+        if let Some(map) = self.map() {
+            player_context.config.rune_platforms_pathing = map.rune_platforms_pathing;
             player_context.config.rune_platforms_pathing_up_jump_only =
-                minimap.rune_platforms_pathing_up_jump_only;
-            player_context.config.auto_mob_platforms_pathing = minimap.auto_mob_platforms_pathing;
+                map.rune_platforms_pathing_up_jump_only;
+            player_context.config.auto_mob_platforms_pathing = map.auto_mob_platforms_pathing;
             player_context
                 .config
                 .auto_mob_platforms_pathing_up_jump_only =
-                minimap.auto_mob_platforms_pathing_up_jump_only;
-            player_context.config.auto_mob_platforms_bound = minimap.auto_mob_platforms_bound;
-            player_context.config.auto_mob_use_key_when_pathing =
-                minimap.auto_mob_use_key_when_pathing;
+                map.auto_mob_platforms_pathing_up_jump_only;
+            player_context.config.auto_mob_platforms_bound = map.auto_mob_platforms_bound;
+            player_context.config.auto_mob_use_key_when_pathing = map.auto_mob_use_key_when_pathing;
             player_context
                 .config
                 .auto_mob_use_key_when_pathing_update_millis =
-                minimap.auto_mob_use_key_when_pathing_update_millis;
+                map.auto_mob_use_key_when_pathing_update_millis;
         }
     }
 

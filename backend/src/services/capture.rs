@@ -1,13 +1,10 @@
 use std::fmt::Debug;
 
-#[cfg(test)]
-use mockall::automock;
 use platforms::{Window, capture::query_capture_windows};
 
 use crate::{CaptureMode, bridge::Capture};
 
 /// A service to handle capture-related incoming requests.
-#[cfg_attr(test, automock)]
 pub trait CaptureService: Debug {
     /// Updates `capture` to use `mode`.
     fn apply_mode(&self, capture: &mut dyn Capture, mode: CaptureMode);

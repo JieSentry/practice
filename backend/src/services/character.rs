@@ -1,16 +1,11 @@
 use std::fmt::Debug;
 
-#[cfg(test)]
-use mockall::automock;
-
 use crate::{Character, PotionMode, player::PlayerContext};
 
 /// A service to handle character-related incoming requests.
-#[cfg_attr(test, automock)]
 pub trait CharacterService: Debug {
     /// Gets the currently in use [`Character`].
-    #[allow(clippy::needless_lifetimes)]
-    fn character<'a>(&'a self) -> Option<&'a Character>;
+    fn character(&self) -> Option<&Character>;
 
     /// Sets a new `character` to be used.
     fn update_character(&mut self, character: Option<Character>);
