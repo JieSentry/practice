@@ -18,7 +18,7 @@ use tokio::{
 use crate::services::debug::DebugService;
 use crate::{
     Localization, Settings,
-    bridge::{Capture, DefaultInputReceiver, Input},
+    bridge::{Capture, DefaultInputReceiver, Input, InputMethod},
     database_event_receiver,
     ecs::{Resources, World, WorldEvent},
     navigator::Navigator,
@@ -211,12 +211,14 @@ impl Services {
     }
 
     pub fn update_window(&mut self, input: &mut dyn Input, capture: &mut dyn Capture) {
+        let settings = self.settings.settings();
         self.capture.apply_selected_window(capture);
-        self.capture
-            .apply_mode(capture, self.settings.settings().capture_mode);
+        self.capture.apply_mode(capture, settings.capture_mode);
 
-        let window = self.selected_window();
+        let window = capture.window();
         self.input.apply_window(input, window);
+        self.input
+            .apply_method(input, InputMethod::from(&*settings));
     }
 
     #[inline]

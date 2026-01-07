@@ -24,7 +24,9 @@ use serenity::futures::StreamExt;
 use strum::Display;
 
 use crate::{
-    models::{CaptureMode, KeyBinding, LinkKeyBinding},
+    models::{
+        CaptureMode, InputMethod as DatabaseInputMethod, KeyBinding, LinkKeyBinding, Settings,
+    },
     rng::Rng,
     rpc::{
         Coordinate as RpcCoordinate, InputService, Key as RpcKeyKind, KeyState as RpcKeyState,
@@ -676,6 +678,23 @@ pub enum InputMethod {
     FocusedRpc(String),
     ForegroundDefault,
     FocusedDefault,
+}
+
+impl From<&Settings> for InputMethod {
+    fn from(settings: &Settings) -> Self {
+        match (settings.input_method, settings.capture_mode) {
+            (DatabaseInputMethod::Default, CaptureMode::BitBltArea) => {
+                InputMethod::ForegroundDefault
+            }
+            (DatabaseInputMethod::Default, _) => InputMethod::FocusedDefault,
+            (DatabaseInputMethod::Rpc, CaptureMode::BitBltArea) => {
+                InputMethod::ForegroundRpc(settings.input_method_rpc_server_url.clone())
+            }
+            (DatabaseInputMethod::Rpc, _) => {
+                InputMethod::FocusedRpc(settings.input_method_rpc_server_url.clone())
+            }
+        }
+    }
 }
 
 /// Inner kind of [`InputMethod`].

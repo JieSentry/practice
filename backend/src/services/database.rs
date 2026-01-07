@@ -1,9 +1,6 @@
-use std::ops::DerefMut;
-
 use super::EventContext;
 use crate::{
-    CaptureMode, DatabaseEvent, bridge::InputMethod, models::InputMethod as DatabaseInputMethod,
-    operation::OperationConfiguration, services::EventHandler,
+    DatabaseEvent, bridge::InputMethod, operation::OperationConfiguration, services::EventHandler,
 };
 
 pub struct DatabaseEventHandler;
@@ -80,24 +77,9 @@ fn update_capture_and_input(context: &mut EventContext) {
         .capture_service
         .apply_mode(context.capture, settings.capture_mode);
 
-    let window = match settings.capture_mode {
-        CaptureMode::BitBltArea => context.capture.window(),
-        CaptureMode::WindowsGraphicsCapture | CaptureMode::BitBlt => {
-            context.capture_service.selected_window()
-        }
-    };
-    let method = match (settings.input_method, settings.capture_mode) {
-        (DatabaseInputMethod::Default, CaptureMode::BitBltArea) => InputMethod::ForegroundDefault,
-        (DatabaseInputMethod::Default, _) => InputMethod::FocusedDefault,
-        (DatabaseInputMethod::Rpc, CaptureMode::BitBltArea) => {
-            InputMethod::ForegroundRpc(settings.input_method_rpc_server_url.clone())
-        }
-        (DatabaseInputMethod::Rpc, _) => {
-            InputMethod::FocusedRpc(settings.input_method_rpc_server_url.clone())
-        }
-    };
-
-    let input = context.resources.input.deref_mut();
+    let window = context.capture.window();
+    let method = InputMethod::from(&*settings);
+    let input = &mut *context.resources.input;
     context.input_service.apply_window(input, window);
     context.input_service.apply_method(input, method);
 }
