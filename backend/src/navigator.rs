@@ -143,7 +143,8 @@ pub struct DefaultNavigator {
     /// Cached next point navigation computation.
     last_point_state: Option<PointState>,
     destination_path_id: Option<String>,
-    event_receiver: Receiver<WorldEvent>,
+    event_rx: Receiver<WorldEvent>,
+    did_minimap_changed: bool,
 }
 
 impl DefaultNavigator {
@@ -164,19 +165,23 @@ impl DefaultNavigator {
             path_last_update: Instant::now(),
             last_point_state: None,
             destination_path_id: None,
-            event_receiver,
+            event_rx: event_receiver,
+            did_minimap_changed: false,
         }
     }
 
     #[inline]
-    fn update(&mut self, resources: &Resources, minimap_state: Minimap, did_minimap_changed: bool) {
+    fn update(&mut self, resources: &Resources, minimap_state: Minimap) {
         const UPDATE_RETRY_MAX_COUNT: u32 = 3;
 
-        if did_minimap_changed {
+        let event = self.event_rx.try_recv().ok();
+        self.did_minimap_changed = matches!(event, Some(WorldEvent::MinimapChanged));
+        if self.did_minimap_changed {
             // Do not reset `base_path`, `current_path` and `last_point_state` here so that
             // `update_current_path_from_current_location` will try to reuse that when looking up.
             self.mark_dirty(false);
         }
+
         if self.path_dirty {
             match self.update_current_path_from_current_location(resources, minimap_state) {
                 UpdateState::Pending => (),
@@ -193,55 +198,6 @@ impl DefaultNavigator {
     }
 
     fn compute_next_point(&self) -> PointState {
-        fn search_point(from: Rc<RefCell<Path>>, to_id: String) -> Option<Point> {
-            type CameFrom = (Option<Rc<RefCell<Path>>>, Option<Point>);
-
-            let from_id = from.borrow().id.clone();
-            let mut point = None;
-            let mut came_from: HashMap<String, CameFrom> = HashMap::new();
-
-            dfs(
-                (from, None, None),
-                |(path, _, _)| path.borrow().id.clone(),
-                |(path, _, _)| {
-                    path.borrow()
-                        .points
-                        .iter()
-                        .filter_map(|point| {
-                            Some((
-                                point.next_path.clone()?,
-                                Some(path.clone()),
-                                Some(point.clone()),
-                            ))
-                        })
-                        .collect()
-                },
-                |(path, from_path, from_point)| {
-                    let path_id = path.borrow().id.clone();
-
-                    came_from
-                        .try_insert(path_id.clone(), (from_path.clone(), from_point.clone()))
-                        .expect("not visited");
-                    if path_id == to_id {
-                        let mut current = path_id.clone();
-                        while let Some((Some(from_path), Some(from_point))) =
-                            came_from.get(&current)
-                        {
-                            if from_path.borrow().id == from_id {
-                                point = Some(from_point.clone());
-                                return false;
-                            }
-                            current = from_path.borrow().id.clone();
-                        }
-                    }
-
-                    true
-                },
-            );
-
-            point
-        }
-
         if self.path_dirty {
             return PointState::Dirty;
         }
@@ -300,30 +256,72 @@ impl DefaultNavigator {
         };
 
         // Try from next_path if previously exists due to player navigating
-        if let Some(PointState::Next(_, _, _, Some(next_path))) = self.last_point_state.take()
-            && let Ok(current_path) =
-                find_current_from_base_path(next_path, detector, minimap_bbox, minimap_name_bbox)
+        if self.update_current_path_from_last_point_state(detector, minimap_bbox, minimap_name_bbox)
         {
-            info!(target: "navigator", "current path updated from previous point's next path");
-            self.current_path = Some(current_path);
             return UpdateState::Completed;
         }
 
         // Try from base_path if previously exists
-        if let Some(base_path) = self.base_path.clone() {
-            if let Ok(current_path) =
-                find_current_from_base_path(base_path, detector, minimap_bbox, minimap_name_bbox)
-            {
-                info!(target: "navigator", "current path updated from previous base path");
-                self.current_path = Some(current_path);
-                return UpdateState::Completed;
-            } else {
-                self.base_path = None;
-                self.current_path = None;
-            }
+        if self.update_current_path_from_base_path(detector, minimap_bbox, minimap_name_bbox) {
+            return UpdateState::Completed;
         }
 
         // Query from database
+        if self.update_current_path_from_database(detector, minimap_bbox, minimap_name_bbox) {
+            return UpdateState::Completed;
+        }
+
+        UpdateState::NoMatch
+    }
+
+    fn update_current_path_from_last_point_state(
+        &mut self,
+        detector: &dyn Detector,
+        minimap_bbox: Rect,
+        minimap_name_bbox: Rect,
+    ) -> bool {
+        let Some(PointState::Next(_, _, _, Some(next_path))) = self.last_point_state.take() else {
+            return false;
+        };
+        let Ok(current_path) =
+            find_current_from_base_path(next_path, detector, minimap_bbox, minimap_name_bbox)
+        else {
+            return false;
+        };
+
+        info!(target: "navigator", "current path updated from previous point's next path");
+        self.current_path = Some(current_path);
+        true
+    }
+
+    fn update_current_path_from_base_path(
+        &mut self,
+        detector: &dyn Detector,
+        minimap_bbox: Rect,
+        minimap_name_bbox: Rect,
+    ) -> bool {
+        let Some(base_path) = self.base_path.clone() else {
+            return false;
+        };
+        let Ok(current_path) =
+            find_current_from_base_path(base_path, detector, minimap_bbox, minimap_name_bbox)
+        else {
+            self.base_path = None;
+            self.current_path = None;
+            return false;
+        };
+
+        info!(target: "navigator", "current path updated from previous base path");
+        self.current_path = Some(current_path);
+        true
+    }
+
+    fn update_current_path_from_database(
+        &mut self,
+        detector: &dyn Detector,
+        minimap_bbox: Rect,
+        minimap_name_bbox: Rect,
+    ) -> bool {
         let paths = self
             .source
             .query_paths()
@@ -361,18 +359,10 @@ impl DefaultNavigator {
 
             self.base_path = Some(base_path);
             self.current_path = Some(current_path);
-            return UpdateState::Completed;
+            return true;
         }
 
-        UpdateState::NoMatch
-    }
-
-    #[inline]
-    fn did_minimap_changed(&mut self) -> bool {
-        matches!(
-            self.event_receiver.try_recv().ok(),
-            Some(WorldEvent::MinimapChanged)
-        )
+        false
     }
 }
 
@@ -387,8 +377,7 @@ impl Navigator for DefaultNavigator {
             return true;
         }
 
-        let did_minimap_changed = self.did_minimap_changed();
-        self.update(resources, minimap_state, did_minimap_changed);
+        self.update(resources, minimap_state);
 
         let next_point_state = self.compute_next_point();
         if !matches!(next_point_state, PointState::Dirty) {
@@ -398,7 +387,7 @@ impl Navigator for DefaultNavigator {
 
         match next_point_state {
             PointState::Dirty => {
-                if did_minimap_changed {
+                if self.did_minimap_changed {
                     player_context.take_priority_action();
                 }
                 false
@@ -464,6 +453,53 @@ impl Navigator for DefaultNavigator {
             paths_id_index.map(|(id, index)| path_id_from_paths_id_index(id, index));
         self.mark_dirty(false);
     }
+}
+
+fn search_point(from: Rc<RefCell<Path>>, to_id: String) -> Option<Point> {
+    type CameFrom = (Option<Rc<RefCell<Path>>>, Option<Point>);
+
+    let from_id = from.borrow().id.clone();
+    let mut point = None;
+    let mut came_from: HashMap<String, CameFrom> = HashMap::new();
+
+    dfs(
+        (from, None, None),
+        |(path, _, _)| path.borrow().id.clone(),
+        |(path, _, _)| {
+            path.borrow()
+                .points
+                .iter()
+                .filter_map(|point| {
+                    Some((
+                        point.next_path.clone()?,
+                        Some(path.clone()),
+                        Some(point.clone()),
+                    ))
+                })
+                .collect()
+        },
+        |(path, from_path, from_point)| {
+            let path_id = path.borrow().id.clone();
+
+            came_from
+                .try_insert(path_id.clone(), (from_path.clone(), from_point.clone()))
+                .expect("not visited");
+            if path_id == to_id {
+                let mut current = path_id.clone();
+                while let Some((Some(from_path), Some(from_point))) = came_from.get(&current) {
+                    if from_path.borrow().id == from_id {
+                        point = Some(from_point.clone());
+                        return false;
+                    }
+                    current = from_path.borrow().id.clone();
+                }
+            }
+
+            true
+        },
+    );
+
+    point
 }
 
 fn build_base_path_from(
