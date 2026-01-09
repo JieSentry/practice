@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #![feature(variant_count)]
 #![feature(map_try_insert)]
+#![feature(push_mut)]
 #![feature(iter_intersperse)]
 
 use std::{env::current_exe, io::stdout, string::ToString, sync::LazyLock};
@@ -39,6 +40,7 @@ mod settings;
 
 const TAILWIND_CSS: Asset = asset!("public/tailwind.css");
 const AUTO_NUMERIC_JS: Asset = asset!("public/autoNumeric.min.js");
+const SORTABLE_JS: Asset = asset!("public/Sortable.min.js");
 const TAB_ACTIONS: &str = "Actions";
 const TAB_CHARACTERS: &str = "Characters";
 const TAB_NAVIGATION: &str = "Navigation";
@@ -107,7 +109,6 @@ pub struct AppState {
 #[component]
 fn App() -> Element {
     let mut selected_tab = use_signal(|| TAB_CHARACTERS.to_string());
-    let mut script_loaded = use_signal(|| false);
 
     use_context_provider(|| AppState {
         map: Signal::new(None),
@@ -118,60 +119,42 @@ fn App() -> Element {
         position: Signal::new((0, 0)),
     });
 
-    // Thanks dioxus
-    use_future(move || async move {
-        let mut eval = document::eval(
-            r#"
-            const scriptInterval = setInterval(async () => {
-                try {
-                    AutoNumeric;
-                    await dioxus.send(true);
-                    clearInterval(scriptInterval);
-                } catch(_) { }
-            }, 10);
-        "#,
-        );
-        eval.recv::<bool>().await.unwrap();
-        script_loaded.set(true);
-    });
-
     rsx! {
         document::Link { rel: "stylesheet", href: TAILWIND_CSS }
         document::Script { src: AUTO_NUMERIC_JS }
-        if script_loaded() {
-            div { class: "flex min-w-3xl lg:min-w-5xl min-h-120 h-full",
-                MinimapScreen {}
-                div { class: "flex-grow flex flex-col lg:flex-row z-1",
-                    Tabs {
-                        tabs: TABS.clone(),
-                        on_select_tab: move |tab| {
-                            selected_tab.set(tab);
+        document::Script { src: SORTABLE_JS }
+        div { class: "flex min-w-3xl lg:min-w-5xl min-h-120 h-full",
+            MinimapScreen {}
+            div { class: "flex-grow flex flex-col lg:flex-row z-1",
+                Tabs {
+                    tabs: TABS.clone(),
+                    on_select_tab: move |tab| {
+                        selected_tab.set(tab);
+                    },
+                    selected_tab: selected_tab(),
+                }
+                div { class: "relative w-full h-full overflow-x-hidden overflow-y-auto pl-2 lg:pl-0",
+                    match selected_tab().as_str() {
+                        TAB_ACTIONS => rsx! {
+                            ActionsScreen {}
                         },
-                        selected_tab: selected_tab(),
-                    }
-                    div { class: "relative w-full h-full overflow-x-hidden overflow-y-auto pl-2 lg:pl-0",
-                        match selected_tab().as_str() {
-                            TAB_ACTIONS => rsx! {
-                                ActionsScreen {}
-                            },
-                            TAB_CHARACTERS => rsx! {
-                                CharactersScreen {}
-                            },
-                            TAB_SETTINGS => rsx! {
-                                SettingsScreen {}
-                            },
-                            TAB_NAVIGATION => rsx! {
-                                NavigationScreen {}
-                            },
-                            TAB_LOCALIZATION => rsx! {
-                                LocalizationScreen {}
-                            },
-                            #[cfg(debug_assertions)]
-                            TAB_DEBUG => rsx! {
-                                DebugScreen {}
-                            },
-                            _ => unreachable!(),
-                        }
+                        TAB_CHARACTERS => rsx! {
+                            CharactersScreen {}
+                        },
+                        TAB_SETTINGS => rsx! {
+                            SettingsScreen {}
+                        },
+                        TAB_NAVIGATION => rsx! {
+                            NavigationScreen {}
+                        },
+                        TAB_LOCALIZATION => rsx! {
+                            LocalizationScreen {}
+                        },
+                        #[cfg(debug_assertions)]
+                        TAB_DEBUG => rsx! {
+                            DebugScreen {}
+                        },
+                        _ => unreachable!(),
                     }
                 }
             }

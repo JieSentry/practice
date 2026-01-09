@@ -6,7 +6,7 @@ use std::{
 };
 
 fn main() {
-    let dir = env::current_dir().unwrap().join("resources");
+    let dir = Path::new(&env!("CARGO_MANIFEST_DIR").to_string()).join("resources");
     let popup_yes = dir.join("popup_yes_ideal_ratio.png");
     let popup_ok_old = dir.join("popup_ok_old_ideal_ratio.png");
     let popup_ok_new = dir.join("popup_ok_new_ideal_ratio.png");
@@ -127,7 +127,7 @@ fn main() {
     let text_recognition_model = dir.join("text_recognition.onnx");
     let text_alphabet_txt = dir.join("alphabet_94.txt");
 
-    tonic_build::compile_protos("proto/input.proto").unwrap();
+    tonic_build::compile_protos(dir.parent().unwrap().join("proto").join("input.proto")).unwrap();
     println!(
         "cargo:rustc-env=POPUP_YES_TEMPLATE={}",
         popup_yes.to_str().unwrap()

@@ -1,8 +1,4 @@
-use std::{
-    fmt::Display,
-    mem::{discriminant, swap},
-    ops::Range,
-};
+use std::{collections::HashMap, fmt::Display, mem::discriminant, ops::Range};
 
 use backend::{
     Action, ActionCondition, ActionKey, ActionKeyDirection, ActionKeyWith, ActionMove, Bound,
@@ -20,9 +16,10 @@ use crate::{
         button::{Button, ButtonStyle},
         checkbox::Checkbox,
         file::{FileInput, FileOutput},
-        icons::{DownArrowIcon, UpArrowIcon, XIcon},
+        icons::XIcon,
         key::KeyInput,
         labeled::Labeled,
+        list::{List, ListItem, MoveEvent},
         named_select::NamedSelect,
         numbers::{MillisInput, PrimitiveIntegerInput},
         popup::{PopupContent, PopupContext, PopupTrigger},
@@ -50,6 +47,7 @@ enum ActionsUpdate {
 struct ActionsContext {
     map: Memo<Map>,
     save_map: Callback<Map>,
+    lists: Signal<HashMap<String, ActionCondition>>,
 }
 
 #[component]
@@ -156,9 +154,11 @@ pub fn ActionsScreen() -> Element {
         coroutine.send(ActionsUpdate::Set);
     });
 
+    let lists = use_signal::<HashMap<String, ActionCondition>>(HashMap::default);
     use_context_provider(|| ActionsContext {
         map: map_view,
         save_map,
+        lists,
     });
 
     rsx! {
@@ -725,100 +725,30 @@ fn SectionActions(actions: Memo<Vec<Action>>, disabled: bool) -> Element {
     });
 
     let move_action = use_callback(
-        move |(index, condition, up): (usize, ActionCondition, bool)| {
+        move |(
+            global_from_index,
+            from_condition,
+            local_to_index,
+            global_to_index,
+            to_condition,
+        ): (usize, ActionCondition, usize, usize, ActionCondition)| {
             let mut actions = actions();
-            let filtered = filter_actions(actions.clone(), condition);
-            if (up && index <= filtered.first().expect("cannot be empty").1)
-                || (!up && index >= filtered.last().expect("cannot be empty").1)
-            {
-                return;
-            }
+            let action = actions.remove(global_from_index);
 
-            // Finds the action index of `filtered` before or after `index`
-            let filtered_index = filtered
-                .iter()
-                .enumerate()
-                .find_map(|(filtered_index, (_, actions_index))| {
-                    if *actions_index == index {
-                        if up {
-                            Some(filtered_index - 1)
-                        } else {
-                            Some(filtered_index + 1)
-                        }
-                    } else {
-                        None
-                    }
-                })
-                .expect("must be valid index");
-            let filtered_condition = filtered[filtered_index].0.condition();
-            let action_condition = actions[index].condition();
-            match (action_condition, filtered_condition) {
-                // Simple case - swapping two linked actions
-                (ActionCondition::Linked, ActionCondition::Linked) => {
-                    actions.swap(index, filtered[filtered_index].1);
-                    coroutine.send(ActionsUpdate::Update(actions));
-                    return;
-                }
-                // Disallows moving up/down if `index` is a linked action and
-                // `filtered_index` is a non-linked action
-                (ActionCondition::Linked, _) => return,
-                _ => (),
-            }
-
-            // Finds the first non-linked action index of `filtered` before or after `index`
-            let mut filtered_non_linked_index = filtered_index;
-            while (up && filtered_non_linked_index > 0)
-                || (!up && filtered_non_linked_index < filtered.len() - 1)
-            {
-                let condition = filtered[filtered_non_linked_index].0.condition();
-                if !matches!(condition, ActionCondition::Linked) {
-                    break;
-                }
-                if up {
-                    filtered_non_linked_index -= 1;
+            let insert_index =
+                if from_condition == to_condition || global_from_index >= global_to_index {
+                    global_to_index
                 } else {
-                    filtered_non_linked_index += 1;
-                }
-            }
-            let condition = filtered[filtered_non_linked_index].0.condition();
-            if matches!(condition, ActionCondition::Linked) {
-                return;
-            }
+                    global_to_index - 1
+                };
+            let insert_index = insert_index.min(actions.len());
+            let action_ref = actions.insert_mut(insert_index, action);
+            debug!(target: "actions", "move action from {global_from_index} to {insert_index}");
 
-            let actions_non_linked_index = filtered[filtered_non_linked_index].1;
-            let first_range = find_linked_action_range(&actions, actions_non_linked_index);
-            let mut first_range = if let Some(range) = first_range {
-                actions_non_linked_index..range.end
-            } else {
-                actions_non_linked_index..actions_non_linked_index + 1
-            };
-
-            let second_range = find_linked_action_range(&actions, index);
-            let mut second_range = if let Some(range) = second_range {
-                index..range.end
-            } else {
-                index..index + 1
-            };
-
-            if !up {
-                swap(&mut first_range, &mut second_range);
+            if from_condition != to_condition || local_to_index == 0 {
+                *action_ref = action_ref.with_condition(to_condition);
             }
 
-            debug_assert!(
-                first_range.end <= second_range.start || second_range.end <= first_range.start
-            );
-            let second_start = second_range.start;
-            let second_actions = actions.drain(second_range).collect::<Vec<_>>();
-            let first_actions = actions[first_range.clone()].to_vec();
-            for action in first_actions.into_iter().rev() {
-                actions.insert(second_start, action);
-            }
-
-            let first_start = first_range.start;
-            let _ = actions.drain(first_range);
-            for action in second_actions.into_iter().rev() {
-                actions.insert(first_start, action);
-            }
             coroutine.send(ActionsUpdate::Update(actions));
         },
     );
@@ -850,12 +780,8 @@ fn SectionActions(actions: Memo<Vec<Action>>, disabled: bool) -> Element {
                     on_item_click: move |(action, index)| {
                         handle_edit_action_click(action, index);
                     },
-                    on_item_move: move |(index, condition, up)| {
-                        move_action((index, condition, up));
-                    },
-                    on_item_delete: move |index| {
-                        delete_action(index);
-                    },
+                    on_item_move: move_action,
+                    on_item_delete: delete_action,
                     condition_filter: ActionCondition::Any,
                     disabled,
                     actions: actions(),
@@ -869,12 +795,8 @@ fn SectionActions(actions: Memo<Vec<Action>>, disabled: bool) -> Element {
                     on_item_click: move |(action, index)| {
                         handle_edit_action_click(action, index);
                     },
-                    on_item_move: move |(index, condition, up)| {
-                        move_action((index, condition, up));
-                    },
-                    on_item_delete: move |index| {
-                        delete_action(index);
-                    },
+                    on_item_move: move_action,
+                    on_item_delete: delete_action,
                     condition_filter: ActionCondition::ErdaShowerOffCooldown,
                     disabled,
                     actions: actions(),
@@ -888,12 +810,8 @@ fn SectionActions(actions: Memo<Vec<Action>>, disabled: bool) -> Element {
                     on_item_click: move |(action, index)| {
                         handle_edit_action_click(action, index);
                     },
-                    on_item_move: move |(index, condition, up)| {
-                        move_action((index, condition, up));
-                    },
-                    on_item_delete: move |index| {
-                        delete_action(index);
-                    },
+                    on_item_move: move_action,
+                    on_item_delete: delete_action,
                     condition_filter: ActionCondition::EveryMillis(0),
                     disabled,
                     actions: actions(),
@@ -1725,18 +1643,17 @@ fn ActionKeyInput(
 fn ActionList(
     on_add_click: Callback,
     on_item_click: Callback<(Action, usize)>,
-    on_item_move: Callback<(usize, ActionCondition, bool)>,
+    on_item_move: Callback<(usize, ActionCondition, usize, usize, ActionCondition)>,
     on_item_delete: Callback<usize>,
     condition_filter: ActionCondition,
     disabled: bool,
-    actions: Vec<Action>,
+    actions: ReadSignal<Vec<Action>>,
 ) -> Element {
     #[component]
     fn Icons(
         condition_filter: ActionCondition,
         action: Action,
         index: usize,
-        on_item_move: Callback<(usize, ActionCondition, bool)>,
         on_item_delete: Callback<usize>,
     ) -> Element {
         const ICON_CONTAINER_CLASS: &str = "size-fit";
@@ -1753,22 +1670,6 @@ fn ActionList(
                     class: ICON_CONTAINER_CLASS,
                     onclick: move |e| {
                         e.stop_propagation();
-                        on_item_move((index, condition_filter, true));
-                    },
-                    UpArrowIcon { class: ICON_CLASS }
-                }
-                div {
-                    class: ICON_CONTAINER_CLASS,
-                    onclick: move |e| {
-                        e.stop_propagation();
-                        on_item_move((index, condition_filter, false));
-                    },
-                    DownArrowIcon { class: ICON_CLASS }
-                }
-                div {
-                    class: ICON_CONTAINER_CLASS,
-                    onclick: move |e| {
-                        e.stop_propagation();
                         on_item_delete(index);
                     },
                     XIcon { class: "{ICON_CLASS}" }
@@ -1777,18 +1678,54 @@ fn ActionList(
         }
     }
 
-    let filtered = filter_actions(actions, condition_filter);
+    let id = use_memo(move || condition_filter.to_string());
+    let filtered = use_memo(move || filter_actions(actions.cloned(), condition_filter));
+
+    let mut context = use_context::<ActionsContext>();
+
+    let to_global_from_index_condition =
+        move |index: usize| (filtered.get(index).unwrap().1, condition_filter);
+    let to_global_insert_index_condition = move |index: usize, list_id: &String| {
+        let condition = context.lists.get(list_id).unwrap().cloned();
+        let filtered = filter_actions(actions.cloned(), condition);
+        let index = match index {
+            0 => filtered.first().map(|first| first.1).unwrap_or(0),
+            i if i < filtered.len() => filtered.get(i).unwrap().1,
+            i if i == filtered.len() => filtered.last().map(|last| last.1 + 1).unwrap_or(0),
+            _ => unreachable!(),
+        };
+
+        (index, condition)
+    };
+
+    use_effect(move || {
+        context.lists.insert(id(), condition_filter);
+    });
+
+    use_drop(move || {
+        context.lists.remove(&id());
+    });
 
     rsx! {
-        div { class: "flex flex-col",
-            for (action , index) in filtered {
-                div {
+        List {
+            id: id(),
+            group: "actions",
+            class: "flex flex-col",
+            on_move: move |event: MoveEvent| {
+                let (from_index, from_condition) = to_global_from_index_condition(event.from);
+                let (to_index, to_condition) = to_global_insert_index_condition(
+                    event.to,
+                    &event.to_list_id,
+                );
+                on_item_move((from_index, from_condition, event.to, to_index, to_condition));
+            },
+
+            for (action , index) in filtered() {
+                ListItem {
                     class: "flex group flex-grow",
-                    onclick: move |e| {
-                        e.stop_propagation();
+                    on_click: move |_| {
                         on_item_click((action, index));
                     },
-
                     PopupTrigger { class: "flex-grow",
                         match action {
                             Action::Move(action) => rsx! {
@@ -1804,23 +1741,22 @@ fn ActionList(
                         condition_filter,
                         action,
                         index,
-                        on_item_move,
                         on_item_delete,
                     }
                 }
             }
+        }
 
-            PopupTrigger {
-                Button {
-                    style: ButtonStyle::Secondary,
-                    on_click: move |_| {
-                        on_add_click(());
-                    },
-                    disabled,
-                    class: "mt-2 w-full",
+        PopupTrigger {
+            Button {
+                style: ButtonStyle::Secondary,
+                on_click: move |_| {
+                    on_add_click(());
+                },
+                disabled,
+                class: "mt-2 w-full",
 
-                    "Add action"
-                }
+                "Add action"
             }
         }
     }

@@ -148,7 +148,24 @@ pub fn delete_character(character: &Character) -> Result<()> {
 }
 
 pub fn query_maps() -> Result<Vec<Map>> {
-    query_from_table(MAPS)
+    let mut maps = query_from_table(MAPS)?;
+
+    #[cfg(debug_assertions)]
+    if maps.is_empty() {
+        use std::collections::HashMap;
+
+        let actions = HashMap::from([("Test".to_string(), vec![])]);
+        let mut map = Map {
+            name: "Test".to_string(),
+            actions,
+            ..Default::default()
+        };
+
+        upsert_map(&mut map).unwrap();
+        maps.push(map);
+    }
+
+    Ok(maps)
 }
 
 pub fn upsert_map(map: &mut Map) -> Result<()> {

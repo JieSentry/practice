@@ -574,7 +574,7 @@ fn Canvas(
                 continue;
             };
             if matches!(error, EvalError::Finished) {
-                // probably: https://github.com/DioxusLabs/dioxus/issues/2979
+                // TODO: https://github.com/DioxusLabs/dioxus/issues/2979
                 canvas = document::eval(MINIMAP_JS);
             }
         }
