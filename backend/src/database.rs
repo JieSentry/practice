@@ -130,7 +130,20 @@ pub fn upsert_settings(settings: &mut Settings) -> Result<()> {
 }
 
 pub fn query_characters() -> Result<Vec<Character>> {
-    query_from_table(CHARACTERS)
+    let mut characters = query_from_table(CHARACTERS)?;
+
+    #[cfg(debug_assertions)]
+    if characters.is_empty() {
+        let mut character = Character {
+            name: "Test".to_string(),
+            ..Default::default()
+        };
+
+        upsert_character(&mut character).unwrap();
+        characters.push(character);
+    }
+
+    Ok(characters)
 }
 
 pub fn upsert_character(character: &mut Character) -> Result<()> {

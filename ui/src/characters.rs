@@ -19,6 +19,7 @@ use crate::{
         icons::XIcon,
         key::KeyInput,
         labeled::Labeled,
+        list::{List, ListItem, MoveEvent},
         named_select::NamedSelect,
         numbers::{MillisInput, PercentageInput, PrimitiveIntegerInput},
         popup::{PopupContent, PopupContext, PopupTrigger},
@@ -1048,6 +1049,7 @@ fn SectionFixedActions() -> Element {
         character.actions.push(action);
         save_character(character);
     });
+
     let edit_action = use_callback::<(ActionConfiguration, usize), _>(move |(action, index)| {
         let mut character = character.peek().clone();
         let current_action = character.actions.get_mut(index).unwrap();
@@ -1055,17 +1057,38 @@ fn SectionFixedActions() -> Element {
         *current_action = action;
         save_character(character);
     });
+
     let delete_action = use_callback(move |index| {
         let mut character = character.peek().clone();
 
         character.actions.remove(index);
         save_character(character);
     });
+
     let toggle_action = use_callback::<(bool, usize), _>(move |(enabled, index)| {
         let mut character = character.peek().clone();
         let action = character.actions.get_mut(index).unwrap();
 
         action.enabled = enabled;
+        save_character(character);
+    });
+
+    let move_action = use_callback::<(usize, usize), _>(move |(from_index, to_index)| {
+        let mut character = character.peek().clone();
+        let action = character.actions.remove(from_index);
+
+        let insert_index = if from_index >= to_index {
+            to_index
+        } else {
+            to_index - 1
+        };
+        let insert_index = insert_index.min(character.actions.len());
+
+        let action_ref = character.actions.insert_mut(insert_index, action);
+        if to_index == 0 {
+            action_ref.condition = ActionConfigurationCondition::default();
+        }
+
         save_character(character);
     });
 
@@ -1077,6 +1100,7 @@ fn SectionFixedActions() -> Element {
                 on_item_edit: edit_action,
                 on_item_delete: delete_action,
                 on_item_toggle: toggle_action,
+                on_item_move: move_action,
                 actions: character().actions,
             }
         }
@@ -1402,6 +1426,7 @@ fn ActionConfigurationList(
     on_item_edit: Callback<(ActionConfiguration, usize)>,
     on_item_delete: Callback<usize>,
     on_item_toggle: Callback<(bool, usize)>,
+    on_item_move: Callback<(usize, usize)>,
     actions: Vec<ActionConfiguration>,
 ) -> Element {
     #[component]
@@ -1446,9 +1471,13 @@ fn ActionConfigurationList(
                 popup_open.set(open);
             },
 
-            div { class: "flex flex-col",
+            List {
+                class: "flex flex-col",
+                on_move: move |event: MoveEvent| {
+                    on_item_move((event.from, event.to));
+                },
                 for (index , action) in actions.clone().into_iter().enumerate() {
-                    div { class: "flex items-end",
+                    ListItem { class: "flex items-end",
                         div {
                             class: "flex group flex-grow",
                             onclick: move |_| {
