@@ -16,6 +16,7 @@ pub mod file;
 pub mod icons;
 pub mod key;
 pub mod labeled;
+pub mod list;
 pub mod named_select;
 pub mod numbers;
 pub mod popup;
@@ -32,6 +33,18 @@ fn use_unique_id() -> Memo<String> {
         let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
         let id_str = format!("id-{id}");
         id_str
+    })
+}
+
+fn use_user_id_or_unique(user_id: ReadSignal<Option<String>>) -> Memo<String> {
+    let unique_id = use_unique_id();
+
+    use_memo(move || {
+        if let Some(id) = user_id() {
+            id
+        } else {
+            unique_id()
+        }
     })
 }
 
@@ -107,15 +120,16 @@ where
         spawn(async move {
             loop {
                 let result = eval.recv::<String>().await;
-                if let Err(EvalError::Finished) = result {
-                    eval = document::eval(script.as_str());
-                    continue;
-                }
-
-                if let Ok(str) = result
-                    && let Ok(parsed) = str.parse::<T>()
-                {
-                    on_value(parsed);
+                match result {
+                    Ok(str) => {
+                        if let Ok(parsed) = str.parse::<T>() {
+                            on_value(parsed);
+                        }
+                    }
+                    Err(EvalError::Finished) => {
+                        eval = document::eval(script.as_str());
+                    }
+                    Err(_) => break,
                 }
             }
         });
