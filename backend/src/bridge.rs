@@ -24,14 +24,17 @@ use serenity::futures::StreamExt;
 use strum::Display;
 
 use crate::{
+    grpc::{
+        InputService,
+        input::{
+            Coordinate as RpcCoordinate, Key as RpcKeyKind, KeyState as RpcKeyState,
+            MouseAction as RpcMouseKind,
+        },
+    },
     models::{
         CaptureMode, InputMethod as DatabaseInputMethod, KeyBinding, LinkKeyBinding, Settings,
     },
     rng::Rng,
-    rpc::{
-        Coordinate as RpcCoordinate, InputService, Key as RpcKeyKind, KeyState as RpcKeyState,
-        MouseAction as RpcMouseKind,
-    },
     run::MS_PER_TICK_F32,
 };
 

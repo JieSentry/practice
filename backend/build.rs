@@ -1,133 +1,153 @@
-#[cfg(feature = "gpu")]
 use std::process::Command;
 use std::{
     env, fs,
     path::{Path, PathBuf},
 };
 
+macro_rules! p {
+    ($($tokens: tt)*) => {
+        println!("cargo::warning={}", format!($($tokens)*))
+    }
+}
+
 fn main() {
-    let dir = Path::new(&env!("CARGO_MANIFEST_DIR").to_string()).join("resources");
-    let popup_yes = dir.join("popup_yes_ideal_ratio.png");
-    let popup_ok_old = dir.join("popup_ok_old_ideal_ratio.png");
-    let popup_ok_new = dir.join("popup_ok_new_ideal_ratio.png");
-    let popup_confirm = dir.join("popup_confirm_ideal_ratio.png");
-    let popup_cancel_old = dir.join("popup_cancel_old_ideal_ratio.png");
-    let popup_cancel_new = dir.join("popup_cancel_new_ideal_ratio.png");
-    let popup_end_chat = dir.join("popup_end_chat_ideal_ratio.png");
-    let popup_next = dir.join("popup_next_ideal_ratio.png");
+    let dir = env!("CARGO_MANIFEST_DIR").to_string();
+    let dir = Path::new(&dir);
+    let target_dir = dir.parent().unwrap().join("target");
+    let resources_dir = dir.join("resources");
 
-    let elite_boss_bar_1 = dir.join("elite_boss_bar_1_ideal_ratio.png");
-    let elite_boss_bar_2 = dir.join("elite_boss_bar_2_ideal_ratio.png");
+    let popup_yes = resources_dir.join("popup_yes_ideal_ratio.png");
+    let popup_ok_old = resources_dir.join("popup_ok_old_ideal_ratio.png");
+    let popup_ok_new = resources_dir.join("popup_ok_new_ideal_ratio.png");
+    let popup_confirm = resources_dir.join("popup_confirm_ideal_ratio.png");
+    let popup_cancel_old = resources_dir.join("popup_cancel_old_ideal_ratio.png");
+    let popup_cancel_new = resources_dir.join("popup_cancel_new_ideal_ratio.png");
+    let popup_end_chat = resources_dir.join("popup_end_chat_ideal_ratio.png");
+    let popup_next = resources_dir.join("popup_next_ideal_ratio.png");
 
-    let player = dir.join("player_ideal_ratio.png");
-    let player_left_half = dir.join("player_left_half_ideal_ratio.png");
-    let player_right_half = dir.join("player_right_half_ideal_ratio.png");
-    let player_top_half = dir.join("player_top_half_ideal_ratio.png");
-    let player_bottom_half = dir.join("player_bottom_half_ideal_ratio.png");
-    let player_stranger = dir.join("player_stranger_ideal_ratio.png");
-    let player_guildie = dir.join("player_guildie_ideal_ratio.png");
-    let player_friend = dir.join("player_friend_ideal_ratio.png");
+    let elite_boss_bar_1 = resources_dir.join("elite_boss_bar_1_ideal_ratio.png");
+    let elite_boss_bar_2 = resources_dir.join("elite_boss_bar_2_ideal_ratio.png");
 
-    let esc_menu = dir.join("esc_menu_ideal_ratio.png");
-    let tomb = dir.join("tomb_ideal_ratio.png");
-    let cash_shop = dir.join("cash_shop.png");
-    let erda_shower = dir.join("erda_shower_ideal_ratio.png");
-    let portal = dir.join("portal_ideal_ratio.png");
-    let change_channel_menu = dir.join("change_channel_menu_ideal_ratio.png");
-    let chat_menu = dir.join("chat_menu_ideal_ratio.png");
-    let admin = dir.join("admin_ideal_ratio.png");
-    let timer = dir.join("timer_ideal_ratio.png");
-    let lie_detector = dir.join("lie_detector_ideal_ratio.png");
-    let lie_detector_prepare = dir.join("lie_detector_prepare_ideal_ratio.png");
+    let player = resources_dir.join("player_ideal_ratio.png");
+    let player_left_half = resources_dir.join("player_left_half_ideal_ratio.png");
+    let player_right_half = resources_dir.join("player_right_half_ideal_ratio.png");
+    let player_top_half = resources_dir.join("player_top_half_ideal_ratio.png");
+    let player_bottom_half = resources_dir.join("player_bottom_half_ideal_ratio.png");
+    let player_stranger = resources_dir.join("player_stranger_ideal_ratio.png");
+    let player_guildie = resources_dir.join("player_guildie_ideal_ratio.png");
+    let player_friend = resources_dir.join("player_friend_ideal_ratio.png");
 
-    let rune = dir.join("rune_ideal_ratio.png");
-    let rune_mask = dir.join("rune_mask_ideal_ratio.png");
-    let rune_buff = dir.join("rune_buff_ideal_ratio.png");
-    let spin_test = dir.join("spin_test");
+    let esc_menu = resources_dir.join("esc_menu_ideal_ratio.png");
+    let tomb = resources_dir.join("tomb_ideal_ratio.png");
+    let cash_shop = resources_dir.join("cash_shop.png");
+    let erda_shower = resources_dir.join("erda_shower_ideal_ratio.png");
+    let portal = resources_dir.join("portal_ideal_ratio.png");
+    let change_channel_menu = resources_dir.join("change_channel_menu_ideal_ratio.png");
+    let chat_menu = resources_dir.join("chat_menu_ideal_ratio.png");
+    let admin = resources_dir.join("admin_ideal_ratio.png");
+    let timer = resources_dir.join("timer_ideal_ratio.png");
+    let lie_detector = resources_dir.join("lie_detector_ideal_ratio.png");
+    let lie_detector_prepare = resources_dir.join("lie_detector_prepare_ideal_ratio.png");
 
-    let sayram_elixir_buff = dir.join("sayram_elixir_buff_ideal_ratio.png");
-    let aurelia_elixir_buff = dir.join("aurelia_elixir_buff_ideal_ratio.png");
+    let rune = resources_dir.join("rune_ideal_ratio.png");
+    let rune_mask = resources_dir.join("rune_mask_ideal_ratio.png");
+    let rune_buff = resources_dir.join("rune_buff_ideal_ratio.png");
+    let spin_test = resources_dir.join("spin_test");
+    let transparent_shape_test = resources_dir.join("transparent_shape_test.mp4");
 
-    let exp_coupon_x2_buff = dir.join("exp_coupon_x2_buff_ideal_ratio.png");
-    let exp_coupon_x3_buff = dir.join("exp_coupon_x3_buff_ideal_ratio.png");
-    let exp_coupon_x4_buff = dir.join("exp_coupon_x4_buff_ideal_ratio.png");
-    let bonus_exp_coupon_buff = dir.join("bonus_exp_coupon_buff_ideal_ratio.png");
+    let sayram_elixir_buff = resources_dir.join("sayram_elixir_buff_ideal_ratio.png");
+    let aurelia_elixir_buff = resources_dir.join("aurelia_elixir_buff_ideal_ratio.png");
 
-    let legion_wealth_buff = dir.join("legion_wealth_buff_ideal_ratio.png");
-    let legion_wealth_buff_2 = dir.join("legion_wealth_buff_2_ideal_ratio.png");
-    let legion_luck_buff = dir.join("legion_luck_buff_ideal_ratio.png");
-    let legion_luck_buff_mask = dir.join("legion_luck_buff_mask_ideal_ratio.png");
+    let exp_coupon_x2_buff = resources_dir.join("exp_coupon_x2_buff_ideal_ratio.png");
+    let exp_coupon_x3_buff = resources_dir.join("exp_coupon_x3_buff_ideal_ratio.png");
+    let exp_coupon_x4_buff = resources_dir.join("exp_coupon_x4_buff_ideal_ratio.png");
+    let bonus_exp_coupon_buff = resources_dir.join("bonus_exp_coupon_buff_ideal_ratio.png");
 
-    let wealth_acquisition_potion_buff = dir.join("wealth_acquisition_potion_ideal_ratio.png");
-    let wealth_exp_potion_mask = dir.join("wealth_exp_potion_mask_ideal_ratio.png");
-    let exp_accumulation_potion_buff = dir.join("exp_accumulation_potion_ideal_ratio.png");
+    let legion_wealth_buff = resources_dir.join("legion_wealth_buff_ideal_ratio.png");
+    let legion_wealth_buff_2 = resources_dir.join("legion_wealth_buff_2_ideal_ratio.png");
+    let legion_luck_buff = resources_dir.join("legion_luck_buff_ideal_ratio.png");
+    let legion_luck_buff_mask = resources_dir.join("legion_luck_buff_mask_ideal_ratio.png");
+
+    let wealth_acquisition_potion_buff =
+        resources_dir.join("wealth_acquisition_potion_ideal_ratio.png");
+    let wealth_exp_potion_mask = resources_dir.join("wealth_exp_potion_mask_ideal_ratio.png");
+    let exp_accumulation_potion_buff =
+        resources_dir.join("exp_accumulation_potion_ideal_ratio.png");
 
     let small_wealth_acquisition_potion_buff =
-        dir.join("small_wealth_acquisition_potion_ideal_ratio.png");
-    let small_wealth_exp_potion_mask = dir.join("small_wealth_exp_potion_mask_ideal_ratio.png");
+        resources_dir.join("small_wealth_acquisition_potion_ideal_ratio.png");
+    let small_wealth_exp_potion_mask =
+        resources_dir.join("small_wealth_exp_potion_mask_ideal_ratio.png");
     let small_exp_accumulation_potion_buff =
-        dir.join("small_exp_accumulation_potion_ideal_ratio.png");
+        resources_dir.join("small_exp_accumulation_potion_ideal_ratio.png");
 
-    let for_the_guild_buff = dir.join("for_the_guild_buff_ideal_ratio.png");
-    let hard_hitter_buff = dir.join("hard_hitter_buff_ideal_ratio.png");
+    let for_the_guild_buff = resources_dir.join("for_the_guild_buff_ideal_ratio.png");
+    let hard_hitter_buff = resources_dir.join("hard_hitter_buff_ideal_ratio.png");
 
-    let extreme_red_potion_buff = dir.join("extreme_red_potion_ideal_ratio.png");
-    let extreme_blue_potion_buff = dir.join("extreme_blue_potion_ideal_ratio.png");
-    let extreme_green_potion_buff = dir.join("extreme_green_potion_ideal_ratio.png");
-    let extreme_gold_potion_buff = dir.join("extreme_gold_potion_ideal_ratio.png");
+    let extreme_red_potion_buff = resources_dir.join("extreme_red_potion_ideal_ratio.png");
+    let extreme_blue_potion_buff = resources_dir.join("extreme_blue_potion_ideal_ratio.png");
+    let extreme_green_potion_buff = resources_dir.join("extreme_green_potion_ideal_ratio.png");
+    let extreme_gold_potion_buff = resources_dir.join("extreme_gold_potion_ideal_ratio.png");
 
-    let hexa_booster = dir.join("hexa_booster_ideal_ratio.png");
-    let hexa_booster_number = dir.join("hexa_booster_number_ideal_ratio.png");
-    let hexa_booster_number_mask = dir.join("hexa_booster_number_mask_ideal_ratio.png");
+    let hexa_booster = resources_dir.join("hexa_booster_ideal_ratio.png");
+    let hexa_booster_number = resources_dir.join("hexa_booster_number_ideal_ratio.png");
+    let hexa_booster_number_mask = resources_dir.join("hexa_booster_number_mask_ideal_ratio.png");
 
-    let hexa_menu = dir.join("hexa_menu_ideal_ratio.png");
-    let hexa_quick_menu = dir.join("hexa_quick_menu_ideal_ratio.png");
-    let hexa_button_erda_conversion = dir.join("hexa_button_erda_conversion_ideal_ratio.png");
-    let hexa_button_hexa_booster = dir.join("hexa_button_hexa_booster_ideal_ratio.png");
-    let hexa_button_max = dir.join("hexa_button_max_ideal_ratio.png");
-    let hexa_button_convert = dir.join("hexa_button_convert_ideal_ratio.png");
-    let hexa_sol_erda = dir.join("hexa_sol_erda_ideal_ratio.png");
-    let hexa_sol_erda_full = dir.join("hexa_sol_erda_full_ideal_ratio.png");
-    let hexa_sol_erda_full_mask = dir.join("hexa_sol_erda_full_mask_ideal_ratio.png");
-    let hexa_sol_erda_empty = dir.join("hexa_sol_erda_empty_ideal_ratio.png");
-    let hexa_sol_erda_empty_mask = dir.join("hexa_sol_erda_empty_mask_ideal_ratio.png");
+    let hexa_menu = resources_dir.join("hexa_menu_ideal_ratio.png");
+    let hexa_quick_menu = resources_dir.join("hexa_quick_menu_ideal_ratio.png");
+    let hexa_button_erda_conversion =
+        resources_dir.join("hexa_button_erda_conversion_ideal_ratio.png");
+    let hexa_button_hexa_booster = resources_dir.join("hexa_button_hexa_booster_ideal_ratio.png");
+    let hexa_button_max = resources_dir.join("hexa_button_max_ideal_ratio.png");
+    let hexa_button_convert = resources_dir.join("hexa_button_convert_ideal_ratio.png");
+    let hexa_sol_erda = resources_dir.join("hexa_sol_erda_ideal_ratio.png");
+    let hexa_sol_erda_full = resources_dir.join("hexa_sol_erda_full_ideal_ratio.png");
+    let hexa_sol_erda_full_mask = resources_dir.join("hexa_sol_erda_full_mask_ideal_ratio.png");
+    let hexa_sol_erda_empty = resources_dir.join("hexa_sol_erda_empty_ideal_ratio.png");
+    let hexa_sol_erda_empty_mask = resources_dir.join("hexa_sol_erda_empty_mask_ideal_ratio.png");
 
-    let hp_bar_anchor = dir.join("hp_bar_anchor_ideal_ratio.png");
-    let hp_separator = dir.join("hp_separator_ideal_ratio.png");
-    let hp_shield = dir.join("hp_shield_ideal_ratio.png");
+    let hp_bar_anchor = resources_dir.join("hp_bar_anchor_ideal_ratio.png");
+    let hp_separator = resources_dir.join("hp_separator_ideal_ratio.png");
+    let hp_shield = resources_dir.join("hp_shield_ideal_ratio.png");
 
-    let familiar_button_save = dir.join("familiar_button_save_ideal_ratio.png");
-    let familiar_button_setup = dir.join("familiar_button_setup_ideal_ratio.png");
-    let familiar_button_level = dir.join("familiar_button_level_ideal_ratio.png");
-    let familiar_slot_free = dir.join("familiar_slot_free_ideal_ratio.png");
-    let familiar_slot_occupied = dir.join("familiar_slot_occupied_ideal_ratio.png");
-    let familiar_slot_occupied_mask = dir.join("familiar_slot_occupied_mask_ideal_ratio.png");
-    let familiar_level_5 = dir.join("familiar_level_5_ideal_ratio.png");
-    let familiar_level_5_mask = dir.join("familiar_level_5_mask_ideal_ratio.png");
-    let familiar_scrollbar = dir.join("familiar_scrollbar_ideal_ratio.png");
-    let familiar_card_rare = dir.join("familiar_card_rare_ideal_ratio.png");
-    let familiar_card_epic = dir.join("familiar_card_epic_ideal_ratio.png");
-    let familiar_card_mask = dir.join("familiar_card_mask_ideal_ratio.png");
-    let familiar_buff = dir.join("familiar_buff_ideal_ratio.png");
-    let familiar_menu = dir.join("familiar_menu_ideal_ratio.png");
-    let familiar_essence_deplete = dir.join("familiar_essence_deplete_ideal_ratio.png");
+    let familiar_button_save = resources_dir.join("familiar_button_save_ideal_ratio.png");
+    let familiar_button_setup = resources_dir.join("familiar_button_setup_ideal_ratio.png");
+    let familiar_button_level = resources_dir.join("familiar_button_level_ideal_ratio.png");
+    let familiar_slot_free = resources_dir.join("familiar_slot_free_ideal_ratio.png");
+    let familiar_slot_occupied = resources_dir.join("familiar_slot_occupied_ideal_ratio.png");
+    let familiar_slot_occupied_mask =
+        resources_dir.join("familiar_slot_occupied_mask_ideal_ratio.png");
+    let familiar_level_5 = resources_dir.join("familiar_level_5_ideal_ratio.png");
+    let familiar_level_5_mask = resources_dir.join("familiar_level_5_mask_ideal_ratio.png");
+    let familiar_scrollbar = resources_dir.join("familiar_scrollbar_ideal_ratio.png");
+    let familiar_card_rare = resources_dir.join("familiar_card_rare_ideal_ratio.png");
+    let familiar_card_epic = resources_dir.join("familiar_card_epic_ideal_ratio.png");
+    let familiar_card_mask = resources_dir.join("familiar_card_mask_ideal_ratio.png");
+    let familiar_buff = resources_dir.join("familiar_buff_ideal_ratio.png");
+    let familiar_menu = resources_dir.join("familiar_menu_ideal_ratio.png");
+    let familiar_essence_deplete = resources_dir.join("familiar_essence_deplete_ideal_ratio.png");
 
-    let onnx_runtime = dir.join("onnxruntime/onnxruntime.dll");
-    #[cfg(feature = "gpu")]
-    let onnx_runtime_cuda = dir.join("onnxruntime/onnxruntime_providers_cuda.dll");
-    #[cfg(feature = "gpu")]
-    let onnx_runtime_shared = dir.join("onnxruntime/onnxruntime_providers_shared.dll");
+    let onnx_runtime = resources_dir.join("onnxruntime/onnxruntime.dll");
+    let onnx_runtime_cuda = resources_dir.join("onnxruntime/onnxruntime_providers_cuda.dll");
+    let onnx_runtime_shared = resources_dir.join("onnxruntime/onnxruntime_providers_shared.dll");
 
-    let mob_model = dir.join("mob_nms.onnx");
-    let rune_model = dir.join("rune_nms.onnx");
-    let rune_spin_model = dir.join("rune_spin_nms.onnx");
-    let minimap_model = dir.join("minimap_nms.onnx");
-    let transparent_shape_model = dir.join("transparent_shape_nms.onnx");
-    let text_detection_model = dir.join("text_detection.onnx");
-    let text_recognition_model = dir.join("text_recognition.onnx");
-    let text_alphabet_txt = dir.join("alphabet_94.txt");
+    let mob_model = resources_dir.join("mob_nms.onnx");
+    let rune_model = resources_dir.join("rune_nms.onnx");
+    let rune_spin_model = resources_dir.join("rune_spin_nms.onnx");
+    let minimap_model = resources_dir.join("minimap_nms.onnx");
+    let transparent_shape_model = resources_dir.join("transparent_shape_nms.onnx");
+    let text_detection_model = resources_dir.join("text_detection.onnx");
+    let text_recognition_model = resources_dir.join("text_recognition.onnx");
+    let text_alphabet_txt = resources_dir.join("alphabet_94.txt");
 
-    tonic_build::compile_protos(dir.parent().unwrap().join("proto").join("input.proto")).unwrap();
+    let proto_dir = dir.join("proto");
+    let proto_file = proto_dir.join("input.proto");
+    let out_dir = dir.join("src").join("grpc");
+    tonic_build::configure()
+        .out_dir(out_dir)
+        .compile_protos(&[proto_file], &[proto_dir])
+        .unwrap();
+
     println!(
         "cargo:rustc-env=POPUP_YES_TEMPLATE={}",
         popup_yes.to_str().unwrap()
@@ -251,6 +271,10 @@ fn main() {
     println!(
         "cargo:rustc-env=SPIN_TEST_DIR={}",
         spin_test.to_str().unwrap()
+    );
+    println!(
+        "cargo:rustc-env=TRANSPARENT_SHAPE_TEST_VIDEO={}",
+        transparent_shape_test.to_str().unwrap()
     );
 
     // Collector's buffs
@@ -488,75 +512,88 @@ fn main() {
     );
 
     // onnxruntime dependencies
-    let target_dir = Path::new(&env::var("CARGO_MANIFEST_DIR").unwrap())
-        .parent()
-        .unwrap()
-        .join("target");
+    let profile = if let Ok(profile) = env::var("PROFILE") {
+        profile.leak()
+    } else if cfg!(debug_assertions) {
+        "debug"
+    } else {
+        "release"
+    };
+    let target = if let Ok(target) = env::var("TARGET") {
+        target.leak()
+    } else if cfg!(all(
+        target_arch = "x86_64",
+        target_os = "windows",
+        target_env = "msvc"
+    )) {
+        "x86_64-pc-windows-msvc"
+    } else {
+        panic!("unsupported target")
+    };
     let dx_exe_dir = target_dir
         .join("dx")
         .join("ui")
-        .join(env::var("PROFILE").unwrap())
+        .join(profile)
         .join("windows")
         .join("app");
-    let normal_exe_dir = target_dir
-        .join(env::var("TARGET").unwrap())
-        .join(env::var("PROFILE").unwrap());
+    let normal_exe_dir = target_dir.join(target).join(profile);
     let _ = fs::create_dir_all(&normal_exe_dir);
     let _ = fs::create_dir_all(&dx_exe_dir);
 
+    p!("dioxus directory: {}", dx_exe_dir.to_str().unwrap());
+    p!("normal directory: {}", normal_exe_dir.to_str().unwrap());
+
     copy_file_to_dir(&onnx_runtime, &dx_exe_dir);
     copy_file_to_dir(&onnx_runtime, &normal_exe_dir);
+    copy_file_to_dir(&onnx_runtime_shared, &dx_exe_dir);
+    copy_file_to_dir(&onnx_runtime_shared, &normal_exe_dir);
 
-    #[cfg(feature = "gpu")]
-    {
-        copy_file_to_dir(&onnx_runtime_shared, &dx_exe_dir);
-        copy_file_to_dir(&onnx_runtime_shared, &normal_exe_dir);
+    let tools_dir = dir.parent().unwrap().join("tools");
+    let join_script = tools_dir.join("join.ps1").to_str().unwrap().to_string();
 
-        let tools_dir = env::current_dir().unwrap().parent().unwrap().join("tools");
-        let join_script = tools_dir.join("join.ps1").to_str().unwrap().to_string();
-
-        let _ = Command::new("powershell")
-            .arg("-Command")
-            .arg(format!(
-                "& {{ . {}; join {} {}}}",
-                &join_script,
-                onnx_runtime_cuda.to_str().unwrap(),
-                dx_exe_dir
-                    .join(onnx_runtime_cuda.file_name().unwrap())
-                    .to_str()
-                    .unwrap()
-            ))
-            .spawn()
-            .expect("failed to spawn powershell command");
-        println!(
-            "cargo:rerun-if-changed={}",
+    let _ = Command::new("powershell")
+        .arg("-Command")
+        .arg(format!(
+            "& {{ . {}; join {} {}}}",
+            &join_script,
+            onnx_runtime_cuda.to_str().unwrap(),
             dx_exe_dir
                 .join(onnx_runtime_cuda.file_name().unwrap())
                 .to_str()
                 .unwrap()
-        );
+        ))
+        .spawn()
+        .expect("failed to spawn powershell command")
+        .wait();
+    println!(
+        "cargo:rerun-if-changed={}",
+        dx_exe_dir
+            .join(onnx_runtime_cuda.file_name().unwrap())
+            .to_str()
+            .unwrap()
+    );
 
-        let _ = Command::new("powershell")
-            .arg("-Command")
-            .arg(format!(
-                "& {{ . {}; join {} {}}}",
-                &join_script,
-                onnx_runtime_cuda.to_str().unwrap(),
-                normal_exe_dir
-                    .join(onnx_runtime_cuda.file_name().unwrap())
-                    .to_str()
-                    .unwrap()
-            ))
-            .spawn()
-            .expect("failed to spawn powershell command");
-        println!(
-            "cargo:rerun-if-changed={}",
+    let _ = Command::new("powershell")
+        .arg("-Command")
+        .arg(format!(
+            "& {{ . {}; join {} {}}}",
+            &join_script,
+            onnx_runtime_cuda.to_str().unwrap(),
             normal_exe_dir
                 .join(onnx_runtime_cuda.file_name().unwrap())
                 .to_str()
                 .unwrap()
-        );
-    }
+        ))
+        .spawn()
+        .expect("failed to spawn powershell command")
+        .wait();
+    println!(
+        "cargo:rerun-if-changed={}",
+        normal_exe_dir
+            .join(onnx_runtime_cuda.file_name().unwrap())
+            .to_str()
+            .unwrap()
+    );
 
     // Detection models
     println!("cargo:rustc-env=MOB_MODEL={}", mob_model.to_str().unwrap());
@@ -593,6 +630,6 @@ fn main() {
 fn copy_file_to_dir(file: &PathBuf, dir: &Path) {
     let destination = dir.join(file.file_name().unwrap());
     let destination_str = destination.to_str().unwrap().to_string();
-    fs::copy(file, destination).unwrap();
+    let _ = fs::copy(file, destination);
     println!("cargo:rerun-if-changed={}", destination_str);
 }

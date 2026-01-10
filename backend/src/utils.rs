@@ -19,8 +19,8 @@ static DATASET_DIR: LazyLock<PathBuf> = LazyLock::new(|| {
 });
 
 #[cfg(debug_assertions)]
-static DATASET_MINIMAP_DIR: LazyLock<PathBuf> = LazyLock::new(|| {
-    let dir = DATASET_DIR.join("minimap");
+static DATASET_RECORDINGS_DIR: LazyLock<PathBuf> = LazyLock::new(|| {
+    let dir = DATASET_DIR.join("recordings");
     fs::create_dir_all(dir.clone()).unwrap();
     dir
 });
@@ -36,17 +36,17 @@ static DATASET_RUNE_DIR: LazyLock<PathBuf> = LazyLock::new(|| {
 pub enum DatasetDir {
     Root,
     #[cfg(debug_assertions)]
-    Minimap,
+    Recordings,
     #[cfg(debug_assertions)]
     Rune,
 }
 
 impl DatasetDir {
-    fn to_folder(&self) -> PathBuf {
+    pub fn to_folder(&self) -> PathBuf {
         match self {
             DatasetDir::Root => DATASET_DIR.clone(),
             #[cfg(debug_assertions)]
-            DatasetDir::Minimap => DATASET_MINIMAP_DIR.clone(),
+            DatasetDir::Recordings => DATASET_RECORDINGS_DIR.clone(),
             #[cfg(debug_assertions)]
             DatasetDir::Rune => DATASET_RUNE_DIR.clone(),
         }

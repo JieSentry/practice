@@ -33,6 +33,7 @@ mod database;
 mod debug;
 mod detect;
 mod ecs;
+mod grpc;
 mod mat;
 mod minimap;
 mod models;
@@ -43,10 +44,10 @@ mod pathing;
 mod player;
 mod rng;
 mod rotator;
-mod rpc;
 mod run;
 mod services;
 mod skill;
+mod solvers;
 mod task;
 mod tracker;
 mod utils;
@@ -119,13 +120,11 @@ enum Request {
     #[cfg(debug_assertions)]
     AutoSaveRune(bool),
     #[cfg(debug_assertions)]
-    InferRune,
+    RecordVideo(bool),
     #[cfg(debug_assertions)]
-    InferMinimap,
+    SandboxTestSpinRune,
     #[cfg(debug_assertions)]
-    RecordImages(bool),
-    #[cfg(debug_assertions)]
-    TestSpinRune,
+    SandboxTestTransparentShape,
 }
 
 /// Represents response to UI [`Request`].
@@ -155,13 +154,11 @@ enum Response {
     #[cfg(debug_assertions)]
     AutoSaveRune,
     #[cfg(debug_assertions)]
-    InferRune,
+    RecordVideo,
     #[cfg(debug_assertions)]
-    InferMinimap,
+    SandboxTestSpinRune,
     #[cfg(debug_assertions)]
-    RecordImages,
-    #[cfg(debug_assertions)]
-    TestSpinRune,
+    SandboxTestTransparentShape,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -449,23 +446,18 @@ pub async fn auto_save_rune(auto_save: bool) {
 }
 
 #[cfg(debug_assertions)]
-pub async fn infer_rune() {
-    send_request!(InferRune)
+pub async fn record_video(start: bool) {
+    send_request!(RecordVideo(start))
 }
 
 #[cfg(debug_assertions)]
-pub async fn infer_minimap() {
-    send_request!(InferMinimap)
+pub async fn sandbox_test_spin_rune() {
+    send_request!(SandboxTestSpinRune)
 }
 
 #[cfg(debug_assertions)]
-pub async fn record_images(start: bool) {
-    send_request!(RecordImages(start))
-}
-
-#[cfg(debug_assertions)]
-pub async fn test_spin_rune() {
-    send_request!(TestSpinRune)
+pub async fn sandbox_test_transparent_shape() {
+    send_request!(SandboxTestTransparentShape)
 }
 
 async fn recv_request() -> Option<PendingRequest> {

@@ -130,10 +130,18 @@ pub fn upsert_settings(settings: &mut Settings) -> Result<()> {
 }
 
 pub fn query_characters() -> Result<Vec<Character>> {
-    let mut characters = query_from_table(CHARACTERS)?;
+    #[cfg(not(debug_assertions))]
+    {
+        query_from_table(CHARACTERS)
+    }
 
     #[cfg(debug_assertions)]
-    if characters.is_empty() {
+    {
+        let mut characters = query_from_table(CHARACTERS)?;
+        if !characters.is_empty() {
+            return Ok(characters);
+        }
+
         let mut character = Character {
             name: "Test".to_string(),
             ..Default::default()
@@ -141,9 +149,9 @@ pub fn query_characters() -> Result<Vec<Character>> {
 
         upsert_character(&mut character).unwrap();
         characters.push(character);
-    }
 
-    Ok(characters)
+        Ok(characters)
+    }
 }
 
 pub fn upsert_character(character: &mut Character) -> Result<()> {
@@ -161,11 +169,19 @@ pub fn delete_character(character: &Character) -> Result<()> {
 }
 
 pub fn query_maps() -> Result<Vec<Map>> {
-    let mut maps = query_from_table(MAPS)?;
+    #[cfg(not(debug_assertions))]
+    {
+        query_from_table(MAPS)
+    }
 
     #[cfg(debug_assertions)]
-    if maps.is_empty() {
+    {
         use std::collections::HashMap;
+
+        let mut maps = query_from_table(MAPS)?;
+        if !maps.is_empty() {
+            return Ok(maps);
+        }
 
         let actions = HashMap::from([("Test".to_string(), vec![])]);
         let mut map = Map {
@@ -176,9 +192,9 @@ pub fn query_maps() -> Result<Vec<Map>> {
 
         upsert_map(&mut map).unwrap();
         maps.push(map);
-    }
 
-    Ok(maps)
+        Ok(maps)
+    }
 }
 
 pub fn upsert_map(map: &mut Map) -> Result<()> {
