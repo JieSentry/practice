@@ -47,6 +47,7 @@ mod rotator;
 mod run;
 mod services;
 mod skill;
+mod solvers;
 mod task;
 mod tracker;
 mod utils;

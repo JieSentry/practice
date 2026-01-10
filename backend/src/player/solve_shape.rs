@@ -1,17 +1,15 @@
-use std::ops::Div;
-
 use log::debug;
-use opencv::core::{Point, Point_, Point2d, Rect};
+use opencv::core::{Point, Rect};
 
 use crate::{
-    bridge::MouseKind,
     ecs::{Resources, transition, transition_if, try_ok_transition},
     player::{
         Player, PlayerAction, PlayerContext, PlayerEntity, next_action,
         timeout::{Lifecycle, Timeout, next_timeout_lifecycle},
         transition_from_action,
     },
-    tracker::{ByteTracker, Detection, STrack},
+    solvers::TransparentShapeSolver,
+    tracker::ByteTracker,
 };
 
 /// Representing the current state of transparent shape (e.g. lie detector) solving.
@@ -26,13 +24,8 @@ pub enum State {
 #[derive(Clone, Debug, Default)]
 pub struct SolvingShape {
     state: State,
-    lie_detector_region: Option<Rect>,
-    current_track_id: Option<u64>,
-    candidate_track_id: Option<u64>,
-    candidate_track_count: u32,
-    last_cursor: Option<Point>,
-    last_velocity: Option<Point2d>,
-    bg_direction: Point2d,
+    region: Option<Rect>,
+    solver: TransparentShapeSolver,
 }
 
 /// Updates the [`Player::SolvingShape`] contextual state.
@@ -100,7 +93,7 @@ fn update_waiting(
         let br = title.br() + Point::new(660, 530);
         let region = Rect::from_points(tl, br);
         player_context.reset_shape_tracker();
-        solving_shape.lie_detector_region = Some(region);
+        solving_shape.region = Some(region);
         debug!(target: "player", "lie detector transparent shape region: {region:?}");
     });
 }
@@ -128,209 +121,10 @@ fn update_solving(
         Lifecycle::Ended => transition!(solving_shape, State::Completed),
         Lifecycle::Started(timeout) | Lifecycle::Updated(timeout) => {
             transition!(solving_shape, State::Solving(timeout), {
-                perform_solving(resources, tracker, solving_shape);
+                solving_shape
+                    .solver
+                    .solve(resources, tracker, solving_shape.region.expect("set"));
             })
         }
     }
-}
-
-fn perform_solving(
-    resources: &Resources,
-    tracker: &mut ByteTracker,
-    solving_shape: &mut SolvingShape,
-) {
-    let region = solving_shape.lie_detector_region.expect("has region");
-    let shapes = resources.detector().detect_transparent_shapes(region);
-    let tracks = tracker.update(shapes.into_iter().map(Detection::new).collect());
-
-    if solving_shape.current_track_id.is_none() {
-        let region_mid = mid_point(Rect::new(0, 0, region.width, region.height));
-        if let Some(track) = find_track_closest_to(region_mid, &tracks) {
-            solving_shape.current_track_id = Some(track.track_id());
-            solving_shape.last_cursor = Some(mid_point(track.rect()));
-            solving_shape.last_velocity = Some(track_velocity(track));
-        }
-    }
-
-    if let Some(direction) = estimate_background_direction_velocity(&tracks) {
-        solving_shape.bg_direction = direction;
-    }
-
-    match select_best_track(solving_shape, &tracks) {
-        Some(track) => {
-            let next_cursor = predicted_center(track);
-            let absolute_next_cursor = next_cursor + region.tl();
-            if solving_shape.current_track_id != Some(track.track_id()) {
-                debug!(target: "player", "shape id switches from {:?} to {}", solving_shape.current_track_id, track.track_id());
-            }
-            resources.input.send_mouse(
-                absolute_next_cursor.x,
-                absolute_next_cursor.y,
-                MouseKind::Move,
-            );
-            solving_shape.current_track_id = Some(track.track_id());
-            solving_shape.last_cursor = Some(next_cursor);
-            solving_shape.last_velocity = Some(track_velocity(track));
-
-            #[cfg(debug_assertions)]
-            #[cfg(feature = "debug_transparent_shape")]
-            debug_transparent_shapes(resources, solving_shape, &tracks);
-        }
-        None => {
-            let last_cursor = solving_shape.last_cursor.expect("set");
-            let last_velocity = solving_shape.last_velocity.expect("set") * 1.5;
-            let next_cursor = last_cursor
-                + Point::new(
-                    last_velocity.x.round() as i32,
-                    last_velocity.y.round() as i32,
-                );
-            let absolute_next_cursor = next_cursor + region.tl();
-            resources.input.send_mouse(
-                absolute_next_cursor.x,
-                absolute_next_cursor.y,
-                MouseKind::Move,
-            );
-            solving_shape.last_cursor = Some(next_cursor);
-
-            #[cfg(debug_assertions)]
-            #[cfg(feature = "debug_transparent_shape")]
-            debug_transparent_shapes(resources, solving_shape, &tracks);
-        }
-    }
-}
-
-#[cfg(debug_assertions)]
-#[cfg(feature = "debug_transparent_shape")]
-fn debug_transparent_shapes(
-    resources: &Resources,
-    solving_shape: &SolvingShape,
-    tracks: &[STrack],
-) {
-    use opencv::core::MatTraitConst;
-
-    use crate::debug::debug_tracks;
-
-    debug_tracks(
-        &resources
-            .detector()
-            .mat()
-            .roi(solving_shape.lie_detector_region.unwrap())
-            .unwrap(),
-        tracks.to_vec(),
-        solving_shape.last_cursor.unwrap(),
-        solving_shape.bg_direction,
-    );
-}
-
-fn find_track_closest_to(point: Point, tracks: &[STrack]) -> Option<&STrack> {
-    tracks.iter().min_by_key(|track| {
-        let track_region = track.rect();
-        let track_mid =
-            track_region.tl() + Point::new(track_region.width / 2, track_region.height / 2);
-
-        (point - track_mid).norm() as i32
-    })
-}
-
-fn select_best_track<'a>(
-    solving_shape: &mut SolvingShape,
-    tracks: &'a [STrack],
-) -> Option<&'a STrack> {
-    let current_track_id = solving_shape.current_track_id?;
-    let bg_direction = solving_shape.bg_direction;
-    let match_track = tracks
-        .iter()
-        .filter(|track| track.tracklet_len() >= 2)
-        .filter_map(|track| {
-            let degree = track_background_degree(track, bg_direction)?;
-            if degree <= 45.0 {
-                return None;
-            }
-
-            Some((track, degree))
-        })
-        .max_by(|(_, a_degree), (_, b_degree)| a_degree.partial_cmp(b_degree).unwrap())
-        .map(|(track, _)| track);
-
-    if let Some(track) = match_track {
-        if track.track_id() == current_track_id {
-            solving_shape.candidate_track_id = None;
-            solving_shape.candidate_track_count = 0;
-        }
-
-        if solving_shape.candidate_track_id == Some(track.track_id()) {
-            solving_shape.candidate_track_count += 1;
-        } else {
-            solving_shape.candidate_track_id = Some(track.track_id());
-            solving_shape.candidate_track_count = 0;
-        }
-
-        if solving_shape.candidate_track_count >= 3 {
-            solving_shape.candidate_track_id = None;
-            solving_shape.candidate_track_count = 0;
-            return Some(track);
-        }
-    }
-
-    tracks
-        .iter()
-        .find(|track| track.track_id() == current_track_id)
-}
-
-fn mid_point(rect: Rect) -> Point {
-    rect.tl() + Point::new(rect.width / 2, rect.height / 2)
-}
-
-fn predicted_center(track: &STrack) -> Point {
-    let (vx, vy) = track.kalman_velocity();
-    let point = mid_point(track.kalman_rect());
-
-    Point::new(
-        (point.x as f32 + vx).round() as i32,
-        (point.y as f32 + vy).round() as i32,
-    )
-}
-
-fn track_background_degree(track: &STrack, bg_direction: Point2d) -> Option<f64> {
-    let velocity = unit(track_velocity(track))?;
-    let dot = velocity.dot(bg_direction);
-    let det = velocity.cross(bg_direction);
-    Some(det.atan2(dot).to_degrees().abs())
-}
-
-fn estimate_background_direction_velocity(tracks: &[STrack]) -> Option<Point2d> {
-    let filtered = tracks
-        .iter()
-        .filter(|track| track.tracklet_len() >= 5)
-        .map(track_velocity)
-        .collect::<Vec<Point2d>>();
-    if filtered.len() < 3 {
-        return None;
-    }
-
-    let velocity_sum = filtered
-        .into_iter()
-        .fold(Point2d::default(), |acc, v| acc + v);
-    let velocity_unit = unit(velocity_sum)?;
-
-    Some(velocity_unit)
-}
-
-fn track_velocity(track: &STrack) -> Point2d {
-    let (vx, vy) = track.kalman_velocity();
-    Point2d::new(vx as f64, vy as f64)
-}
-
-fn unit<T>(point: Point_<T>) -> Option<Point_<T>>
-where
-    T: Copy,
-    Point_<T>: Div<f64, Output = Point_<T>>,
-    f64: From<T>,
-{
-    let norm = point.norm();
-    if norm < 1e-3 {
-        return None;
-    }
-
-    Some(point / norm)
 }
