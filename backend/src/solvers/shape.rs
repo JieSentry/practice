@@ -17,9 +17,19 @@ pub struct TransparentShapeSolver {
     last_cursor: Option<Point>,
     last_velocity: Option<Point2d>,
     bg_direction: Point2d,
+    #[cfg(debug_assertions)]
+    debugging: bool,
 }
 
 impl TransparentShapeSolver {
+    #[cfg(debug_assertions)]
+    pub fn debug() -> Self {
+        Self {
+            debugging: true,
+            ..Default::default()
+        }
+    }
+
     pub fn solve(&mut self, resources: &Resources, tracker: &mut ByteTracker, region: Rect) {
         let shapes = resources.detector().detect_transparent_shapes(region);
         let tracks = tracker.update(shapes.into_iter().map(Detection::new).collect());
@@ -44,8 +54,15 @@ impl TransparentShapeSolver {
                 self.last_velocity = Some(track_velocity(track));
 
                 #[cfg(debug_assertions)]
-                #[cfg(feature = "debug_transparent_shape")]
-                debug_transparent_shapes(resources, solving_shape, &tracks);
+                if self.debugging {
+                    debug_transparent_shapes(
+                        resources,
+                        &tracks,
+                        region,
+                        next_cursor,
+                        self.bg_direction,
+                    );
+                }
             }
             None => {
                 let last_cursor = self.last_cursor.expect("set");
@@ -64,8 +81,15 @@ impl TransparentShapeSolver {
                 self.last_cursor = Some(next_cursor);
 
                 #[cfg(debug_assertions)]
-                #[cfg(feature = "debug_transparent_shape")]
-                debug_transparent_shapes(resources, solving_shape, &tracks);
+                if self.debugging {
+                    debug_transparent_shapes(
+                        resources,
+                        &tracks,
+                        region,
+                        next_cursor,
+                        self.bg_direction,
+                    );
+                }
             }
         }
     }
@@ -131,25 +155,22 @@ impl TransparentShapeSolver {
 }
 
 #[cfg(debug_assertions)]
-#[cfg(feature = "debug_transparent_shape")]
 fn debug_transparent_shapes(
     resources: &Resources,
-    solving_shape: &SolvingShape,
     tracks: &[STrack],
+    region: Rect,
+    last_cursor: Point,
+    bg_direction: Point2d,
 ) {
     use opencv::core::MatTraitConst;
 
     use crate::debug::debug_tracks;
 
     debug_tracks(
-        &resources
-            .detector()
-            .mat()
-            .roi(solving_shape.lie_detector_region.unwrap())
-            .unwrap(),
+        &resources.detector().mat().roi(region).unwrap(),
         tracks.to_vec(),
-        solving_shape.last_cursor.unwrap(),
-        solving_shape.bg_direction,
+        last_cursor,
+        bg_direction,
     );
 }
 

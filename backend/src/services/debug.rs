@@ -1,24 +1,49 @@
-use std::sync::{Arc, LazyLock};
+use std::{
+    cell::RefCell,
+    fs,
+    path::PathBuf,
+    rc::Rc,
+    sync::{Arc, LazyLock},
+    thread::sleep,
+    time::{Duration, Instant},
+};
 
 use include_dir::{Dir, include_dir};
 use log::debug;
 use opencv::{
-    core::{Mat, MatTraitConst, ModifyInplace, Vector},
+    core::{Mat, MatTraitConst, ModifyInplace, Rect, Vector},
+    highgui::destroy_all_windows,
     imgcodecs::{IMREAD_COLOR, imdecode},
     imgproc::{COLOR_BGR2BGRA, cvt_color_def},
-    videoio::{VideoWriter, VideoWriterTrait},
+    videoio::{
+        CAP_PROP_FPS, VideoCapture, VideoCaptureTrait, VideoCaptureTraitConst, VideoWriter,
+        VideoWriterTrait,
+    },
 };
+use platforms::Window;
 use rand::distr::SampleString;
 use rand_distr::Alphanumeric;
-use tokio::sync::broadcast::{self, Receiver, Sender};
+use tokio::{
+    sync::{
+        broadcast::{self, Receiver, Sender},
+        mpsc::{self},
+    },
+    task::spawn_blocking,
+};
 
 use crate::{
-    DebugState,
+    CycleRunStopMode, DebugState, Settings,
+    bridge::{DefaultInput, InputMethod},
     detect::{ArrowsCalibrating, ArrowsState, DefaultDetector, Detector},
-    ecs::Resources,
+    ecs::{Debug, Resources},
     mat::OwnedMat,
     models::Localization,
+    notification::DiscordNotification,
+    operation::{Operation, OperationConfiguration, OperationState},
+    rng::Rng,
     run::FPS,
+    solvers::TransparentShapeSolver,
+    tracker::ByteTracker,
     utils::DatasetDir,
 };
 
@@ -128,7 +153,109 @@ impl DebugService {
         }
     }
 
-    pub fn sandbox_test_transparent_shape(&self) {
-        todo!()
+    pub fn sandbox_test_transparent_shape(&mut self) {
+        static VIDEO_BYTES: &[u8] = include_bytes!(env!("TRANSPARENT_SHAPE_TEST_VIDEO"));
+
+        let file = DatasetDir::Root
+            .to_folder()
+            .join("transparent_shape_test.mp4");
+        if !file.exists() {
+            let _ = fs::write(&file, VIDEO_BYTES);
+        }
+
+        spawn_blocking(move || {
+            let mut frame_rx = frame_receiver_from_video(file);
+            let mut solver = TransparentShapeSolver::debug();
+            let mut tracker = ByteTracker::new(FPS);
+            let mut resources = create_sandbox_test_resources();
+            let localization = Arc::new(Localization::default());
+
+            loop_with_fps(FPS, || {
+                if frame_rx.is_closed() {
+                    return false;
+                }
+                if let Ok(frame) = frame_rx.try_recv() {
+                    let region = Rect::new(0, 0, frame.cols(), frame.rows());
+                    let detector =
+                        DefaultDetector::new(OwnedMat::from(frame), localization.clone());
+
+                    resources.detector = Some(Arc::new(detector));
+                    solver.solve(&resources, &mut tracker, region);
+                }
+
+                true
+            });
+            destroy_all_windows().unwrap();
+        });
+    }
+}
+
+fn frame_receiver_from_video(file: PathBuf) -> mpsc::Receiver<Mat> {
+    let (frame_tx, frame_rx) = mpsc::channel::<Mat>(1);
+    let mut capture = VideoCapture::from_file_def(file.to_str().unwrap()).unwrap();
+    let fps = capture.get(CAP_PROP_FPS).unwrap();
+    spawn_blocking(move || {
+        loop_with_fps(fps as u32, || {
+            let mut frame = Mat::default();
+            if !capture.read(&mut frame).unwrap_or(false) {
+                return false;
+            }
+
+            unsafe {
+                frame.modify_inplace(|mat, mat_mut| {
+                    cvt_color_def(mat, mat_mut, COLOR_BGR2BGRA).unwrap();
+                });
+            }
+            let _ = frame_tx.try_send(frame);
+            true
+        });
+    });
+
+    frame_rx
+}
+
+fn loop_with_fps(fps: u32, mut on_tick: impl FnMut() -> bool) {
+    let nanos_per_frame = (1_000_000_000 / fps) as u128;
+    loop {
+        let start = Instant::now();
+
+        if !on_tick() {
+            return;
+        }
+
+        let now = Instant::now();
+        let elapsed_duration = now.duration_since(start);
+        let elapsed_nanos = elapsed_duration.as_nanos();
+        if elapsed_nanos <= nanos_per_frame {
+            sleep(Duration::new(0, (nanos_per_frame - elapsed_nanos) as u32));
+        }
+    }
+}
+
+fn create_sandbox_test_resources() -> Resources {
+    let rng = Rng::new(rand::random(), rand::random());
+    let input = Box::new(DefaultInput::new(
+        Window::new("Debug"),
+        InputMethod::FocusedDefault,
+        rng.clone(),
+    ));
+    let operation = Operation {
+        config: OperationConfiguration {
+            mode: CycleRunStopMode::None,
+            run_duration_millis: 0,
+            stop_duration_millis: 0,
+        },
+        state: OperationState::Running,
+    };
+    let notification = DiscordNotification::new(Rc::new(RefCell::new(Settings::default())));
+
+    Resources {
+        debug: Debug::default(),
+        input,
+        rng,
+        notification,
+        detector: None,
+        operation,
+        tick: 0,
     }
 }

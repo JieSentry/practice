@@ -78,7 +78,6 @@ pub fn debug_spinning_arrows(
     debug_mat("Spin Arrow", &mat, 0, &[]);
 }
 
-#[allow(unused)]
 pub fn debug_tracks(
     mat: &impl MatTraitConst,
     tracks: Vec<STrack>,
