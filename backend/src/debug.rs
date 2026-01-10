@@ -3,13 +3,12 @@ use opencv::core::Point2d;
 use opencv::core::Rect;
 use opencv::core::Scalar;
 use opencv::core::Size;
-use opencv::core::{Mat, ToInputArray};
+use opencv::core::ToInputArray;
 use opencv::core::{MatTraitConst, Vector};
 use opencv::highgui::destroy_window;
 use opencv::highgui::{imshow, wait_key};
 use opencv::imgproc::arrowed_line;
 use opencv::imgproc::draw_contours_def;
-use opencv::imgproc::line_def;
 use opencv::imgproc::polylines;
 use opencv::imgproc::rectangle;
 use opencv::imgproc::{FONT_HERSHEY_SIMPLEX, put_text_def};
@@ -21,7 +20,6 @@ use crate::detect::ArrowsComplete;
 use crate::tracker::STrack;
 use crate::utils::{self, DatasetDir};
 
-#[allow(unused)]
 pub fn debug_spinning_arrows(
     mat: &impl MatTraitConst,
     arrow_curve: &Vector<Point>,
@@ -48,26 +46,26 @@ pub fn debug_spinning_arrows(
         })
         .collect::<Vector<Vector<Point>>>();
 
-    draw_contours_def(&mut mat, &contours, 0, Scalar::new(255.0, 0.0, 0.0, 0.0));
-    circle_def(
+    let _ = draw_contours_def(&mut mat, &contours, 0, Scalar::new(255.0, 0.0, 0.0, 0.0));
+    let _ = circle_def(
         &mut mat,
         last_arrow_head + region_centroid,
         3,
         Scalar::new(0.0, 255.0, 0.0, 0.0),
     );
-    circle_def(
+    let _ = circle_def(
         &mut mat,
         cur_arrow_head + region_centroid,
         3,
         Scalar::new(255.0, 0.0, 0.0, 0.0),
     );
-    circle_def(
+    let _ = circle_def(
         &mut mat,
         region_centroid,
         3,
         Scalar::new(0.0, 0.0, 255.0, 0.0),
     );
-    polylines(
+    let _ = polylines(
         &mut mat,
         &curve,
         true,
@@ -75,61 +73,9 @@ pub fn debug_spinning_arrows(
         1,
         LINE_8,
         0,
-    )
-    .unwrap();
-    debug_mat("Spin Arrow", &mat, 0, &[]);
-}
-
-// TODO: This debug doesn't really show correct image
-#[allow(unused)]
-pub fn debug_auto_mob_coordinates(
-    mat: &impl MatTraitConst,
-    minimap: Rect,
-    mobs: &[Rect],
-    points: &[Point],
-) {
-    let mut mat = mat.try_clone().unwrap();
-    for point in points {
-        circle_def(
-            &mut mat,
-            minimap.tl() + *point,
-            2,
-            Scalar::new(0.0, 255.0, 0.0, 0.0),
-        )
-        .unwrap();
-    }
-    debug_mat(
-        "Auto Mobbing",
-        &mat,
-        0,
-        mobs.iter()
-            .map(|mob| (*mob, "Mob"))
-            .chain([(minimap, "Minimap")])
-            .collect::<Vec<_>>()
-            .as_slice(),
     );
-}
 
-#[allow(unused)]
-pub fn debug_pathing_points(mat: &impl MatTraitConst, minimap: Rect, points: &[Point]) {
-    let mut mat = mat.roi(minimap).unwrap().clone_pointee();
-    for i in 0..points.len() - 1 {
-        let pt1 = points[i];
-        let pt2 = points[i + 1];
-        line_def(
-            &mut mat,
-            Point::new(pt1.x, minimap.height - pt1.y),
-            Point::new(pt2.x, minimap.height - pt2.y),
-            Scalar::new(
-                rand::random_range(100.0..255.0),
-                rand::random_range(100.0..255.0),
-                rand::random_range(100.0..255.0),
-                0.0,
-            ),
-        )
-        .unwrap();
-    }
-    debug_mat("Pathing", &mat, 1, &[]);
+    debug_mat("Spin Arrow", &mat, 0, &[]);
 }
 
 #[allow(unused)]
@@ -244,7 +190,6 @@ pub fn debug_tracks(
     wait_key(1).unwrap();
 }
 
-#[allow(unused)]
 pub fn debug_mat(
     name: &str,
     mat: &impl MatTraitConst,
@@ -276,31 +221,6 @@ pub fn debug_mat(
         destroy_window(name).unwrap();
     }
     result
-}
-
-#[allow(unused)]
-pub fn debug_rune(mat: &Mat, preds: &Vec<&[f32]>, w_ratio: f32, h_ratio: f32) {
-    let size = mat.size().unwrap();
-    let bboxes = preds
-        .iter()
-        .map(|pred| map_bbox_from_prediction(pred, size, w_ratio, h_ratio))
-        .collect::<Vec<Rect>>();
-    let texts = preds
-        .iter()
-        .map(|pred| match pred[5] as i32 {
-            0 => "up",
-            1 => "down",
-            2 => "left",
-            3 => "right",
-            _ => unreachable!(),
-        })
-        .collect::<Vec<_>>();
-    debug_mat(
-        "Rune",
-        mat,
-        1,
-        &bboxes.into_iter().zip(texts).collect::<Vec<_>>(),
-    );
 }
 
 pub fn save_rune_for_training<T: MatTraitConst + ToInputArray>(mat: &T, result: ArrowsComplete) {
@@ -341,52 +261,6 @@ pub fn save_rune_for_training<T: MatTraitConst + ToInputArray>(mat: &T, result: 
 
     utils::save_image_to(mat, DatasetDir::Rune, format!("{name}.png"));
     utils::save_file_to(labels, DatasetDir::Rune, format!("{name}.txt"));
-}
-
-#[allow(unused)]
-pub fn save_mobs_for_training(mat: &Mat, mobs: &[Rect]) {
-    let name = Alphanumeric.sample_string(&mut rand::rng(), 8);
-    let mut labels = Vec::<String>::new();
-    for mob in mobs.iter().copied() {
-        labels.push(to_yolo_format(0, mat.size().unwrap(), mob));
-    }
-
-    let key = debug_mat(
-        "Training",
-        mat,
-        0,
-        &mobs
-            .iter()
-            .copied()
-            .map(|bbox| (bbox, "Mobs"))
-            .collect::<Vec<_>>(),
-    );
-    if key == 97 {
-        utils::save_image_to(mat, DatasetDir::Root, format!("{name}.png"));
-        utils::save_file_to(labels.join("\n"), DatasetDir::Root, format!("{name}.txt"));
-    }
-}
-
-pub fn save_minimap_for_training<T: MatTraitConst + ToInputArray>(mat: &T, minimap: Rect) {
-    let name = Alphanumeric.sample_string(&mut rand::rng(), 8);
-
-    let key = debug_mat("Training", mat, 0, &[(minimap, "Minimap")]);
-    if key == 97 {
-        utils::save_image_to(mat, DatasetDir::Minimap, format!("{name}.png"));
-        utils::save_file_to(
-            to_yolo_format(0, mat.size().unwrap(), minimap),
-            DatasetDir::Minimap,
-            format!("{name}.txt"),
-        );
-    }
-}
-
-fn map_bbox_from_prediction(pred: &[f32], size: Size, w_ratio: f32, h_ratio: f32) -> Rect {
-    let tl_x = (pred[0] / w_ratio).max(0.0).min(size.width as f32) as i32;
-    let tl_y = (pred[1] / h_ratio).max(0.0).min(size.height as f32) as i32;
-    let br_x = (pred[2] / w_ratio).max(0.0).min(size.width as f32) as i32;
-    let br_y = (pred[3] / h_ratio).max(0.0).min(size.height as f32) as i32;
-    Rect::from_points(Point::new(tl_x, tl_y), Point::new(br_x, br_y))
 }
 
 fn to_yolo_format(label: u32, size: Size, bbox: Rect) -> String {

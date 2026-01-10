@@ -3307,13 +3307,7 @@ fn to_input_value(mat: &impl MatTraitConst) -> SessionInputValue<'_> {
 
 #[inline]
 fn build_session(model: &[u8]) -> Result<Session> {
-    // TODO: ort supports fallback to CPU if GPU is not found. Check if missing GPU-related
-    // TODO: onnxruntime dlls affect this.
-    if cfg!(feature = "gpu") {
-        Ok(Session::builder()?
-            .with_execution_providers([CUDAExecutionProvider::default().build()])?
-            .commit_from_memory(model)?)
-    } else {
-        Ok(Session::builder()?.commit_from_memory(model)?)
-    }
+    Ok(Session::builder()?
+        .with_execution_providers([CUDAExecutionProvider::default().build()])?
+        .commit_from_memory(model)?)
 }

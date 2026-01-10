@@ -257,24 +257,19 @@ fn handle_ui_request(
             Response::AutoSaveRune
         }
         #[cfg(debug_assertions)]
-        Request::InferRune => {
-            infer_rune(context);
-            Response::InferRune
+        Request::RecordVideo(start) => {
+            record_video(context, start);
+            Response::RecordVideo
         }
         #[cfg(debug_assertions)]
-        Request::InferMinimap => {
-            infer_minimap(context);
-            Response::InferMinimap
+        Request::SandboxTestSpinRune => {
+            sandbox_test_spin_rune(context);
+            Response::SandboxTestSpinRune
         }
         #[cfg(debug_assertions)]
-        Request::RecordImages(start) => {
-            record_images(context, start);
-            Response::RecordImages
-        }
-        #[cfg(debug_assertions)]
-        Request::TestSpinRune => {
-            test_spin_rune(context);
-            Response::TestSpinRune
+        Request::SandboxTestTransparentShape => {
+            sandbox_test_transparent_shape(context);
+            Response::SandboxTestTransparentShape
         }
     };
     let _ = response.send(result);
@@ -422,23 +417,18 @@ fn update_auto_save_rune(context: &mut EventContext<'_>, auto_save: bool) {
 }
 
 #[cfg(debug_assertions)]
-fn infer_rune(context: &mut EventContext<'_>) {
-    context.debug_service.infer_rune();
+fn record_video(context: &mut EventContext<'_>, start: bool) {
+    context.debug_service.record_video(context.resources, start);
 }
 
 #[cfg(debug_assertions)]
-fn infer_minimap(context: &mut EventContext<'_>) {
-    context.debug_service.infer_minimap(context.resources);
+fn sandbox_test_spin_rune(context: &mut EventContext<'_>) {
+    context.debug_service.sandbox_test_spin_rune();
 }
 
 #[cfg(debug_assertions)]
-fn record_images(context: &mut EventContext<'_>, start: bool) {
-    context.debug_service.record_images(start);
-}
-
-#[cfg(debug_assertions)]
-fn test_spin_rune(context: &mut EventContext<'_>) {
-    context.debug_service.test_spin_rune();
+fn sandbox_test_transparent_shape(context: &mut EventContext<'_>) {
+    context.debug_service.sandbox_test_transparent_shape();
 }
 
 #[inline]

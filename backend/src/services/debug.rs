@@ -1,15 +1,12 @@
-use std::{
-    path::PathBuf,
-    sync::{Arc, LazyLock},
-    time::Instant,
-};
+use std::sync::{Arc, LazyLock};
 
 use include_dir::{Dir, include_dir};
 use log::debug;
 use opencv::{
-    core::{Mat, ModifyInplace, Vector},
+    core::{Mat, MatTraitConst, ModifyInplace, Vector},
     imgcodecs::{IMREAD_COLOR, imdecode},
     imgproc::{COLOR_BGR2BGRA, cvt_color_def},
+    videoio::{VideoWriter, VideoWriterTrait},
 };
 use rand::distr::SampleString;
 use rand_distr::Alphanumeric;
@@ -17,69 +14,40 @@ use tokio::sync::broadcast::{self, Receiver, Sender};
 
 use crate::{
     DebugState,
-    debug::save_minimap_for_training,
     detect::{ArrowsCalibrating, ArrowsState, DefaultDetector, Detector},
     ecs::Resources,
     mat::OwnedMat,
     models::Localization,
-    utils::{self, DatasetDir},
+    run::FPS,
+    utils::DatasetDir,
 };
-
-const SOLVE_RUNE_TIMEOUT_SECS: u64 = 10;
 
 #[derive(Debug)]
 pub struct DebugService {
     state: Sender<DebugState>,
-    recording_id: Option<String>,
-    infering_rune: Option<(ArrowsCalibrating, Instant)>,
+    writer: Option<VideoWriter>,
 }
 
 impl Default for DebugService {
     fn default() -> Self {
         Self {
             state: broadcast::channel(1).0,
-            recording_id: None,
-            infering_rune: None,
+            writer: None,
         }
     }
 }
 
 impl DebugService {
     pub fn poll(&mut self, resources: &Resources) {
-        if let Some(id) = self.recording_id.clone() {
-            utils::save_image_to(
-                &resources.detector().mat(),
-                DatasetDir::Root,
-                PathBuf::from(id),
-            );
-        }
-
-        if let Some((calibrating, instant)) = self.infering_rune.as_ref().copied() {
-            if instant.elapsed().as_secs() >= SOLVE_RUNE_TIMEOUT_SECS {
-                self.infering_rune = None;
-                debug!(target: "debug", "infer rune timed out");
-                return;
-            }
-
-            match resources.detector().detect_rune_arrows(calibrating) {
-                Ok(ArrowsState::Complete(arrows)) => {
-                    // TODO: Save
-                    self.infering_rune = None;
-                    debug!(target: "debug", "infer rune result {arrows:?}");
-                }
-                Ok(ArrowsState::Calibrating(calibrating)) => {
-                    self.infering_rune = Some((calibrating, instant));
-                }
-                Err(err) => {
-                    self.infering_rune = None;
-                    debug!(target: "debug", "infer rune failed {err}");
-                }
-            }
+        if let Some(writer) = self.writer.as_mut()
+            && let Some(detector) = resources.detector.as_ref()
+        {
+            writer.write(&detector.mat()).unwrap();
         }
 
         if self.state.is_empty() {
             let _ = self.state.send(DebugState {
-                is_recording: self.recording_id.is_some(),
+                is_recording: self.writer.is_some(),
                 is_rune_auto_saving: resources.debug.auto_save_rune(),
             });
         }
@@ -93,27 +61,31 @@ impl DebugService {
         resources.debug.set_auto_save_rune(auto_save);
     }
 
-    pub fn record_images(&mut self, start: bool) {
-        self.recording_id = if start {
-            Some(Alphanumeric.sample_string(&mut rand::rng(), 8))
-        } else {
-            None
-        };
-    }
-
-    pub fn infer_rune(&mut self) {
-        self.infering_rune = Some((ArrowsCalibrating::default(), Instant::now()));
-    }
-
-    pub fn infer_minimap(&self, resources: &Resources) {
-        if let Some(detector) = resources.detector.as_ref()
-            && let Some(bbox) = detector.detect_minimap(160).ok()
-        {
-            save_minimap_for_training(&detector.mat(), bbox);
+    pub fn record_video(&mut self, resources: &Resources, start: bool) {
+        if !start {
+            self.writer = None;
+            return;
         }
+
+        if resources.detector.is_none() {
+            return;
+        }
+
+        let detector = resources.detector();
+        let frame_size = detector.mat().size().unwrap();
+
+        let id = Alphanumeric.sample_string(&mut rand::rng(), 8);
+        let file = DatasetDir::Recordings.to_folder().join(format!("{id}.mp4"));
+        let fourcc = VideoWriter::fourcc('H', 'V', 'C', '1').unwrap();
+
+        let mut writer =
+            VideoWriter::new(file.to_str().unwrap(), fourcc, FPS as f64, frame_size, true).unwrap();
+        writer.write(&detector.mat()).unwrap();
+
+        self.writer = Some(writer);
     }
 
-    pub fn test_spin_rune(&self) {
+    pub fn sandbox_test_spin_rune(&self) {
         static SPIN_TEST_DIR: Dir<'static> = include_dir!("$SPIN_TEST_DIR");
         static SPIN_TEST_IMAGES: LazyLock<Vec<Mat>> = LazyLock::new(|| {
             let mut files = SPIN_TEST_DIR.files().collect::<Vec<_>>();
@@ -154,5 +126,9 @@ impl DebugService {
                 }
             }
         }
+    }
+
+    pub fn sandbox_test_transparent_shape(&self) {
+        todo!()
     }
 }

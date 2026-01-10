@@ -3,9 +3,6 @@ use std::future::Future;
 use anyhow::Error;
 use bit_vec::BitVec;
 use futures::FutureExt;
-use input::key_input_client::KeyInputClient;
-pub use input::{Coordinate, Key, KeyState, MouseAction};
-use input::{KeyDownRequest, KeyInitRequest, KeyRequest, KeyUpRequest, MouseRequest};
 use log::info;
 use strum::Display;
 use tokio::{
@@ -18,11 +15,10 @@ use tonic::{
     transport::{Channel, Endpoint},
 };
 
-use crate::rpc::input::{KeyInitResponse, KeyStateRequest};
-
-mod input {
-    tonic::include_proto!("input");
-}
+use crate::grpc::input::{
+    Coordinate, Key, KeyDownRequest, KeyInitRequest, KeyInitResponse, KeyRequest, KeyState,
+    KeyStateRequest, KeyUpRequest, MouseAction, MouseRequest, key_input_client::KeyInputClient,
+};
 
 type RpcConnectingFuture = JoinHandle<Option<(KeyInputClient<Channel>, KeyInitResponse)>>;
 
@@ -233,4 +229,6 @@ fn block_future<F: Future>(f: F) -> F::Output {
 }
 
 #[cfg(test)]
-mod test {}
+mod test {
+    // TODO
+}

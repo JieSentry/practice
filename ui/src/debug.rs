@@ -1,6 +1,6 @@
 use backend::{
-    DebugState, auto_save_rune, debug_state_receiver, infer_minimap, infer_rune, record_images,
-    test_spin_rune,
+    DebugState, auto_save_rune, debug_state_receiver, record_video, sandbox_test_spin_rune,
+    sandbox_test_transparent_shape,
 };
 use dioxus::prelude::*;
 use tokio::sync::broadcast::error::RecvError;
@@ -35,31 +35,23 @@ pub fn DebugScreen() -> Element {
                     Button {
                         style: ButtonStyle::Secondary,
                         on_click: move |_| async {
-                            infer_rune().await;
-                        },
-
-                        "Infer rune"
-                    }
-                    Button {
-                        style: ButtonStyle::Secondary,
-                        on_click: move |_| async {
-                            infer_minimap().await;
-                        },
-
-                        "Infer minimap"
-                    }
-                    Button {
-                        style: ButtonStyle::Secondary,
-                        on_click: move |_| async {
-                            test_spin_rune().await;
+                            sandbox_test_spin_rune().await;
                         },
 
                         "Spin rune sandbox test"
                     }
                     Button {
                         style: ButtonStyle::Secondary,
+                        on_click: move |_| async {
+                            sandbox_test_transparent_shape().await;
+                        },
+
+                        "Transparent shape sandbox test"
+                    }
+                    Button {
+                        style: ButtonStyle::Secondary,
                         on_click: move |_| async move {
-                            record_images(!state.peek().is_recording).await;
+                            record_video(!state.peek().is_recording).await;
                         },
 
                         if state().is_recording {

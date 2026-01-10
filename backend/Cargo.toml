@@ -15,14 +15,15 @@ lapjv = "0.3.0"
 prost = "0.13.5"
 platforms = { workspace = true }
 ort = { version = "2.0.0-rc.10", default-features = false, features = [
-  "load-dynamic",
-  "cuda",
+    "load-dynamic",
+    "cuda",
 ] }
 opencv = { version = "0.97.2", default-features = false, features = [
-  "dnn",
-  "imgcodecs",
-  "imgproc",
-  "highgui",
+    "dnn",
+    "imgcodecs",
+    "imgproc",
+    "highgui",
+    "videoio",
 ] }
 anyhow = "1.0.98"
 log = { workspace = true }
@@ -45,5 +46,4 @@ tonic-build = "*"
 mockall = { version = "0.13.1", features = ["nightly"] }
 
 [features]
-gpu = []
 debug_transparent_shape = []

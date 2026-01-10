@@ -32,7 +32,7 @@
 ## Download
 
 1. Go to the [GitHub Release Page](https://github.com/sasanquaa/komari/releases)
-2. Download `app-release-gpu.zip` or `app-release-cpu.zip`
+2. Download `app-release.zip` or `app-debug.zip`
 3. Extract the archive
 4. Run the `.exe` file
 
