@@ -142,6 +142,9 @@ impl Services {
         let capture_service = DefaultCaptureService::new();
         let settings_service = DefaultSettingsService::new(settings.clone());
 
+        let mut rotator = DefaultRotatorService::default();
+        rotator.update_from_settings(&settings_service.settings());
+
         let window = capture_service.selected_window();
         let input_rx = DefaultInputReceiver::new(window, InputKind::Focused);
         let input_service = DefaultInputService::new(input_rx);
@@ -192,7 +195,7 @@ impl Services {
             event_rx,
             map: Box::new(DefaultMapService::default()),
             character: Box::new(DefaultCharacterService::default()),
-            rotator: Box::new(DefaultRotatorService::default()),
+            rotator: Box::new(rotator),
             navigator: Box::new(DefaultNavigatorService),
             capture: Box::new(capture_service),
             input: Box::new(input_service),
