@@ -721,7 +721,7 @@ enum InputDelay {
 
 /// A trait for sending inputs.
 #[cfg_attr(test, automock)]
-pub trait Input: Debug {
+pub trait Input: Send + Debug {
     /// Performs a tick update.
     fn update_tick(&mut self, tick: u64);
 
@@ -760,13 +760,17 @@ pub trait Input: Debug {
 
     /// Whether all keys are cleared.
     fn all_keys_cleared(&self) -> bool;
+
+    #[cfg(debug_assertions)]
+    fn clone(&self) -> Box<dyn Input>;
 }
 
 /// Default implementation of [`Input`].
 #[derive(Debug)]
 pub struct DefaultInput {
     window: Window,
-    kind: InputMethodInner,
+    method: InputMethod,
+    method_inner: InputMethodInner,
     delay_rng: Rng,
     delay_mean_std_pair: (f32, f32),
     delay_map: RefCell<HashMap<KeyKind, (u32, bool)>>,
@@ -776,7 +780,8 @@ impl DefaultInput {
     pub fn new(window: Window, method: InputMethod, rng: Rng) -> Self {
         Self {
             window,
-            kind: input_method_inner_from(window, method, rng.rng_seed()),
+            method: method.clone(),
+            method_inner: input_method_inner_from(window, method, rng.rng_seed()),
             delay_rng: rng,
             delay_mean_std_pair: (BASE_MEAN_MS_DELAY, BASE_STD_MS_DELAY),
             delay_map: RefCell::new(HashMap::new()),
@@ -785,7 +790,7 @@ impl DefaultInput {
 
     #[inline]
     fn key_state(&self, kind: KeyKind) -> Result<KeyState> {
-        match &self.kind {
+        match &self.method_inner {
             InputMethodInner::Rpc(service) => service
                 .borrow_mut()
                 .key_state(kind.into())
@@ -797,7 +802,7 @@ impl DefaultInput {
 
     #[inline]
     fn send_key_inner(&self, kind: KeyKind) -> Result<()> {
-        match &self.kind {
+        match &self.method_inner {
             InputMethodInner::Rpc(service) => {
                 service
                     .borrow_mut()
@@ -815,7 +820,7 @@ impl DefaultInput {
 
     #[inline]
     fn send_key_up_inner(&self, kind: KeyKind, forced: bool) -> Result<()> {
-        match &self.kind {
+        match &self.method_inner {
             InputMethodInner::Rpc(service) => {
                 service.borrow_mut().send_key_up(kind.into());
             }
@@ -831,7 +836,7 @@ impl DefaultInput {
 
     #[inline]
     fn send_key_down_inner(&self, kind: KeyKind, repeatable: bool) -> Result<()> {
-        match &self.kind {
+        match &self.method_inner {
             // NOTE: For unknown reason, hardware custom input (e.g. KMBox, Arduino) seems to only
             // require sending down stroke once and it will continue correctly. But `SendInput`
             // requires repeatedly sending the stroke to simulate flying for some classes.
@@ -925,21 +930,24 @@ impl Input for DefaultInput {
 
     fn set_window(&mut self, window: Window) {
         self.window = window;
+        self.set_method(self.method.clone());
     }
 
     fn set_method(&mut self, method: InputMethod) {
-        self.kind = input_method_inner_from(self.window, method, self.delay_rng.rng_seed());
+        self.method = method;
+        self.method_inner =
+            input_method_inner_from(self.window, self.method.clone(), self.delay_rng.rng_seed());
     }
 
     fn state(&self) -> String {
-        match &self.kind {
+        match &self.method_inner {
             InputMethodInner::Rpc(service) => format!("RPC({})", service.borrow().state()),
             InputMethodInner::Default(_) => "SendInput".to_string(),
         }
     }
 
     fn send_mouse(&self, x: i32, y: i32, kind: MouseKind) {
-        match &self.kind {
+        match &self.method_inner {
             InputMethodInner::Rpc(service) => {
                 let mut borrow = service.borrow_mut();
                 let relative = match borrow.mouse_coordinate() {
@@ -988,6 +996,15 @@ impl Input for DefaultInput {
     #[inline]
     fn all_keys_cleared(&self) -> bool {
         self.delay_map.borrow().is_empty()
+    }
+
+    #[cfg(debug_assertions)]
+    fn clone(&self) -> Box<dyn Input> {
+        Box::new(DefaultInput::new(
+            self.window,
+            self.method.clone(),
+            self.delay_rng.clone(),
+        ))
     }
 }
 

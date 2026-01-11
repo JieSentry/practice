@@ -53,7 +53,8 @@ fn main() {
     let rune_mask = resources_dir.join("rune_mask_ideal_ratio.png");
     let rune_buff = resources_dir.join("rune_buff_ideal_ratio.png");
     let spin_test = resources_dir.join("spin_test");
-    let transparent_shape_test = resources_dir.join("transparent_shape_test.mp4");
+    let transparent_shape_test_normal = resources_dir.join("transparent_shape_test_normal.mp4");
+    let transparent_shape_test_hard = resources_dir.join("transparent_shape_test_hard.mp4");
 
     let sayram_elixir_buff = resources_dir.join("sayram_elixir_buff_ideal_ratio.png");
     let aurelia_elixir_buff = resources_dir.join("aurelia_elixir_buff_ideal_ratio.png");
@@ -273,8 +274,12 @@ fn main() {
         spin_test.to_str().unwrap()
     );
     println!(
-        "cargo:rustc-env=TRANSPARENT_SHAPE_TEST_VIDEO={}",
-        transparent_shape_test.to_str().unwrap()
+        "cargo:rustc-env=TRANSPARENT_SHAPE_TEST_NORMAL_VIDEO={}",
+        transparent_shape_test_normal.to_str().unwrap()
+    );
+    println!(
+        "cargo:rustc-env=TRANSPARENT_SHAPE_TEST_HARD_VIDEO={}",
+        transparent_shape_test_hard.to_str().unwrap()
     );
 
     // Collector's buffs

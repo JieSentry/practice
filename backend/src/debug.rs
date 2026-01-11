@@ -98,7 +98,7 @@ pub fn debug_tracks(
         (arrow_start.y as f64 + bg_direction.y * 60.0) as i32,
     );
 
-    let _ = circle_def(&mut mat, cursor, 3, Scalar::new(0.0, 0.0, 255.0, 0.0));
+    let _ = circle_def(&mut mat, cursor, 12, Scalar::new(0.0, 0.0, 255.0, 0.0));
     let _ = arrowed_line(
         &mut mat,
         arrow_start,

@@ -13,8 +13,6 @@ use tokio::{
     task::spawn_blocking,
 };
 
-#[cfg(debug_assertions)]
-use crate::DebugState;
 use crate::{
     BoundQuadrant, Character, DetectionTemplate, KeyBinding, NavigationPath, Operation,
     OperationUpdate, Request, Response, State,
@@ -28,6 +26,8 @@ use crate::{
     services::{Event, EventContext, EventHandler},
     skill::SkillKind,
 };
+#[cfg(debug_assertions)]
+use crate::{DebugState, TransparentShapeDifficulty};
 
 #[derive(Debug)]
 pub enum MediatorEvent {
@@ -262,14 +262,14 @@ fn handle_ui_request(
             Response::RecordVideo
         }
         #[cfg(debug_assertions)]
-        Request::SandboxTestSpinRune => {
-            sandbox_test_spin_rune(context);
-            Response::SandboxTestSpinRune
+        Request::TestSpinRune => {
+            test_spin_rune(context);
+            Response::TestSpinRune
         }
         #[cfg(debug_assertions)]
-        Request::SandboxTestTransparentShape => {
-            sandbox_test_transparent_shape(context);
-            Response::SandboxTestTransparentShape
+        Request::TestTransparentShape(difficulty) => {
+            test_transparent_shape(context, difficulty);
+            Response::TestTransparentShape
         }
     };
     let _ = response.send(result);
@@ -422,13 +422,15 @@ fn record_video(context: &mut EventContext<'_>, start: bool) {
 }
 
 #[cfg(debug_assertions)]
-fn sandbox_test_spin_rune(context: &mut EventContext<'_>) {
-    context.debug_service.sandbox_test_spin_rune();
+fn test_spin_rune(context: &mut EventContext<'_>) {
+    context.debug_service.test_spin_rune();
 }
 
 #[cfg(debug_assertions)]
-fn sandbox_test_transparent_shape(context: &mut EventContext<'_>) {
-    context.debug_service.sandbox_test_transparent_shape();
+fn test_transparent_shape(context: &mut EventContext<'_>, difficulty: TransparentShapeDifficulty) {
+    context
+        .debug_service
+        .test_transparent_shape(context.resources.input.clone(), difficulty);
 }
 
 #[inline]

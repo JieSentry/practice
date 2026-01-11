@@ -1,8 +1,6 @@
 use std::{
-    cell::RefCell,
     fs,
     path::PathBuf,
-    rc::Rc,
     sync::{Arc, LazyLock},
     thread::sleep,
     time::{Duration, Instant},
@@ -31,15 +29,12 @@ use tokio::{
 };
 
 use crate::{
-    CycleRunStopMode, DebugState, Settings,
-    bridge::{DefaultInput, InputMethod},
+    DebugState, TransparentShapeDifficulty,
+    bridge::{Input, MouseKind},
     detect::DefaultDetector,
-    ecs::{Debug, Resources},
+    ecs::Resources,
     mat::OwnedMat,
     models::Localization,
-    notification::DiscordNotification,
-    operation::{Operation, OperationConfiguration, OperationState},
-    rng::Rng,
     run::FPS,
     solvers::{RuneSolver, TransparentShapeSolver},
     tracker::ByteTracker,
@@ -109,7 +104,7 @@ impl DebugService {
         self.writer = Some(writer);
     }
 
-    pub fn sandbox_test_spin_rune(&self) {
+    pub fn test_spin_rune(&self) {
         static SPIN_TEST_DIR: Dir<'static> = include_dir!("$SPIN_TEST_DIR");
         static SPIN_TEST_IMAGES: LazyLock<Vec<Mat>> = LazyLock::new(|| {
             let mut files = SPIN_TEST_DIR.files().collect::<Vec<_>>();
@@ -119,11 +114,7 @@ impl DebugService {
                 .map(|file| {
                     let vec = Vector::from_slice(file.contents());
                     let mut mat = imdecode(&vec, IMREAD_COLOR).unwrap();
-                    unsafe {
-                        mat.modify_inplace(|mat, mat_mut| {
-                            cvt_color_def(mat, mat_mut, COLOR_BGR2BGRA).unwrap();
-                        });
-                    }
+                    convert_bgr_to_bgra(&mut mat);
                     mat
                 })
                 .collect()
@@ -143,34 +134,45 @@ impl DebugService {
         });
     }
 
-    pub fn sandbox_test_transparent_shape(&self) {
-        static VIDEO_BYTES: &[u8] = include_bytes!(env!("TRANSPARENT_SHAPE_TEST_VIDEO"));
-
-        let file = DatasetDir::Root
-            .to_folder()
-            .join("transparent_shape_test.mp4");
-        if !file.exists() {
-            let _ = fs::write(&file, VIDEO_BYTES);
-        }
+    pub fn test_transparent_shape(
+        &self,
+        mut input: Box<dyn Input>,
+        difficulty: TransparentShapeDifficulty,
+    ) {
+        static NORMAL_VIDEO: &[u8] = include_bytes!(env!("TRANSPARENT_SHAPE_TEST_NORMAL_VIDEO"));
+        static HARD_VIDEO: &[u8] = include_bytes!(env!("TRANSPARENT_SHAPE_TEST_HARD_VIDEO"));
 
         spawn_blocking(move || {
+            let (name, video) = match difficulty {
+                TransparentShapeDifficulty::Normal => {
+                    ("transparent_shape_test_normal.mp4", NORMAL_VIDEO)
+                }
+                TransparentShapeDifficulty::Hard => ("transparent_shape_test_hard.mp4", HARD_VIDEO),
+            };
+            let file = DatasetDir::Root.to_folder().join(name);
+            if !file.exists() {
+                let _ = fs::write(&file, video);
+            }
+
             let mut frame_rx = frame_receiver_from_video(file);
             let mut solver = TransparentShapeSolver::debug();
             let mut tracker = ByteTracker::new(FPS);
-            let mut resources = create_sandbox_test_resources();
             let localization = Arc::new(Localization::default());
+
+            input.set_window(Window::new("Main HighGUI"));
 
             loop_with_fps(FPS, || {
                 if frame_rx.is_closed() {
                     return false;
                 }
+
                 if let Ok(frame) = frame_rx.try_recv() {
                     let region = Rect::new(0, 0, frame.cols(), frame.rows());
                     let detector =
                         DefaultDetector::new(OwnedMat::from(frame), localization.clone());
+                    let cursor = solver.solve(&detector, &mut tracker, region);
 
-                    resources.detector = Some(Arc::new(detector));
-                    solver.solve(&resources, &mut tracker, region);
+                    input.send_mouse(cursor.x, cursor.y, MouseKind::Move);
                 }
 
                 true
@@ -181,27 +183,36 @@ impl DebugService {
 }
 
 fn frame_receiver_from_video(file: PathBuf) -> mpsc::Receiver<Mat> {
-    let (frame_tx, frame_rx) = mpsc::channel::<Mat>(1);
-    let mut capture = VideoCapture::from_file_def(file.to_str().unwrap()).unwrap();
-    let fps = capture.get(CAP_PROP_FPS).unwrap();
-    spawn_blocking(move || {
-        loop_with_fps(fps as u32, || {
-            let mut frame = Mat::default();
-            if !capture.read(&mut frame).unwrap_or(false) {
-                return false;
-            }
+    fn read_and_send_frame(capture: &mut VideoCapture, tx: &mpsc::Sender<Mat>) -> bool {
+        let mut frame = Mat::default();
+        if !capture.read(&mut frame).unwrap_or(false) {
+            return false;
+        }
 
-            unsafe {
-                frame.modify_inplace(|mat, mat_mut| {
-                    cvt_color_def(mat, mat_mut, COLOR_BGR2BGRA).unwrap();
-                });
-            }
-            let _ = frame_tx.try_send(frame);
-            true
-        });
+        convert_bgr_to_bgra(&mut frame);
+        let _ = tx.try_send(frame);
+
+        true
+    }
+
+    let (tx, rx) = mpsc::channel(1);
+    let mut capture = VideoCapture::from_file_def(file.to_str().expect("invalid UTF-8 path"))
+        .expect("failed to open video");
+    let fps = capture.get(CAP_PROP_FPS).expect("failed to read FPS") as u32;
+
+    spawn_blocking(move || {
+        loop_with_fps(fps, || read_and_send_frame(&mut capture, &tx));
     });
 
-    frame_rx
+    rx
+}
+
+fn convert_bgr_to_bgra(frame: &mut Mat) {
+    unsafe {
+        frame.modify_inplace(|src, dst| {
+            cvt_color_def(src, dst, COLOR_BGR2BGRA).expect("color conversion failed");
+        });
+    }
 }
 
 fn loop_with_fps(fps: u32, mut on_tick: impl FnMut() -> bool) {
@@ -219,33 +230,5 @@ fn loop_with_fps(fps: u32, mut on_tick: impl FnMut() -> bool) {
         if elapsed_nanos <= nanos_per_frame {
             sleep(Duration::new(0, (nanos_per_frame - elapsed_nanos) as u32));
         }
-    }
-}
-
-fn create_sandbox_test_resources() -> Resources {
-    let rng = Rng::new(rand::random(), rand::random());
-    let input = Box::new(DefaultInput::new(
-        Window::new("Debug"),
-        InputMethod::FocusedDefault,
-        rng.clone(),
-    ));
-    let operation = Operation {
-        config: OperationConfiguration {
-            mode: CycleRunStopMode::None,
-            run_duration_millis: 0,
-            stop_duration_millis: 0,
-        },
-        state: OperationState::Running,
-    };
-    let notification = DiscordNotification::new(Rc::new(RefCell::new(Settings::default())));
-
-    Resources {
-        debug: Debug::default(),
-        input,
-        rng,
-        notification,
-        detector: None,
-        operation,
-        tick: 0,
     }
 }

@@ -2,6 +2,7 @@ use log::debug;
 use opencv::core::{Point, Rect};
 
 use crate::{
+    bridge::MouseKind,
     ecs::{Resources, transition, transition_if, try_ok_transition},
     player::{
         Player, PlayerAction, PlayerContext, PlayerEntity, next_action,
@@ -121,9 +122,14 @@ fn update_solving(
         Lifecycle::Ended => transition!(solving_shape, State::Completed),
         Lifecycle::Started(timeout) | Lifecycle::Updated(timeout) => {
             transition!(solving_shape, State::Solving(timeout), {
-                solving_shape
-                    .solver
-                    .solve(resources, tracker, solving_shape.region.expect("set"));
+                let cursor = solving_shape.solver.solve(
+                    resources.detector(),
+                    tracker,
+                    solving_shape.region.expect("set"),
+                );
+                resources
+                    .input
+                    .send_mouse(cursor.x, cursor.y, MouseKind::Move);
             })
         }
     }

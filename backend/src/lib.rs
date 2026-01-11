@@ -96,6 +96,13 @@ macro_rules! send_request {
     };
 }
 
+#[cfg(debug_assertions)]
+#[derive(Debug)]
+pub enum TransparentShapeDifficulty {
+    Normal,
+    Hard,
+}
+
 /// Represents request from UI.
 #[derive(Debug)]
 enum Request {
@@ -122,9 +129,9 @@ enum Request {
     #[cfg(debug_assertions)]
     RecordVideo(bool),
     #[cfg(debug_assertions)]
-    SandboxTestSpinRune,
+    TestSpinRune,
     #[cfg(debug_assertions)]
-    SandboxTestTransparentShape,
+    TestTransparentShape(TransparentShapeDifficulty),
 }
 
 /// Represents response to UI [`Request`].
@@ -156,9 +163,9 @@ enum Response {
     #[cfg(debug_assertions)]
     RecordVideo,
     #[cfg(debug_assertions)]
-    SandboxTestSpinRune,
+    TestSpinRune,
     #[cfg(debug_assertions)]
-    SandboxTestTransparentShape,
+    TestTransparentShape,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -451,13 +458,13 @@ pub async fn record_video(start: bool) {
 }
 
 #[cfg(debug_assertions)]
-pub async fn sandbox_test_spin_rune() {
-    send_request!(SandboxTestSpinRune)
+pub async fn test_spin_rune() {
+    send_request!(TestSpinRune)
 }
 
 #[cfg(debug_assertions)]
-pub async fn sandbox_test_transparent_shape() {
-    send_request!(SandboxTestTransparentShape)
+pub async fn test_transparent_shape(difficulty: TransparentShapeDifficulty) {
+    send_request!(TestTransparentShape(difficulty))
 }
 
 async fn recv_request() -> Option<PendingRequest> {

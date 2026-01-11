@@ -4,8 +4,7 @@ use log::debug;
 use opencv::core::{Point, Point_, Point2d, Rect};
 
 use crate::{
-    bridge::MouseKind,
-    ecs::Resources,
+    detect::Detector,
     tracker::{ByteTracker, Detection, STrack},
 };
 
@@ -30,8 +29,13 @@ impl TransparentShapeSolver {
         }
     }
 
-    pub fn solve(&mut self, resources: &Resources, tracker: &mut ByteTracker, region: Rect) {
-        let shapes = resources.detector().detect_transparent_shapes(region);
+    pub fn solve(
+        &mut self,
+        detector: &dyn Detector,
+        tracker: &mut ByteTracker,
+        region: Rect,
+    ) -> Point {
+        let shapes = detector.detect_transparent_shapes(region);
         let tracks = tracker.update(shapes.into_iter().map(Detection::new).collect());
 
         self.update_initial_track_if_needed(region, &tracks);
@@ -40,15 +44,9 @@ impl TransparentShapeSolver {
         match self.update_and_find_best_track(&tracks) {
             Some(track) => {
                 let next_cursor = predicted_center(track);
-                let absolute_next_cursor = next_cursor + region.tl();
                 if self.current_track_id != Some(track.track_id()) {
                     debug!(target: "player", "shape id switches from {:?} to {}", self.current_track_id, track.track_id());
                 }
-                resources.input.send_mouse(
-                    absolute_next_cursor.x,
-                    absolute_next_cursor.y,
-                    MouseKind::Move,
-                );
                 self.current_track_id = Some(track.track_id());
                 self.last_cursor = Some(next_cursor);
                 self.last_velocity = Some(track_velocity(track));
@@ -56,13 +54,15 @@ impl TransparentShapeSolver {
                 #[cfg(debug_assertions)]
                 if self.debugging {
                     debug_transparent_shapes(
-                        resources,
+                        detector,
                         &tracks,
                         region,
                         next_cursor,
                         self.bg_direction,
                     );
                 }
+
+                region.tl() + next_cursor
             }
             None => {
                 let last_cursor = self.last_cursor.expect("set");
@@ -72,24 +72,20 @@ impl TransparentShapeSolver {
                         last_velocity.x.round() as i32,
                         last_velocity.y.round() as i32,
                     );
-                let absolute_next_cursor = next_cursor + region.tl();
-                resources.input.send_mouse(
-                    absolute_next_cursor.x,
-                    absolute_next_cursor.y,
-                    MouseKind::Move,
-                );
                 self.last_cursor = Some(next_cursor);
 
                 #[cfg(debug_assertions)]
                 if self.debugging {
                     debug_transparent_shapes(
-                        resources,
+                        detector,
                         &tracks,
                         region,
                         next_cursor,
                         self.bg_direction,
                     );
                 }
+
+                region.tl() + next_cursor
             }
         }
     }
@@ -156,7 +152,7 @@ impl TransparentShapeSolver {
 
 #[cfg(debug_assertions)]
 fn debug_transparent_shapes(
-    resources: &Resources,
+    detector: &dyn Detector,
     tracks: &[STrack],
     region: Rect,
     last_cursor: Point,
@@ -167,7 +163,7 @@ fn debug_transparent_shapes(
     use crate::debug::debug_tracks;
 
     debug_tracks(
-        &resources.detector().mat().roi(region).unwrap(),
+        &detector.mat().roi(region).unwrap(),
         tracks.to_vec(),
         last_cursor,
         bg_direction,

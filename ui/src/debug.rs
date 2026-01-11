@@ -1,6 +1,6 @@
 use backend::{
-    DebugState, auto_save_rune, debug_state_receiver, record_video, sandbox_test_spin_rune,
-    sandbox_test_transparent_shape,
+    DebugState, TransparentShapeDifficulty, auto_save_rune, debug_state_receiver, record_video,
+    test_spin_rune, test_transparent_shape,
 };
 use dioxus::prelude::*;
 use tokio::sync::broadcast::error::RecvError;
@@ -35,18 +35,26 @@ pub fn DebugScreen() -> Element {
                     Button {
                         style: ButtonStyle::Secondary,
                         on_click: move |_| async {
-                            sandbox_test_spin_rune().await;
+                            test_spin_rune().await;
                         },
 
-                        "Spin rune sandbox test"
+                        "Test spin rune"
                     }
                     Button {
                         style: ButtonStyle::Secondary,
                         on_click: move |_| async {
-                            sandbox_test_transparent_shape().await;
+                            test_transparent_shape(TransparentShapeDifficulty::Normal).await;
                         },
 
-                        "Transparent shape sandbox test"
+                        "Test transparent shape normal"
+                    }
+                    Button {
+                        style: ButtonStyle::Secondary,
+                        on_click: move |_| async {
+                            test_transparent_shape(TransparentShapeDifficulty::Hard).await;
+                        },
+
+                        "Test transparent shape hard"
                     }
                     Button {
                         style: ButtonStyle::Secondary,
