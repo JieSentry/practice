@@ -102,7 +102,7 @@ impl TransparentShapeSolver {
     }
 
     fn update_background_direction(&mut self, tracks: &[STrack]) {
-        if let Some(direction) = estimate_background_direction(tracks) {
+        if let Some(direction) = estimate_background_direction(self.current_track_id, tracks) {
             self.bg_direction = direction;
         }
     }
@@ -115,7 +115,7 @@ impl TransparentShapeSolver {
             .filter(|track| track.tracklet_len() >= 2)
             .filter_map(|track| {
                 let degree = track_background_degree(track, bg_direction)?;
-                if degree <= 25.0 {
+                if degree <= 30.0 {
                     return None;
                 }
 
@@ -137,7 +137,7 @@ impl TransparentShapeSolver {
                 self.candidate_track_count = 0;
             }
 
-            if self.candidate_track_count >= 3 {
+            if self.candidate_track_count >= 4 {
                 self.candidate_track_id = None;
                 self.candidate_track_count = 0;
                 return Some(track);
@@ -201,10 +201,13 @@ fn track_background_degree(track: &STrack, bg_direction: Point2d) -> Option<f64>
     Some(det.atan2(dot).to_degrees().abs())
 }
 
-fn estimate_background_direction(tracks: &[STrack]) -> Option<Point2d> {
+fn estimate_background_direction(
+    current_track_id: Option<u64>,
+    tracks: &[STrack],
+) -> Option<Point2d> {
     let filtered = tracks
         .iter()
-        .filter(|track| track.tracklet_len() >= 5)
+        .filter(|track| Some(track.track_id()) != current_track_id && track.tracklet_len() >= 5)
         .map(track_velocity)
         .collect::<Vec<Point2d>>();
     if filtered.len() < 3 {
