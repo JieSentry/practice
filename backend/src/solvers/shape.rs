@@ -115,7 +115,7 @@ impl TransparentShapeSolver {
             .filter(|track| track.tracklet_len() >= 2)
             .filter_map(|track| {
                 let degree = track_background_degree(track, bg_direction)?;
-                if degree <= 20.0 {
+                if degree <= 25.0 {
                     return None;
                 }
 
