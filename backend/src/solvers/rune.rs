@@ -49,7 +49,12 @@ impl RuneSolver {
     pub fn solve(&mut self, detector: &dyn Detector) -> SolvingState {
         if !self.spin_arrows_calibrated {
             self.calibrate_for_spin_arrows(detector);
-            return SolvingState::Calibrating;
+
+            return if self.spin_arrows_calibrated {
+                SolvingState::Solving
+            } else {
+                SolvingState::Calibrating
+            };
         }
 
         // After calibration is complete and there are spin arrows, prioritize its detection
