@@ -13,7 +13,7 @@ use crate::{
     skill::SkillEntities,
 };
 #[cfg(debug_assertions)]
-use crate::{debug::save_rune_for_training, detect::ArrowsComplete};
+use crate::{debug::save_rune_for_training, solvers::SolvedArrow};
 
 macro_rules! transition {
     ($entity:expr, $state:expr) => {{
@@ -105,7 +105,7 @@ pub(super) use try_ok_transition;
 pub struct Debug {
     auto_save: RefCell<bool>,
     last_rune_detector: RefCell<Option<Arc<dyn Detector>>>,
-    last_rune_result: RefCell<Option<ArrowsComplete>>,
+    last_rune_result: RefCell<Option<[SolvedArrow; 4]>>,
 }
 
 #[cfg(debug_assertions)]
@@ -132,7 +132,7 @@ impl Debug {
         }
     }
 
-    pub fn set_last_rune_result(&self, detector: Arc<dyn Detector>, result: ArrowsComplete) {
+    pub fn set_last_rune_result(&self, detector: Arc<dyn Detector>, result: [SolvedArrow; 4]) {
         *self.last_rune_detector.borrow_mut() = Some(detector);
         *self.last_rune_result.borrow_mut() = Some(result);
     }

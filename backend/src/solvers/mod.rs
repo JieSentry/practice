@@ -1,6 +1,5 @@
 mod rune;
 mod shape;
 
-#[allow(unused)]
-pub use rune::RuneSolver;
+pub use rune::*;
 pub use shape::TransparentShapeSolver;

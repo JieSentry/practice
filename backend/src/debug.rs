@@ -1,63 +1,41 @@
+use opencv::core::MatTraitConst;
 use opencv::core::Point;
 use opencv::core::Point2d;
 use opencv::core::Rect;
 use opencv::core::Scalar;
 use opencv::core::Size;
 use opencv::core::ToInputArray;
-use opencv::core::{MatTraitConst, Vector};
 use opencv::highgui::destroy_window;
 use opencv::highgui::{imshow, wait_key};
 use opencv::imgproc::arrowed_line;
-use opencv::imgproc::draw_contours_def;
-use opencv::imgproc::polylines;
 use opencv::imgproc::rectangle;
 use opencv::imgproc::{FONT_HERSHEY_SIMPLEX, put_text_def};
 use opencv::imgproc::{LINE_8, circle_def};
 use rand::distr::{Alphanumeric, SampleString};
 
 use crate::bridge::KeyKind;
-use crate::detect::ArrowsComplete;
+use crate::detect::SpinArrow;
+use crate::solvers::SolvedArrow;
 use crate::tracker::STrack;
 use crate::utils::{self, DatasetDir};
 
-pub fn debug_spinning_arrows(
-    mat: &impl MatTraitConst,
-    arrow_curve: &Vector<Point>,
-    arrow_contours: &Vector<Vector<Point>>,
-    arrow_region: Rect,
-    last_arrow_head: Point,
-    cur_arrow_head: Point,
-    region_centroid: Point,
-) {
+pub fn debug_spinning_arrows(mat: &impl MatTraitConst, spin_arrow: SpinArrow) {
+    let last_last_arrow_head = spin_arrow.last_last_arrow_head.unwrap();
+    let last_arrow_head = spin_arrow.last_arrow_head.unwrap();
+    let region_centroid = spin_arrow.centroid;
     let mut mat = mat.try_clone().unwrap();
-    let curve = arrow_curve
-        .clone()
-        .into_iter()
-        .map(|point| point + arrow_region.tl())
-        .collect::<Vector<Point>>();
-    let contours = arrow_contours
-        .clone()
-        .into_iter()
-        .map(|points| {
-            points
-                .into_iter()
-                .map(|pt| pt + arrow_region.tl())
-                .collect::<Vector<Point>>()
-        })
-        .collect::<Vector<Vector<Point>>>();
 
-    let _ = draw_contours_def(&mut mat, &contours, 0, Scalar::new(255.0, 0.0, 0.0, 0.0));
     let _ = circle_def(
         &mut mat,
         last_arrow_head + region_centroid,
         3,
-        Scalar::new(0.0, 255.0, 0.0, 0.0),
+        Scalar::new(255.0, 0.0, 0.0, 0.0),
     );
     let _ = circle_def(
         &mut mat,
-        cur_arrow_head + region_centroid,
+        last_last_arrow_head + region_centroid,
         3,
-        Scalar::new(255.0, 0.0, 0.0, 0.0),
+        Scalar::new(0.0, 255.0, 0.0, 0.0),
     );
     let _ = circle_def(
         &mut mat,
@@ -65,17 +43,8 @@ pub fn debug_spinning_arrows(
         3,
         Scalar::new(0.0, 0.0, 255.0, 0.0),
     );
-    let _ = polylines(
-        &mut mat,
-        &curve,
-        true,
-        Scalar::new(0., 255., 0., 0.),
-        1,
-        LINE_8,
-        0,
-    );
 
-    debug_mat("Spin Arrow", &mat, 0, &[]);
+    debug_mat("Spin Arrow", &mat, 0, []);
 }
 
 pub fn debug_tracks(
@@ -193,10 +162,10 @@ pub fn debug_mat(
     name: &str,
     mat: &impl MatTraitConst,
     wait_ms: i32,
-    bboxes: &[(Rect, &str)],
+    bboxes: impl AsRef<[(Rect, String)]>,
 ) -> i32 {
     let mut mat = mat.try_clone().unwrap();
-    for (bbox, text) in bboxes {
+    for (bbox, text) in bboxes.as_ref() {
         let _ = rectangle(
             &mut mat,
             *bbox,
@@ -216,14 +185,14 @@ pub fn debug_mat(
     }
     imshow(name, &mat).unwrap();
     let result = wait_key(wait_ms).unwrap();
-    if result == 81 {
+    if result == 81 || wait_ms == 0 {
         destroy_window(name).unwrap();
     }
     result
 }
 
-pub fn save_rune_for_training<T: MatTraitConst + ToInputArray>(mat: &T, result: ArrowsComplete) {
-    let has_spin_arrow = result.spins.iter().any(|spin| *spin);
+pub fn save_rune_for_training<T: MatTraitConst + ToInputArray>(mat: &T, arrows: [SolvedArrow; 4]) {
+    let has_spin_arrow = arrows.iter().any(|arrow| arrow.is_spin);
     let mut name = Alphanumeric.sample_string(&mut rand::rng(), 8);
     if has_spin_arrow {
         name = format!("{name}_spin");
@@ -231,28 +200,24 @@ pub fn save_rune_for_training<T: MatTraitConst + ToInputArray>(mat: &T, result: 
     let size = mat.size().unwrap();
 
     let labels = if has_spin_arrow {
-        result
-            .bboxes
+        arrows
             .into_iter()
-            .enumerate()
-            .filter(|(index, _)| result.spins[*index])
-            .map(|(_, bbox)| to_yolo_format(0, size, bbox))
+            .filter(|arrow| arrow.is_spin)
+            .map(|arrow| to_yolo_format(0, size, arrow.bbox))
             .collect::<Vec<String>>()
             .join("\n")
     } else {
-        result
-            .bboxes
+        arrows
             .into_iter()
-            .zip(result.keys)
-            .map(|(bbox, arrow)| {
-                let label = match arrow {
+            .map(|arrow| {
+                let label = match arrow.key {
                     KeyKind::Up => 0,
                     KeyKind::Down => 1,
                     KeyKind::Left => 2,
                     KeyKind::Right => 3,
                     _ => unreachable!(),
                 };
-                to_yolo_format(label, size, bbox)
+                to_yolo_format(label, size, arrow.bbox)
             })
             .collect::<Vec<String>>()
             .join("\n")

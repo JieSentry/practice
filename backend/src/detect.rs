@@ -39,60 +39,29 @@ use ort::{
     value::TensorRef,
 };
 
-#[cfg(debug_assertions)]
-use crate::debug::{debug_mat, debug_spinning_arrows};
-use crate::{array::Array, mat::OwnedMat};
+use crate::mat::OwnedMat;
 use crate::{bridge::KeyKind, models::Localization};
 
-const MAX_ARROWS: usize = 4;
-const MAX_SPIN_ARROWS: usize = 2; // PRAY
+#[derive(Debug, Copy, Clone)]
+pub struct Arrow {
+    pub key: KeyKind,
+    pub region: Rect,
+}
 
 /// Struct for storing information about the spinning arrows.
 #[derive(Debug, Copy, Clone)]
-struct SpinArrow {
+pub struct SpinArrow {
     /// The centroid of the spinning arrow relative to the whole image.
-    centroid: Point,
+    pub centroid: Point,
     /// The region of the spinning arrow relative to the whole image.
-    region: Rect,
+    pub region: Rect,
     /// The last arrow head relative to the centroid.
-    last_arrow_head: Option<Point>,
+    pub last_arrow_head: Option<Point>,
     /// Final result of spinning arrow.
-    final_arrow: Option<KeyKind>,
-    #[cfg(debug_assertions)]
-    is_spin_testing: bool,
-}
+    pub final_arrow: Option<KeyKind>,
 
-/// The current arrows detection/calibration state.
-#[derive(Debug)]
-pub enum ArrowsState {
-    Calibrating(ArrowsCalibrating),
-    Complete(ArrowsComplete),
-}
-
-#[derive(Debug, Copy, Clone)]
-pub struct ArrowsComplete {
-    pub keys: [KeyKind; MAX_ARROWS],
     #[cfg(debug_assertions)]
-    pub bboxes: [Rect; MAX_ARROWS],
-    #[cfg(debug_assertions)]
-    pub spins: [bool; MAX_ARROWS],
-}
-
-/// Struct representing arrows calibration in-progress
-#[derive(Debug, Copy, Clone, Default)]
-pub struct ArrowsCalibrating {
-    spin_arrows: Option<Array<SpinArrow, MAX_SPIN_ARROWS>>,
-    spin_arrows_calibrate_count: u32,
-    spin_arrows_calibrated: bool,
-    #[cfg(debug_assertions)]
-    is_spin_testing: bool,
-}
-
-impl ArrowsCalibrating {
-    #[cfg(debug_assertions)]
-    pub fn enable_spin_test(&mut self) {
-        self.is_spin_testing = true;
-    }
+    pub last_last_arrow_head: Option<Point>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -238,10 +207,11 @@ pub trait Detector: Debug + Send + Sync {
     fn detect_player_buff(&self, kind: BuffKind) -> bool;
 
     /// Detects arrows from the given RGBA `Mat` image.
-    ///
-    /// `calibrating` represents the previous calibrating state returned by
-    /// [`ArrowsState::Calibrating`]
-    fn detect_rune_arrows(&self, calibrating: ArrowsCalibrating) -> Result<ArrowsState>;
+    fn detect_rune_arrows(&self, ignore: Vec<Rect>) -> Vec<Arrow>;
+
+    fn detect_rune_initial_spin_arrows(&self) -> Vec<SpinArrow>;
+
+    fn detect_rune_spin_arrow(&self, arrow: SpinArrow) -> SpinArrow;
 
     /// Detects the Erda Shower skill from the given BGRA `Mat` image.
     fn detect_erda_shower(&self) -> Result<Rect>;
@@ -477,8 +447,17 @@ impl Detector for DefaultDetector {
         detect_player_buff(mat, kind)
     }
 
-    fn detect_rune_arrows(&self, calibrating: ArrowsCalibrating) -> Result<ArrowsState> {
-        detect_rune_arrows(self.bgr(), calibrating)
+    fn detect_rune_arrows(&self, ignore: Vec<Rect>) -> Vec<Arrow> {
+        detect_rune_arrows(self.bgr(), ignore).unwrap_or_default()
+    }
+
+    fn detect_rune_initial_spin_arrows(&self) -> Vec<SpinArrow> {
+        detect_rune_initial_spin_arrows(self.bgr())
+    }
+
+    fn detect_rune_spin_arrow(&self, mut arrow: SpinArrow) -> SpinArrow {
+        let _ = detect_rune_spin_arrow(self.bgr(), &mut arrow);
+        arrow
     }
 
     fn detect_erda_shower(&self) -> Result<Rect> {
@@ -1830,79 +1809,27 @@ fn detect_rune_arrows_with_scores_regions(bgr: &impl MatTraitConst) -> Vec<(Rect
     vec
 }
 
-fn detect_rune_arrows(
-    bgr: &impl MatTraitConst,
-    mut calibrating: ArrowsCalibrating,
-) -> Result<ArrowsState> {
+fn detect_rune_arrows(bgr: &impl MatTraitConst, ignore: Vec<Rect>) -> Result<Vec<Arrow>> {
     const SCORE_THRESHOLD: f32 = 0.8;
-    const MAX_CALIBRATE_COUNT: u32 = 3;
 
-    if !calibrating.spin_arrows_calibrated
-        && calibrating.spin_arrows_calibrate_count < MAX_CALIBRATE_COUNT
-    {
-        calibrating.spin_arrows_calibrate_count += 1;
-        calibrate_for_spin_arrows(bgr, &mut calibrating);
-        return Ok(ArrowsState::Calibrating(calibrating));
-    }
-
-    // After calibration is complete and there are spin arrows, prioritize its detection
-    if let Some(ref mut spin_arrows) = calibrating.spin_arrows
-        && spin_arrows.iter().any(|arrow| arrow.final_arrow.is_none())
-    {
-        for spin_arrow in spin_arrows
-            .iter_mut()
-            .filter(|arrow| arrow.final_arrow.is_none())
-        {
-            detect_spin_arrow(bgr, spin_arrow)?;
-        }
-        return Ok(ArrowsState::Calibrating(calibrating));
-    }
-
-    // Normal detection path
     let mut bgr = bgr.try_clone().unwrap();
-    if let Some(spin_arrows) = calibrating.spin_arrows.as_ref() {
-        //  Set all spin arrow regions to black pixels
-        for region in spin_arrows.iter().map(|arrow| arrow.region) {
-            bgr.roi_mut(region)?.set_scalar(Scalar::default())?;
-        }
-
-        #[cfg(debug_assertions)]
-        if calibrating.is_spin_testing {
-            debug_mat("Rune Region Spin Arrows Removed", &bgr, 0, &[]);
-        }
+    for region in ignore {
+        bgr.roi_mut(region)?.set_scalar(Scalar::default())?;
     }
 
-    let result = detect_rune_arrows_with_scores_regions(&bgr)
+    Ok(detect_rune_arrows_with_scores_regions(&bgr)
         .into_iter()
-        .filter_map(|(rect, arrow, score)| {
-            (score >= SCORE_THRESHOLD).then_some((rect, false, arrow))
+        .filter_map(|(bbox, key, score)| {
+            if score >= SCORE_THRESHOLD {
+                Some(Arrow { key, region: bbox })
+            } else {
+                None
+            }
         })
-        .collect::<Vec<_>>();
-    if calibrating.spin_arrows.is_some() {
-        if result.len() != MAX_ARROWS / 2 {
-            info!(target: "rune", "spin arrows detection completed but normal arrows failed");
-            return Err(anyhow!("failed to detect normal rune arrows"));
-        }
-        let mut vec = calibrating
-            .spin_arrows
-            .take()
-            .unwrap()
-            .into_iter()
-            .map(|arrow| (arrow.region, true, arrow.final_arrow.unwrap()))
-            .chain(result)
-            .collect::<Vec<_>>();
-        vec.sort_by_key(|a| a.0.x);
-        return Ok(ArrowsState::Complete(to_arrows_complete(vec)));
-    }
-
-    if result.len() == MAX_ARROWS {
-        Ok(ArrowsState::Complete(to_arrows_complete(result)))
-    } else {
-        Err(anyhow!("failed to detect rune arrows"))
-    }
+        .collect::<Vec<_>>())
 }
 
-fn calibrate_for_spin_arrows(bgr: &impl MatTraitConst, calibrating: &mut ArrowsCalibrating) {
+fn detect_rune_initial_spin_arrows(bgr: &impl MatTraitConst) -> Vec<SpinArrow> {
     static RUNE_SPIN_MODEL: LazyLock<Mutex<Session>> = LazyLock::new(|| {
         Mutex::new(
             build_session(include_bytes!(env!("RUNE_SPIN_MODEL")))
@@ -1924,59 +1851,37 @@ fn calibrate_for_spin_arrows(bgr: &impl MatTraitConst, calibrating: &mut ArrowsC
         .filter(|pred| pred[4] >= 0.8)
         .map(|pred| remap_from_yolo(pred, size, w_ratio, h_ratio, left, top))
         .collect::<Vec<Rect>>();
-    if spin_arrow_regions.is_empty() {
-        calibrating.spin_arrows_calibrated = true;
-        info!(target: "rune", "no spin arrow is found, proceed with normal detection...");
-        return;
-    }
-    if spin_arrow_regions.len() < MAX_SPIN_ARROWS {
-        info!(target: "rune", "retry calibrating spin arrow because at least 1 spin arrow is found...");
-        return;
-    }
-    if spin_arrow_regions.len() > MAX_SPIN_ARROWS {
-        info!(target: "rune", "retry calibrating spin arrow because of false positives...");
-        return;
-    }
-    calibrating.spin_arrows_calibrated = true;
 
-    let mut spin_arrows = Array::new();
+    spin_arrow_regions
+        .into_iter()
+        .map(|region| {
+            // Pad to ensure the region always contain the spin arrow even when it rotates
+            // horitzontally or vertically
 
-    for region in spin_arrow_regions {
-        let x = region.x;
-        let y = region.y;
-        let w = region.width;
-        let h = region.height;
+            let x = region.x;
+            let y = region.y;
+            let padded_x = (x - SPIN_REGION_PAD).max(0);
+            let padded_y = (y - SPIN_REGION_PAD).max(0);
 
-        // Pad to ensure the region always contain the spin arrow even when it rotates
-        // horitzontally or vertically
-        let padded_x = (x - SPIN_REGION_PAD).max(0);
-        let padded_y = (y - SPIN_REGION_PAD).max(0);
-        let padded_w = (padded_x + w + SPIN_REGION_PAD * 2).min(size.width) - padded_x;
-        let padded_h = (padded_y + h + SPIN_REGION_PAD * 2).min(size.height) - padded_y;
-        let rect = Rect::new(padded_x, padded_y, padded_w, padded_h);
+            let w = region.width;
+            let h = region.height;
+            let padded_w = (padded_x + w + SPIN_REGION_PAD * 2).min(size.width) - padded_x;
+            let padded_h = (padded_y + h + SPIN_REGION_PAD * 2).min(size.height) - padded_y;
+            let rect = Rect::new(padded_x, padded_y, padded_w, padded_h);
 
-        #[cfg(debug_assertions)]
-        if calibrating.is_spin_testing {
-            debug_mat("Spin Arrow", bgr, 0, &[(rect, "Region")]);
-        }
-
-        spin_arrows.push(SpinArrow {
-            centroid: Point::new(x + w / 2, y + h / 2),
-            region: rect,
-            last_arrow_head: None,
-            final_arrow: None,
-            #[cfg(debug_assertions)]
-            is_spin_testing: calibrating.is_spin_testing,
-        });
-    }
-
-    if spin_arrows.len() == MAX_SPIN_ARROWS {
-        info!(target: "rune", "{} spinning rune arrows detected, calibrating...", spin_arrows.len());
-        calibrating.spin_arrows = Some(spin_arrows);
-    }
+            SpinArrow {
+                centroid: Point::new(x + w / 2, y + h / 2),
+                region: rect,
+                last_arrow_head: None,
+                final_arrow: None,
+                #[cfg(debug_assertions)]
+                last_last_arrow_head: None,
+            }
+        })
+        .collect::<Vec<_>>()
 }
 
-fn detect_spin_arrow(bgr: &impl MatTraitConst, spin_arrow: &mut SpinArrow) -> Result<()> {
+fn detect_rune_spin_arrow(bgr: &impl MatTraitConst, spin_arrow: &mut SpinArrow) -> Result<()> {
     const SPIN_LAG_THRESHOLD: i32 = 30;
 
     // Extract spin arrow region
@@ -2028,6 +1933,10 @@ fn detect_spin_arrow(bgr: &impl MatTraitConst, spin_arrow: &mut SpinArrow) -> Re
     let cur_arrow_head = arrow_head - centroid;
 
     if spin_arrow.last_arrow_head.is_none() {
+        #[cfg(debug_assertions)]
+        {
+            spin_arrow.last_last_arrow_head = Some(cur_arrow_head);
+        }
         spin_arrow.last_arrow_head = Some(cur_arrow_head);
         return Ok(());
     }
@@ -2050,46 +1959,13 @@ fn detect_spin_arrow(bgr: &impl MatTraitConst, spin_arrow: &mut SpinArrow) -> Re
         info!(target: "rune", "spinning arrow result {arrow:?} {directions:?}");
         spin_arrow.final_arrow = Some(arrow);
     }
+    #[cfg(debug_assertions)]
+    {
+        spin_arrow.last_last_arrow_head = spin_arrow.last_arrow_head;
+    }
     spin_arrow.last_arrow_head = Some(cur_arrow_head);
 
-    #[cfg(debug_assertions)]
-    if spin_arrow.is_spin_testing {
-        debug_spinning_arrows(
-            bgr,
-            &triangle,
-            &contours,
-            spin_arrow.region,
-            prev_arrow_head,
-            cur_arrow_head,
-            spin_arrow.centroid,
-        );
-    }
-
     Ok(())
-}
-
-#[inline]
-fn to_arrows_complete(vec: Vec<(Rect, bool, KeyKind)>) -> ArrowsComplete {
-    debug_assert!(vec.len() == 4);
-    info!( target: "player", "solving rune result {vec:?}");
-
-    let first = vec[0];
-    let second = vec[1];
-    let third = vec[2];
-    let fourth = vec[3];
-    let keys = [first.2, second.2, third.2, fourth.2];
-    #[cfg(debug_assertions)]
-    let bboxes = [first.0, second.0, third.0, fourth.0];
-    #[cfg(debug_assertions)]
-    let spins = [first.1, second.1, third.1, fourth.1];
-
-    ArrowsComplete {
-        keys,
-        #[cfg(debug_assertions)]
-        bboxes,
-        #[cfg(debug_assertions)]
-        spins,
-    }
 }
 
 fn detect_erda_shower(grayscale: &impl MatTraitConst) -> Result<Rect> {

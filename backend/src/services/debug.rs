@@ -9,7 +9,6 @@ use std::{
 };
 
 use include_dir::{Dir, include_dir};
-use log::debug;
 use opencv::{
     core::{Mat, MatTraitConst, ModifyInplace, Rect, Vector},
     highgui::destroy_all_windows,
@@ -34,7 +33,7 @@ use tokio::{
 use crate::{
     CycleRunStopMode, DebugState, Settings,
     bridge::{DefaultInput, InputMethod},
-    detect::{ArrowsCalibrating, ArrowsState, DefaultDetector, Detector},
+    detect::DefaultDetector,
     ecs::{Debug, Resources},
     mat::OwnedMat,
     models::Localization,
@@ -42,7 +41,7 @@ use crate::{
     operation::{Operation, OperationConfiguration, OperationState},
     rng::Rng,
     run::FPS,
-    solvers::TransparentShapeSolver,
+    solvers::{RuneSolver, TransparentShapeSolver},
     tracker::ByteTracker,
     utils::DatasetDir,
 };
@@ -130,30 +129,21 @@ impl DebugService {
                 .collect()
         });
 
-        let localization = Arc::new(Localization::default());
-        let mut calibrating = ArrowsCalibrating::default();
-        calibrating.enable_spin_test();
-
-        for mat in &*SPIN_TEST_IMAGES {
-            match DefaultDetector::new(OwnedMat::from(mat.clone()), localization.clone())
-                .detect_rune_arrows(calibrating)
+        spawn_blocking(move || {
+            let mut solver = RuneSolver::debug();
+            for detector in SPIN_TEST_IMAGES
+                .clone()
+                .into_iter()
+                .map(OwnedMat::from)
+                .map(|mat| DefaultDetector::new(mat, Arc::new(Localization::default())))
             {
-                Ok(ArrowsState::Complete(arrows)) => {
-                    debug!(target: "test", "spin test completed {arrows:?}");
-                    break;
-                }
-                Ok(ArrowsState::Calibrating(new_calibrating)) => {
-                    calibrating = new_calibrating;
-                }
-                Err(err) => {
-                    debug!(target: "test", "spin test error {err}");
-                    break;
-                }
+                solver.solve(&detector);
             }
-        }
+            destroy_all_windows().unwrap();
+        });
     }
 
-    pub fn sandbox_test_transparent_shape(&mut self) {
+    pub fn sandbox_test_transparent_shape(&self) {
         static VIDEO_BYTES: &[u8] = include_bytes!(env!("TRANSPARENT_SHAPE_TEST_VIDEO"));
 
         let file = DatasetDir::Root
