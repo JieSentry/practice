@@ -85,6 +85,7 @@ If the bot fails to start or shows missing component errors on a fresh Windows i
 
 - [**Visual C++ Redistributable 2015–2022**](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist#visual-studio-2015-2017-2019-and-2022)  
 - [**Microsoft WebView2 Runtime**](https://developer.microsoft.com/en-us/microsoft-edge/webview2?form=MA13LH)
+- CUDA 12.x is required to enable GPU usage.
 
 ## Unstucking State
 
