@@ -114,7 +114,7 @@ pub fn debug_tracks(
         let abs_angle = angle.abs();
 
         // green = aligned, yellow = diagonal, red = opposite
-        let color = if abs_angle <= 45.0 {
+        let color = if abs_angle <= 25.0 {
             Scalar::new(0.0, 255.0, 0.0, 0.0)
         } else if abs_angle <= 90.0 {
             Scalar::new(0.0, 255.0, 255.0, 0.0)
