@@ -43,7 +43,7 @@ pub trait OperationService: Debug {
     fn subscribe(&self) -> Receiver<OperationEvent>;
 
     /// Applies the new `update` to `resources` and sends an [`OperationEvent::Update`] event.
-    fn update(&self, resources: &mut Resources, update: OperationUpdate);
+    fn update(&mut self, resources: &mut Resources, update: OperationUpdate);
 
     /// Applies the new `config` to `resources` and sends an [`OperationEvent::Configuration`]
     /// event.
@@ -78,8 +78,11 @@ impl OperationService for DefaultOperationService {
         self.event_tx.subscribe()
     }
 
-    fn update(&self, resources: &mut Resources, update: OperationUpdate) {
+    fn update(&mut self, resources: &mut Resources, update: OperationUpdate) {
         resources.operation = update_operation(resources.operation, update);
+        if resources.operation.halting() {
+            self.abort_halt();
+        }
         let _ = self.event_tx.send(OperationEvent::Update);
     }
 
