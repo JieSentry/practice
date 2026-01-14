@@ -160,7 +160,7 @@ fn update_open_menu(resources: &Resources, swapping: &mut FamiliarsSwapping, key
         panic!("familiars swapping state is not opening menu");
     };
 
-    match next_timeout_lifecycle(timeout, 60) {
+    match next_timeout_lifecycle(timeout, 120) {
         Lifecycle::Started(timeout) => transition!(swapping, State::OpenMenu(timeout), {
             resources.input.send_mouse(
                 swapping.mouse_rest.x,
@@ -180,7 +180,7 @@ fn update_open_menu(resources: &Resources, swapping: &mut FamiliarsSwapping, key
             });
         }
         Lifecycle::Updated(timeout) => transition!(swapping, State::OpenMenu(timeout), {
-            if timeout.current == 30 {
+            if timeout.current == 60 {
                 resources.input.send_key(key);
             }
         }),
