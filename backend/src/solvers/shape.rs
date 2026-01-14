@@ -34,7 +34,7 @@ impl TransparentShapeSolver {
         detector: &dyn Detector,
         tracker: &mut ByteTracker,
         region: Rect,
-    ) -> Point {
+    ) -> Option<Point> {
         let shapes = detector.detect_transparent_shapes(region);
         let tracks = tracker.update(shapes.into_iter().map(Detection::new).collect());
 
@@ -62,11 +62,11 @@ impl TransparentShapeSolver {
                     );
                 }
 
-                region.tl() + next_cursor
+                Some(region.tl() + next_cursor)
             }
             None => {
-                let last_cursor = self.last_cursor.expect("set");
-                let last_velocity = self.last_velocity.expect("set") * 1.5;
+                let last_cursor = self.last_cursor?;
+                let last_velocity = self.last_velocity.expect("set if last_cursor set") * 1.5;
                 let next_cursor = last_cursor
                     + Point::new(
                         last_velocity.x.round() as i32,
@@ -85,7 +85,7 @@ impl TransparentShapeSolver {
                     );
                 }
 
-                region.tl() + next_cursor
+                Some(region.tl() + next_cursor)
             }
         }
     }

@@ -172,7 +172,9 @@ impl DebugService {
                         DefaultDetector::new(OwnedMat::from(frame), localization.clone());
                     let cursor = solver.solve(&detector, &mut tracker, region);
 
-                    input.send_mouse(cursor.x, cursor.y, MouseKind::Move);
+                    if let Some(cursor) = cursor {
+                        input.send_mouse(cursor.x, cursor.y, MouseKind::Move);
+                    }
                 }
 
                 true

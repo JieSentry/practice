@@ -122,14 +122,15 @@ fn update_solving(
         Lifecycle::Ended => transition!(solving_shape, State::Completed),
         Lifecycle::Started(timeout) | Lifecycle::Updated(timeout) => {
             transition!(solving_shape, State::Solving(timeout), {
-                let cursor = solving_shape.solver.solve(
+                if let Some(cursor) = solving_shape.solver.solve(
                     resources.detector(),
                     tracker,
                     solving_shape.region.expect("set"),
-                );
-                resources
-                    .input
-                    .send_mouse(cursor.x, cursor.y, MouseKind::Move);
+                ) {
+                    resources
+                        .input
+                        .send_mouse(cursor.x, cursor.y, MouseKind::Move);
+                }
             })
         }
     }
