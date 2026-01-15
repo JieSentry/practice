@@ -52,7 +52,7 @@ impl<T: Debug> Task<T> {
 
 impl<T> Task<T> {
     pub fn completed(&self) -> bool {
-        self.handle.is_finished()
+        self.rx.is_terminated()
     }
 
     pub fn abort(&mut self) {
