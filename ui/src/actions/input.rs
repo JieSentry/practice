@@ -86,12 +86,16 @@ pub fn ActionsInput(
     positionable: bool,
     directionable: bool,
     bufferable: bool,
-    on_copy: ReadSignal<Option<Callback>>,
+    on_copy: Option<Callback>,
     on_cancel: Callback,
     on_value: Callback<(Action, ActionCondition)>,
     value: ReadSignal<Action>,
 ) -> Element {
     let mut current_value = use_signal(&*value);
+
+    // TODO: Check if there is a bug on Dioxus side that cause `on_copy` to be `Some` even if
+    // TODO: `None` is explicitly passed.
+    let on_copy = modifying.then_some(on_copy).flatten();
 
     let handle_switch = move |_| {
         let value = value.cloned();
@@ -125,7 +129,7 @@ pub fn ActionsInput(
 
     rsx! {
         div { class: "flex flex-col pb-10 overflow-y-auto max-h-100",
-            if switchable || on_copy().is_some() {
+            if switchable || on_copy.is_some() {
                 div { class: "grid grid-flow-col",
                     if switchable {
                         Button {
@@ -139,7 +143,7 @@ pub fn ActionsInput(
                             }
                         }
                     }
-                    if let Some(on_copy) = on_copy() {
+                    if let Some(on_copy) = on_copy {
                         Button {
                             style: ButtonStyle::Primary,
                             on_click: on_copy,

@@ -296,6 +296,7 @@ pub fn SectionActions(actions: Memo<Vec<Action>>, disabled: bool) -> Element {
                             popup_open.set(false);
                             popup_content.set(PopupContent::None);
                         },
+                        on_copy: None,
                         on_value: move |(action, condition)| {
                             add_action(action, condition);
                             popup_open.set(false);
