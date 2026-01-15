@@ -8,7 +8,7 @@ use crate::{
     tracker::{ByteTracker, Detection, STrack},
 };
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Default)]
 pub struct TransparentShapeSolver {
     current_track_id: Option<u64>,
     candidate_track_id: Option<u64>,
@@ -41,7 +41,7 @@ impl TransparentShapeSolver {
         self.update_initial_track_if_needed(region, &tracks);
         self.update_background_direction(&tracks);
 
-        match self.update_and_find_best_track(&tracks) {
+        match self.update_and_find_best_track(&tracks, region) {
             Some(track) => {
                 let next_cursor = predicted_center(track);
                 if self.current_track_id != Some(track.track_id()) {
@@ -72,6 +72,11 @@ impl TransparentShapeSolver {
                         last_velocity.x.round() as i32,
                         last_velocity.y.round() as i32,
                     );
+                let absolute_next_cursor = region.tl() + next_cursor;
+                if !region.contains(absolute_next_cursor) {
+                    return None;
+                }
+
                 self.last_cursor = Some(next_cursor);
 
                 #[cfg(debug_assertions)]
@@ -85,7 +90,7 @@ impl TransparentShapeSolver {
                     );
                 }
 
-                Some(region.tl() + next_cursor)
+                Some(absolute_next_cursor)
             }
         }
     }
@@ -102,26 +107,28 @@ impl TransparentShapeSolver {
     }
 
     fn update_background_direction(&mut self, tracks: &[STrack]) {
-        if let Some(direction) = estimate_background_direction(self.current_track_id, tracks) {
+        if let Some(direction) = estimate_background_direction(self.last_cursor, tracks)
+            .and_then(|direction| unit(self.bg_direction * 0.5 + direction * 0.5))
+        {
             self.bg_direction = direction;
         }
     }
 
-    fn update_and_find_best_track<'a>(&mut self, tracks: &'a [STrack]) -> Option<&'a STrack> {
+    fn update_and_find_best_track<'a>(
+        &mut self,
+        tracks: &'a [STrack],
+        region: Rect,
+    ) -> Option<&'a STrack> {
         let current_track_id = self.current_track_id?;
+        let last_cursor = self.last_cursor?;
         let bg_direction = self.bg_direction;
         let match_track = tracks
             .iter()
-            .filter(|track| track.tracklet_len() >= 2)
             .filter_map(|track| {
-                let degree = track_background_degree(track, bg_direction)?;
-                if degree <= 30.0 {
-                    return None;
-                }
-
-                Some((track, degree))
+                let score = track_background_score(track, last_cursor, bg_direction, region)?;
+                Some((track, score))
             })
-            .max_by(|(_, a_degree), (_, b_degree)| a_degree.partial_cmp(b_degree).unwrap())
+            .max_by(|(_, a_score), (_, b_score)| a_score.partial_cmp(b_score).unwrap())
             .map(|(track, _)| track);
 
         if let Some(track) = match_track {
@@ -137,7 +144,7 @@ impl TransparentShapeSolver {
                 self.candidate_track_count = 0;
             }
 
-            if self.candidate_track_count >= 4 {
+            if self.candidate_track_count >= 1 {
                 self.candidate_track_id = None;
                 self.candidate_track_count = 0;
                 return Some(track);
@@ -147,6 +154,17 @@ impl TransparentShapeSolver {
         tracks
             .iter()
             .find(|track| track.track_id() == current_track_id)
+    }
+}
+
+impl Drop for TransparentShapeSolver {
+    fn drop(&mut self) {
+        #[cfg(debug_assertions)]
+        if self.debugging {
+            use opencv::highgui::destroy_all_windows;
+
+            let _ = destroy_all_windows();
+        }
     }
 }
 
@@ -194,20 +212,70 @@ fn predicted_center(track: &STrack) -> Point {
     )
 }
 
+fn track_background_score(
+    track: &STrack,
+    last_cursor: Point,
+    bg_direction: Point2d,
+    region: Rect,
+) -> Option<f64> {
+    let angle = track_background_degree(track, bg_direction)?;
+    if angle <= 45.0 {
+        return None;
+    }
+    let score = angle / 180.0;
+
+    let distance_penalty = if angle >= 60.0 {
+        1.0
+    } else {
+        let cursor_dir = mid_point(track.rect()) - last_cursor;
+        let cursor_squared = (cursor_dir.x.pow(2) + cursor_dir.y.pow(2)) as f64;
+        let sigma = 0.25 * diag(region);
+        (-cursor_squared / (2.0 * sigma.powi(2))).exp()
+    };
+    if distance_penalty <= 0.3 {
+        return None;
+    }
+
+    Some(score * distance_penalty)
+}
+
 fn track_background_degree(track: &STrack, bg_direction: Point2d) -> Option<f64> {
-    let velocity = unit(track_velocity(track))?;
-    let dot = velocity.dot(bg_direction);
-    let det = velocity.cross(bg_direction);
+    let dir = unit(track_velocity(track))?;
+    let dot = dir.dot(bg_direction);
+    let det = dir.cross(bg_direction);
     Some(det.atan2(dot).to_degrees().abs())
 }
 
-fn estimate_background_direction(
-    current_track_id: Option<u64>,
-    tracks: &[STrack],
-) -> Option<Point2d> {
+fn estimate_background_direction(last_cursor: Option<Point>, tracks: &[STrack]) -> Option<Point2d> {
+    let mut last_rect_contains_cursor = None;
     let filtered = tracks
         .iter()
-        .filter(|track| Some(track.track_id()) != current_track_id && track.tracklet_len() >= 5)
+        .filter(|track| {
+            if track.tracklet_len() < 5 {
+                return false;
+            }
+
+            if last_rect_contains_cursor.is_some_and(|rect: Rect| (rect & track.rect()).area() > 0)
+            {
+                return false;
+            }
+
+            let Some(last_cursor) = last_cursor else {
+                return true;
+            };
+
+            let rect = track.rect();
+            if rect.contains(last_cursor) {
+                if last_rect_contains_cursor.is_none() {
+                    last_rect_contains_cursor = Some(rect);
+                }
+
+                return false;
+            }
+
+            let norm = (mid_point(track.rect()) - last_cursor).norm();
+            norm >= diag(track.rect())
+        })
         .map(track_velocity)
         .collect::<Vec<Point2d>>();
     if filtered.len() < 3 {
@@ -225,6 +293,10 @@ fn estimate_background_direction(
 fn track_velocity(track: &STrack) -> Point2d {
     let (vx, vy) = track.kalman_velocity();
     Point2d::new(vx as f64, vy as f64)
+}
+
+fn diag(rect: Rect) -> f64 {
+    ((rect.width.pow(2) + rect.height.pow(2)) as f64).sqrt()
 }
 
 fn unit<T>(point: Point_<T>) -> Option<Point_<T>>

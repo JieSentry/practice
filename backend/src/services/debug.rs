@@ -179,7 +179,6 @@ impl DebugService {
 
                 true
             });
-            destroy_all_windows().unwrap();
         });
     }
 }

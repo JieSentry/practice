@@ -8,7 +8,7 @@ use anyhow::{Error, Result, anyhow};
 use tokio::{
     spawn,
     sync::oneshot::{self, Receiver},
-    task::spawn_blocking,
+    task::{JoinHandle, spawn_blocking},
     time::sleep,
 };
 
@@ -21,23 +21,43 @@ use crate::{detect::Detector, ecs::Resources};
 #[derive(Debug)]
 pub struct Task<T> {
     rx: Receiver<T>,
+    handle: JoinHandle<()>,
 }
 
 impl<T: Debug> Task<T> {
-    fn spawn<F>(f: F) -> Task<T>
+    pub fn spawn<F>(f: F) -> Task<T>
     where
         F: Future<Output = T> + Send + 'static,
         T: Send + 'static,
     {
         let (tx, rx) = oneshot::channel();
-        spawn(async move {
+        let handle = spawn(async move {
             let _ = tx.send(f.await);
         });
-        Task { rx }
+        Task { rx, handle }
     }
 
+    pub fn spawn_blocking<F>(f: F) -> Task<T>
+    where
+        F: FnOnce() -> T + Send + 'static,
+        T: Send + 'static,
+    {
+        let (tx, rx) = oneshot::channel();
+        let handle = spawn_blocking(move || {
+            let _ = tx.send(f());
+        });
+        Task { rx, handle }
+    }
+}
+
+impl<T> Task<T> {
     pub fn completed(&self) -> bool {
-        self.rx.is_terminated()
+        self.handle.is_finished()
+    }
+
+    pub fn abort(&mut self) {
+        self.rx.close();
+        self.handle.abort();
     }
 
     fn poll_inner(&mut self) -> Option<T> {

@@ -19,9 +19,7 @@ use crate::{
     minimap::Minimap,
     notification::NotificationKind,
     player::{AUTO_MOB_USE_KEY_X_THRESHOLD, AUTO_MOB_USE_KEY_Y_THRESHOLD, AutoMob, Booster},
-    run::FPS,
     task::{Task, Update, update_detection_task},
-    tracker::ByteTracker,
 };
 
 const STATIONARY_TIMEOUT: u32 = MOVE_TIMEOUT + 1;
@@ -369,7 +367,6 @@ pub struct PlayerContext {
     /// This is [`Some`] when [`Player::SolvingRune`] successfully detects the rune
     /// and sends all the keys.
     rune_validate_timeout: Option<Timeout>,
-    shape_tracker: Option<ByteTracker>,
 
     /// A state to return to after stalling.
     ///
@@ -520,18 +517,6 @@ impl PlayerContext {
         } else {
             None
         }
-    }
-
-    pub(super) fn shape_tracker(&mut self) -> &mut ByteTracker {
-        if self.shape_tracker.is_none() {
-            self.reset_shape_tracker();
-        }
-
-        self.shape_tracker.as_mut().expect("constructed")
-    }
-
-    pub(super) fn reset_shape_tracker(&mut self) {
-        self.shape_tracker = Some(ByteTracker::new(FPS));
     }
 
     /// Starts validating whether the rune is solved.
