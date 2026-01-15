@@ -1,16 +1,14 @@
 use std::{collections::HashMap, fmt::Display, mem::discriminant, ops::Range};
 
 use backend::{
-    Action, ActionCondition, ActionKey, Bound, IntoEnumIterator, KeyBinding, Map, MobbingKey,
-    Platform, RotationMode, key_receiver, update_map, upsert_map,
+    Action, ActionCondition, ActionKey, IntoEnumIterator, KeyBinding, Map, Platform, key_receiver,
+    update_map, upsert_map,
 };
 use dioxus::{html::FileData, prelude::*};
 use futures_util::StreamExt;
 use list::ActionsList;
-use popup::{
-    PopupActionsInputContent, PopupMobbingBoundInputContent, PopupMobbingKeyInputContent,
-    PopupPlatformInputContent,
-};
+use popup::{PopupActionsInputContent, PopupPlatformInputContent};
+use rotation::SectionRotation;
 use tokio::sync::broadcast::error::RecvError;
 
 use crate::{
@@ -36,6 +34,7 @@ use crate::{
 mod input;
 mod list;
 mod popup;
+mod rotation;
 
 const ITEM_TEXT_CLASS: &str =
     "text-center inline-block pt-1 text-ellipsis overflow-hidden whitespace-nowrap";
@@ -206,181 +205,6 @@ pub fn ActionsScreen() -> Element {
                         }
                     }
                 }
-            }
-        }
-    }
-}
-
-#[component]
-fn SectionRotation(disabled: bool) -> Element {
-    #[derive(Clone, Copy, PartialEq)]
-    enum PopupContent {
-        None,
-        Bound(Bound),
-        Key(MobbingKey),
-    }
-
-    let context = use_context::<ActionsContext>();
-    let map = context.map;
-    let save_map = context.save_map;
-
-    let update_mobbing_button_disabled = use_memo(move || {
-        !matches!(
-            map().rotation_mode,
-            RotationMode::AutoMobbing | RotationMode::PingPong
-        )
-    });
-
-    let edit_mobbing_key = use_callback(move |rotation_mobbing_key| {
-        save_map(Map {
-            rotation_mobbing_key,
-            ..map()
-        });
-    });
-
-    let edit_mobbing_bound = use_callback(move |bound| {
-        let mut map = map();
-
-        match map.rotation_mode {
-            RotationMode::StartToEnd | RotationMode::StartToEndThenReverse => return,
-            RotationMode::AutoMobbing => {
-                map.rotation_auto_mob_bound = bound;
-            }
-            RotationMode::PingPong => {
-                map.rotation_ping_pong_bound = bound;
-            }
-        };
-        save_map(map);
-    });
-
-    let mut popup_content = use_signal(|| PopupContent::None);
-    let mut popup_open = use_signal(|| false);
-
-    rsx! {
-        PopupContext {
-            open: popup_open,
-            on_open: move |open: bool| {
-                popup_open.set(open);
-            },
-            Section { title: "Rotation",
-                div { class: "grid grid-cols-2 gap-3",
-                    ActionsSelect::<RotationMode> {
-                        label: "Mode",
-                        disabled,
-                        on_selected: move |rotation_mode| {
-                            save_map(Map {
-                                rotation_mode,
-                                ..map.peek().clone()
-                            })
-                        },
-                        selected: map().rotation_mode,
-                    }
-                    div {}
-                    PopupTrigger {
-                        Button {
-                            style: ButtonStyle::Primary,
-                            class: "w-full",
-                            disabled: disabled | update_mobbing_button_disabled(),
-                            on_click: move |_| {
-                                let map = map.peek();
-                                let key = match map.rotation_mode {
-                                    RotationMode::StartToEnd | RotationMode::StartToEndThenReverse => {
-                                        unreachable!()
-                                    }
-                                    RotationMode::AutoMobbing | RotationMode::PingPong => {
-                                        map.rotation_mobbing_key
-                                    }
-                                };
-                                popup_content.set(PopupContent::Key(key));
-                            },
-
-                            "Update mobbing key"
-                        }
-                    }
-                    PopupTrigger {
-                        Button {
-                            style: ButtonStyle::Primary,
-                            class: "w-full",
-                            disabled: disabled || update_mobbing_button_disabled(),
-                            on_click: move |_| {
-                                let map = map.peek();
-                                let bound = match map.rotation_mode {
-                                    RotationMode::StartToEnd | RotationMode::StartToEndThenReverse => {
-                                        unreachable!()
-                                    }
-                                    RotationMode::AutoMobbing => map.rotation_auto_mob_bound,
-                                    RotationMode::PingPong => map.rotation_ping_pong_bound,
-                                };
-                                popup_content.set(PopupContent::Bound(bound));
-                            },
-
-                            "Update mobbing bound"
-                        }
-                    }
-                    ActionsCheckbox {
-                        label: "Auto mobbing uses key when pathing",
-                        tooltip: "Pathing means when the player is moving from one quad to another.",
-                        disabled,
-                        on_checked: move |auto_mob_use_key_when_pathing| {
-                            save_map(Map {
-                                auto_mob_use_key_when_pathing,
-                                ..map.peek().clone()
-                            })
-                        },
-                        checked: map().auto_mob_use_key_when_pathing,
-                    }
-                    ActionsMillisInput {
-                        label: "Detect mobs when pathing every",
-                        disabled,
-                        on_value: move |auto_mob_use_key_when_pathing_update_millis| {
-                            save_map(Map {
-                                auto_mob_use_key_when_pathing_update_millis,
-                                ..map.peek().clone()
-                            })
-                        },
-                        value: map().auto_mob_use_key_when_pathing_update_millis,
-                    }
-                    ActionsCheckbox {
-                        label: "Reset normal actions on Erda Shower resets",
-                        disabled,
-                        on_checked: move |actions_any_reset_on_erda_condition| {
-                            save_map(Map {
-                                actions_any_reset_on_erda_condition,
-                                ..map.peek().clone()
-                            })
-                        },
-                        checked: map().actions_any_reset_on_erda_condition,
-                    }
-                }
-            }
-
-            match popup_content() {
-                #[allow(clippy::double_parens)]
-                PopupContent::None => rsx! {},
-                PopupContent::Bound(bound) => rsx! {
-                    PopupMobbingBoundInputContent {
-                        on_cancel: move |_| {
-                            popup_open.set(false);
-                        },
-                        on_value: move |bound| {
-                            edit_mobbing_bound(bound);
-                            popup_open.set(false);
-                        },
-                        value: bound,
-                    }
-                },
-                PopupContent::Key(key) => rsx! {
-                    PopupMobbingKeyInputContent {
-                        on_cancel: move |_| {
-                            popup_open.set(false);
-                        },
-                        on_value: move |key| {
-                            edit_mobbing_key(key);
-                            popup_open.set(false);
-                        },
-                        value: key,
-                    }
-                },
             }
         }
     }
