@@ -11,22 +11,24 @@ use futures_util::StreamExt;
 
 use crate::{
     AppState,
+    characters::actions::SectionFixedActions,
     components::{
         ContentAlign, ContentSide,
         button::{Button, ButtonStyle},
         checkbox::Checkbox,
         file::{FileInput, FileOutput},
-        icons::XIcon,
         key::KeyInput,
         labeled::Labeled,
-        list::{List, ListItem, MoveEvent},
         named_select::NamedSelect,
         numbers::{MillisInput, PercentageInput, PrimitiveIntegerInput},
-        popup::{PopupContent, PopupContext, PopupTrigger},
+        popup::PopupContent,
         section::Section,
         select::{Select, SelectOption},
     },
 };
+
+mod actions;
+mod list;
 
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant)]
@@ -1038,76 +1040,6 @@ fn SectionBuffs() -> Element {
 }
 
 #[component]
-fn SectionFixedActions() -> Element {
-    let context = use_context::<CharactersContext>();
-    let character = context.character;
-    let save_character = context.save_character;
-
-    let add_action = use_callback(move |action| {
-        let mut character = character.peek().clone();
-
-        character.actions.push(action);
-        save_character(character);
-    });
-
-    let edit_action = use_callback::<(ActionConfiguration, usize), _>(move |(action, index)| {
-        let mut character = character.peek().clone();
-        let current_action = character.actions.get_mut(index).unwrap();
-
-        *current_action = action;
-        save_character(character);
-    });
-
-    let delete_action = use_callback(move |index| {
-        let mut character = character.peek().clone();
-
-        character.actions.remove(index);
-        save_character(character);
-    });
-
-    let toggle_action = use_callback::<(bool, usize), _>(move |(enabled, index)| {
-        let mut character = character.peek().clone();
-        let action = character.actions.get_mut(index).unwrap();
-
-        action.enabled = enabled;
-        save_character(character);
-    });
-
-    let move_action = use_callback::<(usize, usize), _>(move |(from_index, to_index)| {
-        let mut character = character.peek().clone();
-        let action = character.actions.remove(from_index);
-
-        let insert_index = if from_index >= to_index {
-            to_index
-        } else {
-            to_index - 1
-        };
-        let insert_index = insert_index.min(character.actions.len());
-
-        let action_ref = character.actions.insert_mut(insert_index, action);
-        if to_index == 0 {
-            action_ref.condition = ActionConfigurationCondition::default();
-        }
-
-        save_character(character);
-    });
-
-    rsx! {
-        Section { title: "Fixed actions",
-            ActionConfigurationList {
-                disabled: character().id.is_none(),
-                on_item_add: add_action,
-                on_item_edit: edit_action,
-                on_item_delete: delete_action,
-                on_item_toggle: toggle_action,
-                on_item_move: move_action,
-                actions: character().actions,
-            }
-        }
-    }
-}
-
-#[component]
 fn SectionOthers() -> Element {
     let context = use_context::<CharactersContext>();
     let character = context.character;
@@ -1415,216 +1347,6 @@ fn ActionConfigurationInput(
                 },
                 "Cancel"
             }
-        }
-    }
-}
-
-#[component]
-fn ActionConfigurationList(
-    disabled: bool,
-    on_item_add: Callback<ActionConfiguration>,
-    on_item_edit: Callback<(ActionConfiguration, usize)>,
-    on_item_delete: Callback<usize>,
-    on_item_toggle: Callback<(bool, usize)>,
-    on_item_move: Callback<(usize, usize)>,
-    actions: Vec<ActionConfiguration>,
-) -> Element {
-    #[component]
-    fn Icons(condition: ActionConfigurationCondition, on_item_delete: Callback) -> Element {
-        let container_margin = if matches!(condition, ActionConfigurationCondition::Linked) {
-            ""
-        } else {
-            "mt-2"
-        };
-
-        rsx! {
-            div { class: "self-stretch invisible group-hover:visible group-hover:bg-secondary-surface flex items-center {container_margin} pr-1",
-                div {
-                    class: "size-fit",
-                    onclick: move |e| {
-                        e.stop_propagation();
-                        on_item_delete(());
-                    },
-                    XIcon { class: "size-3" }
-                }
-            }
-        }
-    }
-
-    #[derive(PartialEq, Clone)]
-    enum PopupContent {
-        None,
-        Add(ActionConfiguration),
-        Edit {
-            action: ActionConfiguration,
-            index: usize,
-        },
-    }
-
-    let mut popup_content = use_signal(|| PopupContent::None);
-    let mut popup_open = use_signal(|| false);
-
-    rsx! {
-        PopupContext {
-            open: popup_open,
-            on_open: move |open| {
-                popup_open.set(open);
-            },
-
-            List {
-                class: "flex flex-col",
-                on_move: move |event: MoveEvent| {
-                    on_item_move((event.from, event.to));
-                },
-                for (index , action) in actions.clone().into_iter().enumerate() {
-                    ListItem { class: "flex items-end",
-                        div {
-                            class: "flex group flex-grow",
-                            onclick: move |_| {
-                                popup_content
-                                    .set(PopupContent::Edit {
-                                        action,
-                                        index,
-                                    });
-                            },
-
-                            PopupTrigger { class: "flex-grow",
-                                ActionConfigurationItem { action }
-                            }
-
-                            Icons {
-                                condition: action.condition,
-                                on_item_delete: move |_| {
-                                    on_item_delete(index);
-                                },
-                            }
-                        }
-
-                        div { class: "w-8 flex flex-col items-end",
-                            if !matches!(action.condition, ActionConfigurationCondition::Linked) {
-                                Checkbox {
-                                    on_checked: move |enabled| {
-                                        on_item_toggle((enabled, index));
-                                    },
-                                    checked: action.enabled,
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            PopupTrigger {
-                Button {
-                    style: ButtonStyle::Secondary,
-                    class: "w-full mt-2",
-                    on_click: move |_| {
-                        popup_content.set(PopupContent::Add(ActionConfiguration::default()));
-                    },
-                    disabled,
-                    "Add action"
-                }
-            }
-
-            PopupActionConfigurationContent {
-                modifying: matches!(popup_content(), PopupContent::Edit { .. }),
-                can_create_linked_action: match popup_content() {
-                    PopupContent::None | PopupContent::Add(_) => false,
-                    PopupContent::Edit { index, .. } => index != 0,
-                },
-                on_copy: move |_| {
-                    let content = popup_content.peek().clone();
-                    match content {
-                        PopupContent::Add(_) | PopupContent::None => unreachable!(),
-                        PopupContent::Edit { action, .. } => {
-                            popup_content.set(PopupContent::Add(action));
-                        }
-                    }
-                },
-                on_cancel: move |_| {
-                    popup_open.set(false);
-                },
-                on_value: move |value| {
-                    match popup_content.peek().clone() {
-                        PopupContent::None => unreachable!(),
-                        PopupContent::Add(_) => {
-                            on_item_add(value);
-                        }
-                        PopupContent::Edit { index, .. } => {
-                            on_item_edit((value, index));
-                        }
-                    }
-                    popup_open.set(false);
-                },
-                value: match popup_content() {
-                    PopupContent::None => None,
-                    PopupContent::Add(action) | PopupContent::Edit { action, .. } => Some(action),
-                },
-            }
-        }
-    }
-}
-
-#[component]
-fn ActionConfigurationItem(action: ActionConfiguration) -> Element {
-    const ITEM_TEXT_CLASS: &str =
-        "text-center inline-block pt-1 text-ellipsis overflow-hidden whitespace-nowrap";
-    const ITEM_BORDER_CLASS: &str = "border-r-2 border-secondary-border";
-
-    let ActionConfiguration {
-        key,
-        link_key,
-        count,
-        condition,
-        with,
-        wait_before_millis,
-        wait_after_millis,
-        ..
-    } = action;
-
-    let linked_action = if matches!(condition, ActionConfigurationCondition::Linked) {
-        ""
-    } else {
-        "mt-2"
-    };
-    let link_key = match link_key {
-        LinkKeyBinding::Before(key) => format!("{key} ↝ "),
-        LinkKeyBinding::After(key) => format!("{key} ↜ "),
-        LinkKeyBinding::AtTheSame(key) => format!("{key} ↭ "),
-        LinkKeyBinding::Along(key) => format!("{key} ↷ "),
-        LinkKeyBinding::None => "".to_string(),
-    };
-    let millis = if let ActionConfigurationCondition::EveryMillis(millis) = condition {
-        format!("⟳ {:.2}s / ", millis as f32 / 1000.0)
-    } else {
-        "".to_string()
-    };
-    let wait_before_secs = if wait_before_millis > 0 {
-        Some(format!("⏱︎ {:.2}s", wait_before_millis as f32 / 1000.0))
-    } else {
-        None
-    };
-    let wait_after_secs = if wait_after_millis > 0 {
-        Some(format!("⏱︎ {:.2}s", wait_after_millis as f32 / 1000.0))
-    } else {
-        None
-    };
-    let wait_secs = match (wait_before_secs, wait_after_secs) {
-        (Some(before), None) => format!("{before} - ⏱︎ 0.00s / "),
-        (None, None) => "".to_string(),
-        (None, Some(after)) => format!("⏱︎ 0.00s - {after} / "),
-        (Some(before), Some(after)) => format!("{before} - {after} / "),
-    };
-    let with = match with {
-        ActionKeyWith::Any => "Any",
-        ActionKeyWith::Stationary => "Stationary",
-        ActionKeyWith::DoubleJump => "Double jump",
-    };
-
-    rsx! {
-        div { class: "grid grid-cols-[100px_auto] h-6 text-xs text-secondary-text group-hover:bg-secondary-surface {linked_action}",
-            div { class: "{ITEM_BORDER_CLASS} {ITEM_TEXT_CLASS}", "{link_key}{key} × {count}" }
-            div { class: "pl-1 pr-13 {ITEM_TEXT_CLASS}", "{millis}{wait_secs}{with}" }
         }
     }
 }
