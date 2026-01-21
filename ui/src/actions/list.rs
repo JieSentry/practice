@@ -5,9 +5,7 @@ use backend::{
 use dioxus::prelude::*;
 
 use crate::{
-    actions::{
-        ActionsContext, ITEM_BORDER_CLASS, ITEM_TEXT_CLASS, actions_section::filter_actions,
-    },
+    actions::{ActionsContext, ITEM_BORDER_CLASS, ITEM_TEXT_CLASS, inner::filter_actions},
     components::{
         button::{Button, ButtonStyle},
         icons::XIcon,

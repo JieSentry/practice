@@ -1,9 +1,9 @@
 use std::{collections::HashMap, fmt::Display, mem::discriminant};
 
-use actions_section::SectionActions;
 use backend::{Action, ActionCondition, IntoEnumIterator, KeyBinding, Map, update_map, upsert_map};
 use dioxus::prelude::*;
 use futures_util::StreamExt;
+use inner::SectionActions;
 use platforms::SectionPlatforms;
 use rotation::SectionRotation;
 
@@ -22,7 +22,7 @@ use crate::{
     },
 };
 
-mod actions_section;
+mod inner;
 mod input;
 mod list;
 mod platforms;
