@@ -1,35 +1,69 @@
 name: Setup
-inputs:
-  dioxus-cli-version:
-    required: true
-  vcpkg-version:
-    required: true
-  vcpkg-root:
-    required: true
-  protoc-version:
-    required: true
 runs:
   using: composite
   steps:
+    - name: Setup build environment variables
+      shell: pwsh
+      run: |
+        Add-Content $env:GITHUB_ENV "CARGO_TERM_COLOR=always"
+        Add-Content $env:GITHUB_ENV "SCCACHE_GHA_ENABLED=true"
+        Add-Content $env:GITHUB_ENV "RUST_BACKTRACE=1"
+        Add-Content $env:GITHUB_ENV "RUSTC_WRAPPER=sccache"
+        Add-Content $env:GITHUB_ENV "VCPKG_ENABLE_METRICS=0"
+        Add-Content $env:GITHUB_ENV "VCPKG_VERSION=2025.10.17"
+        Add-Content $env:GITHUB_ENV "VCPKG_ROOT=$env:GITHUB_WORKSPACE\vcpkg"
+        Add-Content $env:GITHUB_ENV "VCPKG_INSTALLED_DIR=$env:GITHUB_WORKSPACE\vcpkg\installed"
+        Add-Content $env:GITHUB_ENV "OPENCV_MSVC_CRT=static"
+        Add-Content $env:GITHUB_ENV "OPENCV_DISABLE_PROBES=environment,pkg_config,cmake,vcpkg_cmake"
+        Add-Content $env:GITHUB_ENV "VCPKGRS_TRIPLET=x64-windows-static"
+
     - uses: actions/cache@v4
       id: cache-vcpkg
       with:
-        path: ${{ inputs.vcpkg-root }}
-        key: vcpkg-${{ inputs.vcpkg-version }}
+        path: ${{ env.VCPKG_ROOT }}
+        key: vcpkg-${{ env.VCPKG_VERSION }}
+
+    - uses: Jimver/cuda-toolkit@v0.2.30
+      with:
+        cuda: '12.9.1'
+
+    - name: Install cuDNN
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = "Stop"
+
+        $url = "https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/windows-x86_64/cudnn-windows-x86_64-9.18.0.77_cuda12-archive.zip"
+        $zip = "$env:TEMP\cudnn.zip"
+        $extract = "$env:TEMP\cudnn"
+
+        Invoke-WebRequest $url -OutFile $zip
+        Expand-Archive $zip $extract -Force
+
+        $root = Get-ChildItem $extract | Select-Object -First 1
+
+        Copy-Item "$root\include\cudnn*.h" "$env:CUDA_PATH\include" -Recurse -Force
+        Copy-Item "$root\bin\cudnn*.dll" "$env:CUDA_PATH\bin" -Recurse -Force
+        Copy-Item "$root\lib\x64\cudnn*.lib" "$env:CUDA_PATH\lib\x64" -Recurse -Force
+
+    - name: Setup OpenCV linking environment variables
+      shell: pwsh
+      run: |
+        Add-Content $env:GITHUB_ENV "OPENCV_LINK_LIBS=+cublas.lib,cublasLt.lib,cudart_static.lib,cudnn.lib,cudnn_adv64_9.lib,cudnn_cnn64_9.lib,cudnn_engines_precompiled64_9.lib,cudnn_engines_runtime_compiled64_9.lib,cudnn_graph64_9.lib,cudnn_heuristic64_9.lib,cudnn_ops64_9.lib,cufft.lib,cufftw.lib,cufilt.lib,curand.lib,cusolver.lib,cusolverMg.lib,cusparse.lib,nppc.lib,nppial.lib,nppicc.lib,nppidei.lib,nppif.lib,nppig.lib,nppim.lib,nppist.lib,nppisu.lib,nppitc.lib,npps.lib"
+        Add-Content $env:GITHUB_ENV "OPENCV_LINK_PATHS=+$env:CUDA_PATH\lib\x64"
 
     - if: steps.cache-vcpkg.outputs.cache-hit != 'true'
       shell: pwsh
       run: |
-        git clone https://github.com/Microsoft/vcpkg.git "${{ inputs.vcpkg-root }}"
-        cd "${{ inputs.vcpkg-root }}"
+        git clone https://github.com/Microsoft/vcpkg.git "${{ env.VCPKG_ROOT }}"
+        cd "${{ env.VCPKG_ROOT }}"
         git fetch --all --prune --tags
         git status
         git checkout .
-        git checkout "${{ inputs.vcpkg-version }}"
+        git checkout "2025.10.17"
         ./bootstrap-vcpkg.bat -disableMetrics
         echo "set(VCPKG_BUILD_TYPE release)" >> triplets/x64-windows.cmake
         echo "set(VCPKG_BUILD_TYPE release)" >> triplets/x64-windows-static.cmake
-        ./vcpkg.exe install --clean-after-build --recurse opencv4[contrib,nonfree]:x64-windows-static
+        ./vcpkg.exe install --clean-after-build --recurse opencv4[contrib,nonfree,dnn-cuda]:x64-windows-static
 
     - uses: actions/setup-node@v4
       with:
@@ -47,8 +81,8 @@ runs:
     - uses: cargo-bins/cargo-binstall@main
     - name: Install Dioxus CLI
       shell: pwsh
-      run: cargo binstall dioxus-cli@${{ inputs.dioxus-cli-version }} --no-confirm
+      run: cargo binstall dioxus-cli@0.7.2 --no-confirm
 
     - name: Install protoc
       shell: pwsh
-      run: choco install -y protoc --version "${{ inputs.protoc-version }}"
+      run: choco install -y protoc --version "33.0.0"

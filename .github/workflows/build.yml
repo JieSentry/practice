@@ -21,24 +21,6 @@ on:
       - "examples/**"
       - "docs/**"
 
-
-env:
-  OPENCV_MSVC_CRT: static
-  OPENCV_DISABLE_PROBES: environment,pkg_config,cmake,vcpkg_cmake
-
-  VCPKG_VERSION: "2025.10.17"
-  VCPKG_ENABLE_METRICS: 0
-  VCPKG_ROOT: ${{ github.workspace }}/vcpkg
-  VCPKG_INSTALLED_DIR: ${{ github.workspace }}/vcpkg/installed
-  VCPKGRS_TRIPLET: x64-windows-static
-
-  DIOXUS_CLI_VERSION: "0.7.2"
-  PROTOC_VERSION: "33.0.0"
-  CARGO_TERM_COLOR: always
-  SCCACHE_GHA_ENABLED: "true"
-  RUST_BACKTRACE: 1
-  RUSTC_WRAPPER: "sccache"
-
 permissions:
   contents: write
 
@@ -49,15 +31,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # https://github.com/DioxusLabs/dioxus/issues/3433
-      # Need to add dx fmt
       - uses: ./.github/actions/setup
-        with:
-          dioxus-cli-version: ${{ env.DIOXUS_CLI_VERSION }}
-          vcpkg-version: ${{ env.VCPKG_VERSION }}
-          vcpkg-root: ${{ env.VCPKG_ROOT }}
-          protoc-version: ${{ env.PROTOC_VERSION }}
 
+      # TODO: https://github.com/DioxusLabs/dioxus/issues/3433
+      # TODO: Need to add dx fmt
       - run: cargo fmt --check
       - run: cargo clippy -- -D warnings
       - run: cargo test --verbose
@@ -73,11 +50,6 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: ./.github/actions/setup
-        with:
-          dioxus-cli-version: ${{ env.DIOXUS_CLI_VERSION }}
-          vcpkg-version: ${{ env.VCPKG_VERSION }}
-          vcpkg-root: ${{ env.VCPKG_ROOT }}
-          protoc-version: ${{ env.PROTOC_VERSION }}
 
       - name: Build ${{ matrix.type }}
         shell: pwsh
