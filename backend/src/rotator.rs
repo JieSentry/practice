@@ -1222,7 +1222,7 @@ fn solve_rune_priority_action() -> PriorityAction {
 fn solve_transparent_shape_priority_action() -> PriorityAction {
     let mut task: Option<Task<Result<bool>>> = None;
     let task_fn = move |detector: Arc<dyn Detector>| -> Result<bool> {
-        Ok(detector.detect_lie_detector().is_ok())
+        Ok(detector.detect_lie_detector_shape().is_ok())
     };
 
     PriorityAction {

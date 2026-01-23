@@ -93,14 +93,14 @@ fn update_waiting(resources: &Resources, solving_shape: &mut SolvingShape) {
     if !resources.tick.is_multiple_of(CHECK_INTERVAL) {
         return;
     }
-    if resources.detector().detect_lie_detector_preparing() {
+    if resources.detector().detect_lie_detector_shape_preparing() {
         return;
     }
 
     let title = try_ok_transition!(
         solving_shape,
         State::Completed,
-        resources.detector().detect_lie_detector()
+        resources.detector().detect_lie_detector_shape()
     );
 
     transition!(solving_shape, State::Solving(Timeout::default()), {
@@ -123,7 +123,7 @@ fn update_solving(resources: &Resources, solving_shape: &mut SolvingShape) {
         resources,
         1000,
         &mut *solving_shape.lie_detector_task.borrow_mut(),
-        |detector| Ok(detector.detect_lie_detector().is_ok()),
+        |detector| Ok(detector.detect_lie_detector_shape().is_ok()),
     );
     if let Update::Ok(has_lie_detector) = update {
         transition_if!(solving_shape, State::Completed, !has_lie_detector);

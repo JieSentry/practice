@@ -46,8 +46,12 @@ fn main() {
     let chat_menu = resources_dir.join("chat_menu_ideal_ratio.png");
     let admin = resources_dir.join("admin_ideal_ratio.png");
     let timer = resources_dir.join("timer_ideal_ratio.png");
-    let lie_detector = resources_dir.join("lie_detector_ideal_ratio.png");
-    let lie_detector_prepare = resources_dir.join("lie_detector_prepare_ideal_ratio.png");
+    let lie_detector_shape = resources_dir.join("lie_detector_shape_ideal_ratio.png");
+    let lie_detector_shape_prepare =
+        resources_dir.join("lie_detector_shape_prepare_ideal_ratio.png");
+    let lie_detector_violetta = resources_dir.join("lie_detector_violetta_ideal_ratio.png");
+    let lie_detector_violetta_prepare =
+        resources_dir.join("lie_detector_violetta_prepare_ideal_ratio.png");
 
     let rune = resources_dir.join("rune_ideal_ratio.png");
     let rune_mask = resources_dir.join("rune_mask_ideal_ratio.png");
@@ -251,12 +255,20 @@ fn main() {
     );
     println!("cargo:rustc-env=TIMER_TEMPLATE={}", timer.to_str().unwrap());
     println!(
-        "cargo:rustc-env=LIE_DETECTOR_TEMPLATE={}",
-        lie_detector.to_str().unwrap()
+        "cargo:rustc-env=LIE_DETECTOR_SHAPE_TEMPLATE={}",
+        lie_detector_shape.to_str().unwrap()
     );
     println!(
-        "cargo:rustc-env=LIE_DETECTOR_PREPARE_TEMPLATE={}",
-        lie_detector_prepare.to_str().unwrap()
+        "cargo:rustc-env=LIE_DETECTOR_SHAPE_PREPARE_TEMPLATE={}",
+        lie_detector_shape_prepare.to_str().unwrap()
+    );
+    println!(
+        "cargo:rustc-env=LIE_DETECTOR_VIOLETTA_TEMPLATE={}",
+        lie_detector_violetta.to_str().unwrap()
+    );
+    println!(
+        "cargo:rustc-env=LIE_DETECTOR_VIOLETTA_PREPARE_TEMPLATE={}",
+        lie_detector_violetta_prepare.to_str().unwrap()
     );
     println!("cargo:rustc-env=ADMIN_TEMPLATE={}", admin.to_str().unwrap());
 

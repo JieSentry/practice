@@ -140,10 +140,15 @@ fn systems_loop() {
     };
     let mut is_capturing_normally = false;
 
-    let mut lie_detector_event_task = event_task(
-        WorldEvent::LieDetectorAppeared,
+    let mut lie_detector_shape_event_task = event_task(
+        WorldEvent::LieDetectorShapeAppeared,
         event_tx.clone(),
-        |detector| detector.detect_lie_detector().is_ok(),
+        |detector| detector.detect_lie_detector_shape().is_ok(),
+    );
+    let mut lie_detector_violleta_event_task = event_task(
+        WorldEvent::LieDetectorViolettaAppeared,
+        event_tx.clone(),
+        |detector| detector.detect_lie_detector_violetta().is_ok(),
     );
     let mut elite_boss_event_task = event_task(
         WorldEvent::EliteBossAppeared,
@@ -212,7 +217,8 @@ fn systems_loop() {
                 let _ = event_tx.send(WorldEvent::MinimapChanged);
             }
 
-            lie_detector_event_task(&resources);
+            lie_detector_shape_event_task(&resources);
+            lie_detector_violleta_event_task(&resources);
             elite_boss_event_task(&resources);
         }
 

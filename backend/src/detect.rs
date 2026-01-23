@@ -257,10 +257,20 @@ pub trait Detector: Debug + Send + Sync {
     /// Detects whether there is a timer (e.g. from using booster).
     fn detect_timer_visible(&self) -> bool;
 
-    /// Detects the lie detector popup.
-    fn detect_lie_detector(&self) -> Result<Rect>;
+    /// Detects the transparent shape's lie detector popup.
+    fn detect_lie_detector_shape(&self) -> Result<Rect>;
 
-    fn detect_lie_detector_preparing(&self) -> bool;
+    /// Detects whether transparent shape's lie detector is preparing.
+    fn detect_lie_detector_shape_preparing(&self) -> bool;
+
+    /// Detects the violetta's lie detector popup.
+    fn detect_lie_detector_violetta(&self) -> Result<Rect>;
+
+    /// Detects whether violetta's lie detector is preparing.
+    ///
+    /// TODO: Implement solver.
+    #[allow(unused)]
+    fn detect_lie_detector_violetta_preparing(&self) -> bool;
 
     /// Detects the state for HEXA Booster in the quick slots.
     fn detect_quick_slots_hexa_booster(&self) -> Result<QuickSlotsHexaBooster>;
@@ -516,12 +526,20 @@ impl Detector for DefaultDetector {
         detect_timer_visible(self.grayscale(), &self.localization)
     }
 
-    fn detect_lie_detector(&self) -> Result<Rect> {
-        detect_lie_detector(self.bgr())
+    fn detect_lie_detector_shape(&self) -> Result<Rect> {
+        detect_lie_detector_shape(self.bgr())
     }
 
-    fn detect_lie_detector_preparing(&self) -> bool {
-        detect_lie_detector_preparing(self.bgr()).is_ok()
+    fn detect_lie_detector_shape_preparing(&self) -> bool {
+        detect_lie_detector_shape_preparing(self.bgr()).is_ok()
+    }
+
+    fn detect_lie_detector_violetta(&self) -> Result<Rect> {
+        detect_lie_detector_violetta(self.bgr())
+    }
+
+    fn detect_lie_detector_violetta_preparing(&self) -> bool {
+        detect_lie_detector_violetta_preparing(self.bgr()).is_ok()
     }
 
     fn detect_quick_slots_hexa_booster(&self) -> Result<QuickSlotsHexaBooster> {
@@ -2296,18 +2314,47 @@ fn detect_timer_visible(grayscale: &impl ToInputArray, localization: &Localizati
     .is_ok()
 }
 
-fn detect_lie_detector(bgr: &impl ToInputArray) -> Result<Rect> {
+fn detect_lie_detector_shape(bgr: &impl ToInputArray) -> Result<Rect> {
     static TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {
-        imgcodecs::imdecode(include_bytes!(env!("LIE_DETECTOR_TEMPLATE")), IMREAD_COLOR).unwrap()
+        imgcodecs::imdecode(
+            include_bytes!(env!("LIE_DETECTOR_SHAPE_TEMPLATE")),
+            IMREAD_COLOR,
+        )
+        .unwrap()
     });
 
     detect_template(bgr, &*TEMPLATE, Point::default(), 0.6)
 }
 
-fn detect_lie_detector_preparing(bgr: &impl ToInputArray) -> Result<Rect> {
+fn detect_lie_detector_shape_preparing(bgr: &impl ToInputArray) -> Result<Rect> {
     static TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {
         imgcodecs::imdecode(
-            include_bytes!(env!("LIE_DETECTOR_PREPARE_TEMPLATE")),
+            include_bytes!(env!("LIE_DETECTOR_SHAPE_PREPARE_TEMPLATE")),
+            IMREAD_COLOR,
+        )
+        .unwrap()
+    });
+
+    detect_template(bgr, &*TEMPLATE, Point::default(), 0.6)
+}
+
+fn detect_lie_detector_violetta(bgr: &impl ToInputArray) -> Result<Rect> {
+    static TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {
+        imgcodecs::imdecode(
+            include_bytes!(env!("LIE_DETECTOR_VIOLETTA_TEMPLATE")),
+            IMREAD_COLOR,
+        )
+        .unwrap()
+    });
+
+    detect_template(bgr, &*TEMPLATE, Point::default(), 0.6)
+}
+
+#[allow(unused)]
+fn detect_lie_detector_violetta_preparing(bgr: &impl ToInputArray) -> Result<Rect> {
+    static TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {
+        imgcodecs::imdecode(
+            include_bytes!(env!("LIE_DETECTOR_VIOLETTA_PREPARE_TEMPLATE")),
             IMREAD_COLOR,
         )
         .unwrap()

@@ -36,7 +36,8 @@ pub enum NotificationKind {
     PlayerStrangerAppear,
     PlayerFriendAppear,
     PlayerIsDead,
-    LieDetectorAppear,
+    LieDetectorShapeAppear,
+    LieDetectorViolettaAppear,
     CycledToHalt,
     CycledToRun,
 }
@@ -59,7 +60,8 @@ impl NotificationKind {
             NotificationKind::PlayerFriendAppear => {
                 settings.notifications.notify_on_player_friend_appear
             }
-            NotificationKind::LieDetectorAppear => {
+            NotificationKind::LieDetectorViolettaAppear
+            | NotificationKind::LieDetectorShapeAppear => {
                 settings.notifications.notify_on_lie_detector_appear
             }
             NotificationKind::CycledToHalt | NotificationKind::CycledToRun => {
@@ -105,7 +107,8 @@ impl NotificationKind {
             NotificationKind::PlayerFriendAppear => {
                 format!("{user_id}Bot has detected friend player(s)")
             }
-            NotificationKind::LieDetectorAppear => {
+            NotificationKind::LieDetectorViolettaAppear
+            | NotificationKind::LieDetectorShapeAppear => {
                 format!("{user_id}Bot has detected the lie detector")
             }
             NotificationKind::CycledToRun => {
@@ -130,7 +133,9 @@ impl NotificationKind {
             | NotificationKind::PlayerGuildieAppear
             | NotificationKind::PlayerStrangerAppear
             | NotificationKind::PlayerFriendAppear => vec![ScheduledFrame::new_deadline(2)],
-            NotificationKind::RuneAppear | NotificationKind::LieDetectorAppear => {
+            NotificationKind::RuneAppear
+            | NotificationKind::LieDetectorShapeAppear
+            | NotificationKind::LieDetectorViolettaAppear => {
                 vec![ScheduledFrame::new_deadline(1)]
             }
         }
@@ -147,7 +152,8 @@ impl NotificationKind {
             | NotificationKind::PlayerStrangerAppear
             | NotificationKind::PlayerFriendAppear
             | NotificationKind::RuneAppear => 3,
-            NotificationKind::LieDetectorAppear => 2,
+            NotificationKind::LieDetectorShapeAppear
+            | NotificationKind::LieDetectorViolettaAppear => 2,
         };
 
         Duration::from_secs(secs)

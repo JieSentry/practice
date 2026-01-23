@@ -218,7 +218,8 @@ pub enum WorldEvent {
     PlayerDied,
     MinimapChanged,
     CaptureFailed,
-    LieDetectorAppeared,
+    LieDetectorShapeAppeared,
+    LieDetectorViolettaAppeared,
     EliteBossAppeared,
 }
 
