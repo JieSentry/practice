@@ -124,6 +124,7 @@ impl TransparentShapeSolver {
         let bg_direction = self.bg_direction;
         let match_track = tracks
             .iter()
+            .filter(|track| track.track_id() == current_track_id || track.tracklet_len() >= 1)
             .filter_map(|track| {
                 let score = track_background_score(track, last_cursor, bg_direction, region)?;
                 Some((track, score))
