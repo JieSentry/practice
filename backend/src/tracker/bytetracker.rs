@@ -61,12 +61,16 @@ impl ByteTracker {
         let unconfirmed =
             self.associate_unconfirmed(unmatched_detection_tracks, &mut associated.activated);
 
-        self.tracked = associated.activated;
-        self.lost = associated
-            .lost
-            .into_iter()
-            .filter(|track| self.frame_id - track.frame_id <= self.max_time_lost)
-            .collect();
+        let (tracked, lost) = remove_duplicate_stracks(
+            associated.activated,
+            associated
+                .lost
+                .into_iter()
+                .filter(|track| self.frame_id - track.frame_id <= self.max_time_lost)
+                .collect(),
+        );
+        self.tracked = tracked;
+        self.lost = lost;
         self.unconfirmed = unconfirmed;
 
         self.tracked.clone()
@@ -272,4 +276,42 @@ fn linear_assignment(
         .collect();
 
     (matches, unmatched_a, unmatched_b)
+}
+
+fn remove_duplicate_stracks(a: Vec<STrack>, b: Vec<STrack>) -> (Vec<STrack>, Vec<STrack>) {
+    let cost = iou_distance(&a, &b);
+
+    let mut duplicate_a = vec![false; a.len()];
+    let mut duplicate_b = vec![false; b.len()];
+
+    for i in 0..a.len() {
+        for j in 0..b.len() {
+            if cost[i][j] < 0.15 {
+                let time_a = a[i].frame_id - a[i].start_frame_id;
+                let time_b = b[j].frame_id - b[j].start_frame_id;
+
+                if time_a > time_b {
+                    duplicate_b[j] = true;
+                } else {
+                    duplicate_a[i] = true;
+                }
+            }
+        }
+    }
+
+    let filtered_a = a
+        .into_iter()
+        .enumerate()
+        .filter(|(i, _)| !duplicate_a[*i])
+        .map(|(_, t)| t)
+        .collect();
+
+    let filtered_b = b
+        .into_iter()
+        .enumerate()
+        .filter(|(i, _)| !duplicate_b[*i])
+        .map(|(_, t)| t)
+        .collect();
+
+    (filtered_a, filtered_b)
 }

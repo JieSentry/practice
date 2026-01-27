@@ -21,6 +21,7 @@ pub struct STrack {
     pub(super) track_id: u64,
     tracklet_len: usize,
     pub(super) frame_id: u64,
+    pub(super) start_frame_id: u64,
     pub(super) state: TrackState,
     pub(super) kalman: KalmanXYAH,
     pub(super) tlwh: [f32; 4],
@@ -39,6 +40,7 @@ impl STrack {
             track_id: 0,
             tracklet_len: 0,
             frame_id: 0,
+            start_frame_id: 0,
             state: TrackState::Lost,
             kalman: KalmanXYAH::new(),
             tlwh,
@@ -57,6 +59,7 @@ impl STrack {
         self.track_id = TRACK_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
         self.tracklet_len = 0;
         self.frame_id = frame_id;
+        self.start_frame_id = frame_id;
         self.state = TrackState::Tracked;
 
         let meas = tlwh_to_xyah(self.tlwh);
