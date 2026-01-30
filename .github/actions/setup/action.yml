@@ -17,39 +17,12 @@ runs:
         Add-Content $env:GITHUB_ENV "OPENCV_DISABLE_PROBES=environment,pkg_config,cmake,vcpkg_cmake"
         Add-Content $env:GITHUB_ENV "VCPKGRS_TRIPLET=x64-windows-static"
 
-    - uses: actions/cache@v4
+    - name: Restore vcpkg cache
+      uses: actions/cache/restore@v4
       id: cache-vcpkg
       with:
         path: ${{ env.VCPKG_ROOT }}
         key: vcpkg-${{ env.VCPKG_VERSION }}
-
-    - uses: Jimver/cuda-toolkit@v0.2.30
-      with:
-        cuda: '12.9.1'
-
-    - name: Install cuDNN
-      shell: pwsh
-      run: |
-        $ErrorActionPreference = "Stop"
-
-        $url = "https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/windows-x86_64/cudnn-windows-x86_64-9.18.0.77_cuda12-archive.zip"
-        $zip = "$env:TEMP\cudnn.zip"
-        $extract = "$env:TEMP\cudnn"
-
-        Invoke-WebRequest $url -OutFile $zip
-        Expand-Archive $zip $extract -Force
-
-        $root = Get-ChildItem $extract | Select-Object -First 1
-
-        Copy-Item "$root\include\cudnn*.h" "$env:CUDA_PATH\include" -Recurse -Force
-        Copy-Item "$root\bin\cudnn*.dll" "$env:CUDA_PATH\bin" -Recurse -Force
-        Copy-Item "$root\lib\x64\cudnn*.lib" "$env:CUDA_PATH\lib\x64" -Recurse -Force
-
-    - name: Setup OpenCV linking environment variables
-      shell: pwsh
-      run: |
-        Add-Content $env:GITHUB_ENV "OPENCV_LINK_LIBS=+cublas.lib,cublasLt.lib,cudart_static.lib,cudnn.lib,cudnn_adv64_9.lib,cudnn_cnn64_9.lib,cudnn_engines_precompiled64_9.lib,cudnn_engines_runtime_compiled64_9.lib,cudnn_graph64_9.lib,cudnn_heuristic64_9.lib,cudnn_ops64_9.lib,cufft.lib,cufftw.lib,cufilt.lib,curand.lib,cusolver.lib,cusolverMg.lib,cusparse.lib,nppc.lib,nppial.lib,nppicc.lib,nppidei.lib,nppif.lib,nppig.lib,nppim.lib,nppist.lib,nppisu.lib,nppitc.lib,npps.lib"
-        Add-Content $env:GITHUB_ENV "OPENCV_LINK_PATHS=+$env:CUDA_PATH\lib\x64"
 
     - if: steps.cache-vcpkg.outputs.cache-hit != 'true'
       shell: pwsh
@@ -63,7 +36,14 @@ runs:
         ./bootstrap-vcpkg.bat -disableMetrics
         echo "set(VCPKG_BUILD_TYPE release)" >> triplets/x64-windows.cmake
         echo "set(VCPKG_BUILD_TYPE release)" >> triplets/x64-windows-static.cmake
-        ./vcpkg.exe install --clean-after-build --recurse opencv4[contrib,nonfree,dnn-cuda]:x64-windows-static
+        ./vcpkg.exe install --clean-after-build --recurse opencv4[contrib,nonfree]:x64-windows-static
+
+    - if: steps.cache-vcpkg.outputs.cache-hit != 'true'
+      name: Save vcpkg cache
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ env.VCPKG_ROOT }}
+        key: vcpkg-${{ env.VCPKG_VERSION }}
 
     - uses: actions/setup-node@v4
       with:
