@@ -37,7 +37,7 @@ use crate::{
     models::Localization,
     run::FPS,
     solvers::{RuneSolver, TransparentShapeSolver},
-    tracker::ByteTracker,
+    tracker::{ByteTracker, IouGating},
     utils::DatasetDir,
 };
 
@@ -156,7 +156,7 @@ impl DebugService {
 
             let mut frame_rx = frame_receiver_from_video(file);
             let mut solver = TransparentShapeSolver::debug();
-            let mut tracker = ByteTracker::new(FPS);
+            let mut tracker = ByteTracker::new(FPS as u64, IouGating::None);
             let localization = Arc::new(Localization::default());
 
             input.set_window(Window::new("Main HighGUI"));

@@ -13,6 +13,14 @@ struct AssociatedTrackedAndLost {
     unmatched_detections: Vec<usize>,
 }
 
+#[derive(Debug, Clone, Copy)]
+#[allow(dead_code)]
+pub enum IouGating {
+    None,
+    Position,
+    Full,
+}
+
 /// An extended [BYTETracker] implementation by GPT-5.
 ///
 /// [BYTETracker]: https://github.com/ultralytics/ultralytics/blob/004d9730060e560c86ad79aaa1ab97167443be25/ultralytics/trackers/byte_tracker.py#L231
@@ -24,17 +32,19 @@ pub struct ByteTracker {
     lost: Vec<STrack>,
     frame_id: u64,
     max_time_lost: u64,
+    gating: IouGating,
 }
 
 impl ByteTracker {
-    pub fn new(frame_rate: u32) -> Self {
+    pub fn new(max_time_lost: u64, gating: IouGating) -> Self {
         Self {
             initialized: false,
             tracked: vec![],
             unconfirmed: vec![],
             lost: vec![],
             frame_id: 0,
-            max_time_lost: frame_rate as u64,
+            max_time_lost,
+            gating,
         }
     }
 
@@ -68,6 +78,7 @@ impl ByteTracker {
                 .into_iter()
                 .filter(|track| self.frame_id - track.frame_id <= self.max_time_lost)
                 .collect(),
+            self.gating,
         );
         self.tracked = tracked;
         self.lost = lost;
@@ -114,7 +125,7 @@ impl ByteTracker {
         current_tracks.append(&mut self.tracked);
         current_tracks.append(&mut self.lost);
 
-        let cost = iou_distance(&current_tracks, detection_tracks);
+        let cost = iou_distance(&current_tracks, detection_tracks, self.gating);
         let (matches, unmatched_tracks, unmatched_detections) = linear_assignment(cost, 0.5);
 
         let mut activated = vec![];
@@ -165,8 +176,8 @@ impl ByteTracker {
         }
 
         let current_unconfirmed = mem::take(&mut self.unconfirmed);
-        let cost = iou_distance(&current_unconfirmed, &detection_tracks);
-        let (matches, _, unmatched_detections) = linear_assignment(cost, 0.5);
+        let cost = iou_distance(&current_unconfirmed, &detection_tracks, self.gating);
+        let (matches, _, unmatched_detections) = linear_assignment(cost, 0.7);
 
         for (ui, di) in matches {
             let mut track = current_unconfirmed[ui].clone();
@@ -213,18 +224,25 @@ fn iou_tlwh(a: [f32; 4], b: [f32; 4]) -> f32 {
     inter_area / (area_a + area_b - inter_area + 1e-6)
 }
 
-fn iou_distance(tracks: &[STrack], detections: &[STrack]) -> Vec<Vec<f32>> {
+fn iou_distance(tracks: &[STrack], detections: &[STrack], gating: IouGating) -> Vec<Vec<f32>> {
     let mut cost = vec![vec![0.0; detections.len()]; tracks.len()];
 
     for (i, t) in tracks.iter().enumerate() {
         for (j, d) in detections.iter().enumerate() {
-            let measurement = tlwh_to_xyah(d.tlwh);
-            let gate = t.kalman.gating_distance(measurement);
+            match gating {
+                IouGating::Position | IouGating::Full => {
+                    let measurement = tlwh_to_xyah(d.tlwh);
+                    let position_only = matches!(gating, IouGating::Position);
 
-            if gate > t.kalman.gating_threshold() {
-                cost[i][j] = 1e6; // forbid
-            } else {
-                cost[i][j] = 1.0 - iou_tlwh(t.kalman_tlwh(), d.tlwh);
+                    if t.kalman.gate(measurement, position_only) {
+                        cost[i][j] = 1e6; // forbid
+                    } else {
+                        cost[i][j] = 1.0 - iou_tlwh(t.kalman_tlwh(), d.tlwh);
+                    }
+                }
+                IouGating::None => {
+                    cost[i][j] = 1.0 - iou_tlwh(t.kalman_tlwh(), d.tlwh);
+                }
             }
         }
     }
@@ -278,8 +296,12 @@ fn linear_assignment(
     (matches, unmatched_a, unmatched_b)
 }
 
-fn remove_duplicate_stracks(a: Vec<STrack>, b: Vec<STrack>) -> (Vec<STrack>, Vec<STrack>) {
-    let cost = iou_distance(&a, &b);
+fn remove_duplicate_stracks(
+    a: Vec<STrack>,
+    b: Vec<STrack>,
+    gating: IouGating,
+) -> (Vec<STrack>, Vec<STrack>) {
+    let cost = iou_distance(&a, &b, gating);
 
     let mut duplicate_a = vec![false; a.len()];
     let mut duplicate_b = vec![false; b.len()];

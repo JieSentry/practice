@@ -117,19 +117,25 @@ impl KalmanXYAH {
         (mean, cov)
     }
 
-    pub fn gating_distance(&self, measurement: Vector4<f32>) -> f32 {
+    pub fn gate(&self, measurement: Vector4<f32>, position_only: bool) -> bool {
         let (projected_mean, projected_cov) = self.project();
         let diff = measurement - projected_mean;
-        let cov_xy = projected_cov.fixed_view::<2, 2>(0, 0).into_owned();
-        let diff_xy = diff.fixed_rows::<2>(0).into_owned();
 
-        let chol = cov_xy.cholesky().expect("SPD");
-        let z = chol.solve(&diff_xy);
-        z.dot(&z)
-    }
+        let gate = if position_only {
+            let cov_xy = projected_cov.fixed_view::<2, 2>(0, 0).into_owned();
+            let diff_xy = diff.fixed_rows::<2>(0).into_owned();
 
-    pub fn gating_threshold(&self) -> f32 {
-        5.9915
+            let chol = cov_xy.cholesky().expect("SPD");
+            let z = chol.solve(&diff_xy);
+            z.dot(&z)
+        } else {
+            let chol = projected_cov.cholesky().expect("SPD");
+            let z = chol.solve(&diff);
+            z.dot(&z)
+        };
+        let threshold = if position_only { 5.9915 } else { 9.4877 };
+
+        gate > threshold
     }
 
     pub fn tlwh(&self) -> [f32; 4] {

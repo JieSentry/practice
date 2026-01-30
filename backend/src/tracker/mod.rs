@@ -5,7 +5,7 @@ mod bytetracker;
 mod kalman_filter;
 mod strack;
 
-pub use bytetracker::ByteTracker;
+pub use bytetracker::{ByteTracker, IouGating};
 pub use strack::STrack;
 
 #[derive(Clone, Debug)]
