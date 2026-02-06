@@ -156,7 +156,7 @@ impl DebugService {
 
             let mut frame_rx = frame_receiver_from_video(file);
             let mut solver = TransparentShapeSolver::debug();
-            let mut tracker = ByteTracker::new(FPS as u64, IouGating::None);
+            let mut tracker = ByteTracker::new(FPS as u64, 0.25, 0.1, 0.25, IouGating::None);
             let localization = Arc::new(Localization::default());
 
             input.set_window(Window::new("Main HighGUI"));

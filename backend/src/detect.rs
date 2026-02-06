@@ -296,7 +296,7 @@ pub trait Detector: Debug + Send + Sync {
     /// Detects a list of transparent shapes during lie detector event.
     ///
     /// The returned [`Rect`]s have coordinates relative to `region`.
-    fn detect_transparent_shapes(&self, region: Rect) -> Vec<Rect>;
+    fn detect_transparent_shapes(&self, region: Rect) -> Vec<(Rect, f32)>;
 }
 
 type MatFn = Box<dyn FnOnce() -> Mat + Send>;
@@ -570,7 +570,7 @@ impl Detector for DefaultDetector {
         detect_hexa_sol_erda(self.grayscale())
     }
 
-    fn detect_transparent_shapes(&self, region: Rect) -> Vec<Rect> {
+    fn detect_transparent_shapes(&self, region: Rect) -> Vec<(Rect, f32)> {
         detect_transparent_shapes(&self.bgr().roi(region).unwrap())
     }
 }
@@ -2605,7 +2605,7 @@ fn detect_hexa_sol_erda(grayscale: &impl ToInputArray) -> Result<SolErda> {
     bail!("sol erda tracker menu not visible")
 }
 
-fn detect_transparent_shapes(bgr: &impl MatTraitConst) -> Vec<Rect> {
+fn detect_transparent_shapes(bgr: &impl MatTraitConst) -> Vec<(Rect, f32)> {
     static MODEL: LazyLock<Mutex<Session>> = LazyLock::new(|| {
         Mutex::new(
             build_session(include_bytes!(env!("TRANSPARENT_SHAPE_MODEL")))
@@ -2622,8 +2622,12 @@ fn detect_transparent_shapes(bgr: &impl MatTraitConst) -> Vec<Rect> {
     (0..mat_out.rows())
         // SAFETY: 0..result.rows() is within Mat bounds
         .map(|i| unsafe { mat_out.at_row_unchecked::<f32>(i).unwrap() })
-        .filter(|pred| pred[4] >= 0.1)
-        .map(|pred| remap_from_yolo(pred, size, w_ratio, h_ratio, left, top))
+        .map(|pred| {
+            (
+                remap_from_yolo(pred, size, w_ratio, h_ratio, left, top),
+                pred[4],
+            )
+        })
         .collect()
 }
 

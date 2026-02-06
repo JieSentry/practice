@@ -151,7 +151,7 @@ fn start_solving_task(region: Rect) -> Solving {
     let (detector_tx, mut detector_rx) = mpsc::channel::<Arc<dyn Detector>>(2);
 
     let task = Task::spawn_blocking(move || {
-        let mut tracker = ByteTracker::new(FPS as u64, IouGating::None);
+        let mut tracker = ByteTracker::new(FPS as u64, 0.25, 0.1, 0.25, IouGating::None);
         let mut solver = TransparentShapeSolver::default();
 
         loop {

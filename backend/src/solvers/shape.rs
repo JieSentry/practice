@@ -36,7 +36,12 @@ impl TransparentShapeSolver {
         region: Rect,
     ) -> Option<Point> {
         let shapes = detector.detect_transparent_shapes(region);
-        let tracks = tracker.update(shapes.into_iter().map(Detection::new).collect());
+        let tracks = tracker.update(
+            shapes
+                .into_iter()
+                .map(|(bbox, score)| Detection::new(bbox, score))
+                .collect(),
+        );
 
         self.update_initial_track_if_needed(region, &tracks);
         self.update_background_direction(&tracks);

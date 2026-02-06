@@ -11,11 +11,12 @@ pub use strack::STrack;
 #[derive(Clone, Debug)]
 pub struct Detection {
     bbox: Rect,
+    score: f32,
 }
 
 impl Detection {
-    pub fn new(bbox: Rect) -> Self {
-        Self { bbox }
+    pub fn new(bbox: Rect, score: f32) -> Self {
+        Self { bbox, score }
     }
 }
 
