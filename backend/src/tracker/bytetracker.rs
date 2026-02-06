@@ -58,21 +58,14 @@ impl ByteTracker {
 
         self.predict();
 
-        let (low_detections, high_detections): (Vec<Detection>, Vec<Detection>) = detections
+        let (low_detection_tracks, high_detection_tracks): (Vec<STrack>, Vec<STrack>) = detections
             .into_iter()
-            .filter(|detection| detection.score > self.low_match_score_threshold)
-            .partition(|detection| {
-                self.low_match_score_threshold < detection.score
-                    && detection.score < self.high_match_score_threshold
+            .map(|detection| STrack::new(detection.bbox, detection.score))
+            .filter(|track| track.score > self.low_match_score_threshold)
+            .partition(|track| {
+                self.low_match_score_threshold < track.score
+                    && track.score < self.high_match_score_threshold
             });
-        let low_detection_tracks: Vec<STrack> = low_detections
-            .into_iter()
-            .map(|detection| STrack::new(detection.bbox, detection.score))
-            .collect();
-        let high_detection_tracks: Vec<STrack> = high_detections
-            .into_iter()
-            .map(|detection| STrack::new(detection.bbox, detection.score))
-            .collect();
         if self.init(&low_detection_tracks, &high_detection_tracks) {
             return self.tracked.clone();
         }

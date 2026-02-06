@@ -12,12 +12,28 @@ use opencv::imgproc::rectangle;
 use opencv::imgproc::{FONT_HERSHEY_SIMPLEX, put_text_def};
 use opencv::imgproc::{LINE_8, circle_def};
 use rand::distr::{Alphanumeric, SampleString};
+use strum::Display;
 
 use crate::bridge::KeyKind;
 use crate::detect::SpinArrow;
 use crate::solvers::SolvedArrow;
 use crate::tracker::STrack;
 use crate::utils::{self, DatasetDir};
+
+#[derive(Debug, Display)]
+pub enum TrackDirection {
+    Right,
+    Left,
+    None,
+}
+
+#[derive(Debug)]
+pub struct ViolettaTrack {
+    pub id: u64,
+    pub bbox: Rect,
+    pub direction: TrackDirection,
+    pub is_violetta: bool,
+}
 
 pub fn debug_spinning_arrows(mat: &impl MatTraitConst, spin_arrow: SpinArrow) {
     let last_last_arrow_head = spin_arrow.last_last_arrow_head.unwrap();
@@ -47,7 +63,7 @@ pub fn debug_spinning_arrows(mat: &impl MatTraitConst, spin_arrow: SpinArrow) {
     debug_mat("Spin Arrow", &mat, 0, []);
 }
 
-pub fn debug_tracks(
+pub fn debug_shape_tracks(
     mat: &impl MatTraitConst,
     tracks: Vec<STrack>,
     cursor: Point,
@@ -71,8 +87,7 @@ pub fn debug_tracks(
             }
 
             let center = mid_point(track.rect()).to::<f64>().unwrap();
-            let (vx, vy) = track.kalman_velocity();
-            let v = Point2d::new(vx as f64, vy as f64);
+            let v = track.kalman_velocity();
 
             if v.norm() < 1e-3 {
                 return None;
@@ -154,7 +169,32 @@ pub fn debug_tracks(
         );
     }
 
-    imshow("Tracks", &mat).unwrap();
+    imshow("Shape Tracks", &mat).unwrap();
+    wait_key(1).unwrap();
+}
+
+#[allow(unused)]
+pub fn debug_violetta_tracks(mat: &impl MatTraitConst, tracks: Vec<ViolettaTrack>) {
+    let mut mat = mat.try_clone().unwrap();
+    for track in tracks {
+        let color = if track.is_violetta {
+            Scalar::new(0.0, 255.0, 0.0, 0.0)
+        } else {
+            Scalar::new(0.0, 0.0, 255.0, 0.0)
+        };
+        let _ = rectangle(&mut mat, track.bbox, color, 1, LINE_8, 0);
+        let text = format!("{} {}", track.id, track.direction);
+        let _ = put_text_def(
+            &mut mat,
+            &text,
+            track.bbox.tl() - Point::new(0, 10),
+            FONT_HERSHEY_SIMPLEX,
+            0.9,
+            color,
+        );
+    }
+
+    imshow("Violetta Tracks", &mat).unwrap();
     wait_key(1).unwrap();
 }
 

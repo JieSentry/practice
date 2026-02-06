@@ -5,11 +5,13 @@ use opencv::core::{Point, Point_, Point2d, Rect};
 
 use crate::{
     detect::Detector,
-    tracker::{ByteTracker, Detection, STrack},
+    run::FPS,
+    tracker::{ByteTracker, Detection, IouGating, STrack},
 };
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct TransparentShapeSolver {
+    tracker: ByteTracker,
     current_track_id: Option<u64>,
     candidate_track_id: Option<u64>,
     candidate_track_count: u32,
@@ -17,26 +19,36 @@ pub struct TransparentShapeSolver {
     last_velocity: Option<Point2d>,
     bg_direction: Point2d,
     #[cfg(debug_assertions)]
-    debugging: bool,
+    is_debugging: bool,
+}
+
+impl Default for TransparentShapeSolver {
+    fn default() -> Self {
+        Self {
+            tracker: ByteTracker::new(FPS as u64, 0.25, 0.1, 0.25, IouGating::None),
+            current_track_id: None,
+            candidate_track_id: None,
+            candidate_track_count: 0,
+            last_cursor: None,
+            last_velocity: None,
+            bg_direction: Point2d::default(),
+            #[cfg(debug_assertions)]
+            is_debugging: false,
+        }
+    }
 }
 
 impl TransparentShapeSolver {
     #[cfg(debug_assertions)]
     pub fn debug() -> Self {
-        Self {
-            debugging: true,
-            ..Default::default()
-        }
+        let mut default = Self::default();
+        default.is_debugging = true;
+        default
     }
 
-    pub fn solve(
-        &mut self,
-        detector: &dyn Detector,
-        tracker: &mut ByteTracker,
-        region: Rect,
-    ) -> Option<Point> {
+    pub fn solve(&mut self, detector: &dyn Detector, region: Rect) -> Option<Point> {
         let shapes = detector.detect_transparent_shapes(region);
-        let tracks = tracker.update(
+        let tracks = self.tracker.update(
             shapes
                 .into_iter()
                 .map(|(bbox, score)| Detection::new(bbox, score))
@@ -54,10 +66,10 @@ impl TransparentShapeSolver {
                 }
                 self.current_track_id = Some(track.track_id());
                 self.last_cursor = Some(next_cursor);
-                self.last_velocity = Some(track_velocity(track));
+                self.last_velocity = Some(track.kalman_velocity());
 
                 #[cfg(debug_assertions)]
-                if self.debugging {
+                if self.is_debugging {
                     debug_transparent_shapes(
                         detector,
                         &tracks,
@@ -85,7 +97,7 @@ impl TransparentShapeSolver {
                 self.last_cursor = Some(next_cursor);
 
                 #[cfg(debug_assertions)]
-                if self.debugging {
+                if self.is_debugging {
                     debug_transparent_shapes(
                         detector,
                         &tracks,
@@ -106,7 +118,7 @@ impl TransparentShapeSolver {
             if let Some(track) = find_track_closest_to(region_mid, tracks) {
                 self.current_track_id = Some(track.track_id());
                 self.last_cursor = Some(mid_point(track.rect()));
-                self.last_velocity = Some(track_velocity(track));
+                self.last_velocity = Some(track.kalman_velocity());
             }
         }
     }
@@ -166,7 +178,7 @@ impl TransparentShapeSolver {
 impl Drop for TransparentShapeSolver {
     fn drop(&mut self) {
         #[cfg(debug_assertions)]
-        if self.debugging {
+        if self.is_debugging {
             use opencv::highgui::destroy_all_windows;
 
             let _ = destroy_all_windows();
@@ -184,9 +196,9 @@ fn debug_transparent_shapes(
 ) {
     use opencv::core::MatTraitConst;
 
-    use crate::debug::debug_tracks;
+    use crate::debug::debug_shape_tracks;
 
-    debug_tracks(
+    debug_shape_tracks(
         &detector.mat().roi(region).unwrap(),
         tracks.to_vec(),
         last_cursor,
@@ -209,12 +221,12 @@ fn mid_point(rect: Rect) -> Point {
 }
 
 fn predicted_center(track: &STrack) -> Point {
-    let (vx, vy) = track.kalman_velocity();
+    let v = track.kalman_velocity();
     let point = mid_point(track.kalman_rect());
 
     Point::new(
-        (point.x as f32 + vx).round() as i32,
-        (point.y as f32 + vy).round() as i32,
+        (point.x as f64 + v.x).round() as i32,
+        (point.y as f64 + v.y).round() as i32,
     )
 }
 
@@ -246,7 +258,7 @@ fn track_background_score(
 }
 
 fn track_background_degree(track: &STrack, bg_direction: Point2d) -> Option<f64> {
-    let dir = unit(track_velocity(track))?;
+    let dir = unit(track.kalman_velocity())?;
     let dot = dir.dot(bg_direction);
     let det = dir.cross(bg_direction);
     Some(det.atan2(dot).to_degrees().abs())
@@ -282,7 +294,7 @@ fn estimate_background_direction(last_cursor: Option<Point>, tracks: &[STrack]) 
             let norm = (mid_point(track.rect()) - last_cursor).norm();
             norm >= diag(track.rect())
         })
-        .map(track_velocity)
+        .map(STrack::kalman_velocity)
         .collect::<Vec<Point2d>>();
     if filtered.len() < 3 {
         return None;
@@ -294,11 +306,6 @@ fn estimate_background_direction(last_cursor: Option<Point>, tracks: &[STrack]) 
     let velocity_unit = unit(velocity_sum)?;
 
     Some(velocity_unit)
-}
-
-fn track_velocity(track: &STrack) -> Point2d {
-    let (vx, vy) = track.kalman_velocity();
-    Point2d::new(vx as f64, vy as f64)
 }
 
 fn diag(rect: Rect) -> f64 {
