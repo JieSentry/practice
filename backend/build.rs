@@ -74,6 +74,7 @@ fn main() {
     let exp_coupon_x3_buff = resources_dir.join("exp_coupon_x3_buff_ideal_ratio.png");
     let exp_coupon_x4_buff = resources_dir.join("exp_coupon_x4_buff_ideal_ratio.png");
     let bonus_exp_coupon_buff = resources_dir.join("bonus_exp_coupon_buff_ideal_ratio.png");
+    let mvp_bonus_exp_coupon_buff = resources_dir.join("mvp_bonus_exp_coupon_buff_ideal_ratio.png");
 
     let legion_wealth_buff = resources_dir.join("legion_wealth_buff_ideal_ratio.png");
     let legion_wealth_buff_2 = resources_dir.join("legion_wealth_buff_2_ideal_ratio.png");
@@ -344,6 +345,10 @@ fn main() {
     println!(
         "cargo:rustc-env=BONUS_EXP_COUPON_BUFF_TEMPLATE={}",
         bonus_exp_coupon_buff.to_str().unwrap()
+    );
+    println!(
+        "cargo:rustc-env=MVP_BONUS_EXP_COUPON_BUFF_TEMPLATE={}",
+        mvp_bonus_exp_coupon_buff.to_str().unwrap()
     );
 
     // Legion buffs

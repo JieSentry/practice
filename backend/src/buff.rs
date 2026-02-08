@@ -64,6 +64,7 @@ impl BuffContext {
                 | BuffKind::ExpCouponX3
                 | BuffKind::ExpCouponX4
                 | BuffKind::BonusExpCoupon
+                | BuffKind::MvpBonusExpCoupon
                 | BuffKind::ForTheGuild
                 | BuffKind::HardHitter
                 | BuffKind::ExtremeRedPotion
@@ -87,7 +88,9 @@ impl BuffContext {
                     || character.exp_x3_key.enabled
                     || character.exp_x4_key.enabled
             }
-            BuffKind::BonusExpCoupon => character.bonus_exp_key.enabled,
+            BuffKind::BonusExpCoupon | BuffKind::MvpBonusExpCoupon => {
+                character.bonus_exp_key.enabled
+            }
             BuffKind::LegionWealth => character.legion_wealth_key.enabled,
             BuffKind::LegionLuck => character.legion_luck_key.enabled,
             BuffKind::WealthAcquisitionPotion | BuffKind::SmallWealthAcquisitionPotion => {
@@ -127,6 +130,7 @@ pub enum BuffKind {
     ExpCouponX3,
     ExpCouponX4,
     BonusExpCoupon,
+    MvpBonusExpCoupon,
     LegionWealth,
     LegionLuck,
     WealthAcquisitionPotion,
@@ -170,6 +174,7 @@ impl From<BuffKind> for DetectorBuffKind {
             BuffKind::ExpCouponX3 => DetectorBuffKind::ExpCouponX3,
             BuffKind::ExpCouponX4 => DetectorBuffKind::ExpCouponX4,
             BuffKind::BonusExpCoupon => DetectorBuffKind::BonusExpCoupon,
+            BuffKind::MvpBonusExpCoupon => DetectorBuffKind::MvpBonusExpCoupon,
             BuffKind::LegionWealth => DetectorBuffKind::LegionWealth,
             BuffKind::LegionLuck => DetectorBuffKind::LegionLuck,
             BuffKind::WealthAcquisitionPotion => DetectorBuffKind::WealthAcquisitionPotion,

@@ -1330,6 +1330,9 @@ fn buff_priority_action(buff: BuffKind, key: KeyKind) -> PriorityAction {
                 BuffKind::ExpCouponX4 => {
                     skip_if_has_buff!(world, ExpCouponX3 | ExpCouponX2)
                 }
+                BuffKind::BonusExpCoupon => {
+                    skip_if_has_buff!(world, MvpBonusExpCoupon)
+                }
                 _ => (),
             }
 

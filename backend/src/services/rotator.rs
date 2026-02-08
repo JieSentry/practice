@@ -186,6 +186,7 @@ fn buffs_from(character: &Character) -> Vec<(BuffKind, KeyKind)> {
                     .bonus_exp_key
                     .enabled
                     .then_some(character.bonus_exp_key.key.into()),
+                BuffKind::MvpBonusExpCoupon => None,
                 BuffKind::LegionLuck => character
                     .legion_luck_key
                     .enabled

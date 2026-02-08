@@ -93,6 +93,7 @@ pub enum BuffKind {
     ExpCouponX3,
     ExpCouponX4,
     BonusExpCoupon,
+    MvpBonusExpCoupon,
     LegionWealth,
     LegionLuck,
     WealthAcquisitionPotion,
@@ -449,6 +450,7 @@ impl Detector for DefaultDetector {
             | BuffKind::ExpCouponX3
             | BuffKind::ExpCouponX4
             | BuffKind::BonusExpCoupon
+            | BuffKind::MvpBonusExpCoupon
             | BuffKind::ForTheGuild
             | BuffKind::HardHitter => &to_buffs_region(self.grayscale()),
             BuffKind::LegionWealth
@@ -1568,6 +1570,13 @@ fn detect_player_buff<T: MatTraitConst + ToInputArray>(mat: &T, kind: BuffKind) 
         )
         .unwrap()
     });
+    static MVP_BONUS_EXP_COUPON_BUFF: LazyLock<Mat> = LazyLock::new(|| {
+        imgcodecs::imdecode(
+            include_bytes!(env!("MVP_BONUS_EXP_COUPON_BUFF_TEMPLATE")),
+            IMREAD_GRAYSCALE,
+        )
+        .unwrap()
+    });
     static LEGION_WEALTH_BUFF: LazyLock<Mat> = LazyLock::new(|| {
         imgcodecs::imdecode(
             include_bytes!(env!("LEGION_WEALTH_BUFF_TEMPLATE")),
@@ -1707,6 +1716,7 @@ fn detect_player_buff<T: MatTraitConst + ToInputArray>(mat: &T, kind: BuffKind) 
         | BuffKind::ExpCouponX3
         | BuffKind::ExpCouponX4
         | BuffKind::BonusExpCoupon
+        | BuffKind::MvpBonusExpCoupon
         | BuffKind::ForTheGuild
         | BuffKind::HardHitter
         | BuffKind::ExtremeRedPotion
@@ -1723,6 +1733,7 @@ fn detect_player_buff<T: MatTraitConst + ToInputArray>(mat: &T, kind: BuffKind) 
         BuffKind::ExpCouponX3 => &*EXP_COUPON_X3_BUFF,
         BuffKind::ExpCouponX4 => &*EXP_COUPON_X4_BUFF,
         BuffKind::BonusExpCoupon => &*BONUS_EXP_COUPON_BUFF,
+        BuffKind::MvpBonusExpCoupon => &*MVP_BONUS_EXP_COUPON_BUFF,
         BuffKind::LegionWealth => &*LEGION_WEALTH_BUFF,
         BuffKind::LegionLuck => &*LEGION_LUCK_BUFF,
         BuffKind::WealthAcquisitionPotion => &*WEALTH_ACQUISITION_POTION_BUFF,
