@@ -33,7 +33,7 @@ pub struct ViolettaSolver {
 #[derive(Debug, Clone, Copy, Default)]
 struct Mushroom {
     last_track_id: u64,
-    last_kalman_rect: Rect,
+    last_rect: Rect,
     last_velocity: Point2d,
     last_direction: Direction,
     last_candidate_direction: Direction,
@@ -44,7 +44,7 @@ struct Mushroom {
 impl Default for ViolettaSolver {
     fn default() -> Self {
         Self {
-            tracker: ByteTracker::new(FPS as u64 * 2, 0.75, 0.6, 0.75, IouGating::Full),
+            tracker: ByteTracker::new(FPS as u64, 0.75, 0.6, 0.75, IouGating::Full),
             numbers: vec![],
             mushrooms: [Mushroom::default(); MUSHROOM_COUNT],
             last_moving_time: Instant::now(),
@@ -97,7 +97,7 @@ impl ViolettaSolver {
                     .iter()
                     .map(|mushroom| ViolettaTrack {
                         id: mushroom.last_track_id,
-                        bbox: mushroom.last_kalman_rect,
+                        bbox: mushroom.last_rect,
                         direction: match mushroom.last_direction {
                             Direction::Left => TrackDirection::Left,
                             Direction::Right => TrackDirection::Right,
@@ -129,7 +129,7 @@ impl ViolettaSolver {
             .iter()
             .find(|number| {
                 let range = number.x..(number.x + number.width);
-                range.contains(&x_mid(mushroom.last_kalman_rect))
+                range.contains(&x_mid(mushroom.last_rect))
             })
             .copied()
             .map(|number| mid(number) + region.tl())
@@ -155,7 +155,7 @@ impl ViolettaSolver {
 
         for (index, track) in tracks.iter().enumerate() {
             let mushroom = &mut self.mushrooms[index];
-            let rect = track.kalman_rect();
+            let rect = track.rect();
             let is_violetta = (rect & face).area() > 0;
 
             mushroom.is_violetta = is_violetta;
@@ -188,22 +188,20 @@ impl ViolettaSolver {
         for i in unprocessed_indexes {
             let mushroom = &mut self.mushrooms[i];
             let Some((j, track)) = tracks.iter().copied().enumerate().min_by_key(|(_, track)| {
-                track_score(track, mushroom.last_direction, mushroom.last_kalman_rect)
+                track_score(track, mushroom.last_direction, mushroom.last_rect)
             }) else {
                 return;
             };
 
             if gate {
                 let rect = track.rect();
-                let y_score = y_score(rect, mushroom.last_kalman_rect);
+                let y_score = y_score(rect, mushroom.last_rect);
                 if y_score >= 12 {
                     continue;
                 }
 
-                let x_score =
-                    x_score(rect, mushroom.last_direction, mushroom.last_kalman_rect) as f64;
-                let threshold =
-                    mushroom.last_velocity.x * 2.5 + mushroom.last_kalman_rect.width as f64;
+                let x_score = x_score(rect, mushroom.last_direction, mushroom.last_rect) as f64;
+                let threshold = mushroom.last_velocity.x * 2.5 + mushroom.last_rect.width as f64;
                 if x_score >= threshold {
                     continue;
                 }
@@ -217,7 +215,7 @@ impl ViolettaSolver {
 
 fn update_mushroom_from_track(mushroom: &mut Mushroom, track: &STrack) {
     mushroom.last_track_id = track.track_id();
-    mushroom.last_kalman_rect = track.kalman_rect();
+    mushroom.last_rect = track.rect();
     mushroom.last_velocity = track.kalman_velocity();
 
     let direction = velocity_direction(mushroom.last_velocity);
@@ -262,7 +260,7 @@ fn y_mid(rect: Rect) -> i32 {
 }
 
 fn track_score(track: &STrack, last_direction: Direction, last_rect: Rect) -> u32 {
-    let rect = track.kalman_rect();
+    let rect = track.rect();
     let x_score = x_score(rect, last_direction, last_rect);
     let y_score = y_score(rect, last_rect);
 

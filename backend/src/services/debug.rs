@@ -12,10 +12,7 @@ use opencv::{
     highgui::destroy_all_windows,
     imgcodecs::{IMREAD_COLOR, imdecode},
     imgproc::{COLOR_BGR2BGRA, cvt_color_def},
-    videoio::{
-        CAP_PROP_FPS, VideoCapture, VideoCaptureTrait, VideoCaptureTraitConst, VideoWriter,
-        VideoWriterTrait,
-    },
+    videoio::{VideoCapture, VideoCaptureTrait, VideoWriter, VideoWriterTrait},
 };
 use platforms::Window;
 use rand::distr::SampleString;
@@ -227,10 +224,9 @@ fn frame_receiver_from_video(file: PathBuf) -> mpsc::Receiver<Mat> {
     let (tx, rx) = mpsc::channel(3);
     let mut capture = VideoCapture::from_file_def(file.to_str().expect("invalid UTF-8 path"))
         .expect("failed to open video");
-    let fps = capture.get(CAP_PROP_FPS).expect("failed to read FPS") as u32;
 
     spawn_blocking(move || {
-        loop_with_fps(fps, || read_and_send_frame(&mut capture, &tx));
+        loop_with_fps(FPS, || read_and_send_frame(&mut capture, &tx));
     });
 
     rx
