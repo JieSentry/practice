@@ -14,10 +14,8 @@ use crate::{
         timeout::{Lifecycle, Timeout, next_timeout_lifecycle},
         transition_from_action,
     },
-    run::FPS,
     solvers::TransparentShapeSolver,
     task::{Task, Update, update_detection_task},
-    tracker::{ByteTracker, IouGating},
 };
 
 #[derive(Debug)]
@@ -151,7 +149,6 @@ fn start_solving_task(region: Rect) -> Solving {
     let (detector_tx, mut detector_rx) = mpsc::channel::<Arc<dyn Detector>>(2);
 
     let task = Task::spawn_blocking(move || {
-        let mut tracker = ByteTracker::new(FPS as u64, 0.25, 0.1, 0.25, IouGating::None);
         let mut solver = TransparentShapeSolver::default();
 
         loop {
@@ -162,7 +159,7 @@ fn start_solving_task(region: Rect) -> Solving {
                     TryRecvError::Disconnected => break,
                 },
             };
-            if let Some(cursor) = solver.solve(&*detector, &mut tracker, region) {
+            if let Some(cursor) = solver.solve(&*detector, region) {
                 let _ = cursor_tx.try_send(cursor);
             }
         }

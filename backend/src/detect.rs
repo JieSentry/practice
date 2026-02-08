@@ -267,9 +267,6 @@ pub trait Detector: Debug + Send + Sync {
     fn detect_lie_detector_violetta(&self) -> Result<Rect>;
 
     /// Detects whether violetta's lie detector is preparing.
-    ///
-    /// TODO: Implement solver.
-    #[allow(unused)]
     fn detect_lie_detector_violetta_preparing(&self) -> bool;
 
     /// Detects the state for HEXA Booster in the quick slots.
@@ -297,6 +294,17 @@ pub trait Detector: Debug + Send + Sync {
     ///
     /// The returned [`Rect`]s have coordinates relative to `region`.
     fn detect_transparent_shapes(&self, region: Rect) -> Vec<(Rect, f32)>;
+
+    /// Detects a list of mushrooms during Violetta lie detector event.
+    ///
+    /// The returned [`Rect`]s have coordinates relative to `region`.
+    fn detect_violetta_mushrooms(&self, region: Rect) -> Vec<(Rect, f32)>;
+
+    /// Detects violetta's face.
+    fn detect_violetta_face(&self, region: Rect) -> Result<Rect>;
+
+    /// Detects violetta's number boxes.
+    fn detect_violetta_numbers(&self, region: Rect) -> Vec<Rect>;
 }
 
 type MatFn = Box<dyn FnOnce() -> Mat + Send>;
@@ -572,6 +580,18 @@ impl Detector for DefaultDetector {
 
     fn detect_transparent_shapes(&self, region: Rect) -> Vec<(Rect, f32)> {
         detect_transparent_shapes(&self.bgr().roi(region).unwrap())
+    }
+
+    fn detect_violetta_mushrooms(&self, region: Rect) -> Vec<(Rect, f32)> {
+        detect_violetta_mushrooms(&self.bgr().roi(region).unwrap())
+    }
+
+    fn detect_violetta_face(&self, region: Rect) -> Result<Rect> {
+        detect_violetta_face(&self.bgr().roi(region).unwrap())
+    }
+
+    fn detect_violetta_numbers(&self, region: Rect) -> Vec<Rect> {
+        detect_violetta_numbers(&self.bgr().roi(region).unwrap())
     }
 }
 
@@ -2629,6 +2649,74 @@ fn detect_transparent_shapes(bgr: &impl MatTraitConst) -> Vec<(Rect, f32)> {
             )
         })
         .collect()
+}
+
+fn detect_violetta_mushrooms(bgr: &impl MatTraitConst) -> Vec<(Rect, f32)> {
+    static MODEL: LazyLock<Mutex<Session>> = LazyLock::new(|| {
+        Mutex::new(
+            build_session(include_bytes!(env!("VIOLETTA_MODEL")))
+                .expect("build violetta detection session successfully"),
+        )
+    });
+
+    let size = bgr.size().unwrap();
+    let (mat_in, w_ratio, h_ratio, left, top) = preprocess_for_yolo(bgr);
+    let mut model = MODEL.lock().unwrap();
+    let result = model.run([to_input_value(&mat_in)]).unwrap();
+    let mat_out = from_output_value(&result);
+
+    (0..mat_out.rows())
+        // SAFETY: 0..result.rows() is within Mat bounds
+        .map(|i| unsafe { mat_out.at_row_unchecked::<f32>(i).unwrap() })
+        .map(|pred| {
+            (
+                remap_from_yolo(pred, size, w_ratio, h_ratio, left, top),
+                pred[4],
+            )
+        })
+        .collect()
+}
+
+fn detect_violetta_face(bgr: &impl ToInputArray) -> Result<Rect> {
+    static TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {
+        imgcodecs::imdecode(
+            include_bytes!(env!("LIE_DETECTOR_VIOLETTA_FACE_TEMPLATE")),
+            IMREAD_COLOR,
+        )
+        .unwrap()
+    });
+
+    detect_template(bgr, &*TEMPLATE, Point::default(), 0.6)
+}
+
+fn detect_violetta_numbers(bgr: &impl ToInputArray) -> Vec<Rect> {
+    static TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {
+        imgcodecs::imdecode(
+            include_bytes!(env!("LIE_DETECTOR_VIOLETTA_NUMBER_TEMPLATE")),
+            IMREAD_COLOR,
+        )
+        .unwrap()
+    });
+
+    static TEMPLATE_MASK: LazyLock<Mat> = LazyLock::new(|| {
+        imgcodecs::imdecode(
+            include_bytes!(env!("LIE_DETECTOR_VIOLETTA_NUMBER_MASK_TEMPLATE")),
+            IMREAD_GRAYSCALE,
+        )
+        .unwrap()
+    });
+
+    let mut vec =
+        detect_template_multiple(bgr, &*TEMPLATE, &*TEMPLATE_MASK, Point::default(), 4, 0.75)
+            .into_iter()
+            .filter_map(|result| Some(result.ok()?.0))
+            .collect::<Vec<Rect>>();
+    if vec.is_empty() || vec.len() != 4 {
+        return vec![];
+    }
+
+    vec.sort_by_key(|rect| rect.x);
+    vec
 }
 
 /// Detects a single match from `template` with the given BGR image `Mat`.

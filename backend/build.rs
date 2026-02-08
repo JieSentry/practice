@@ -50,8 +50,14 @@ fn main() {
     let lie_detector_shape_prepare =
         resources_dir.join("lie_detector_shape_prepare_ideal_ratio.png");
     let lie_detector_violetta = resources_dir.join("lie_detector_violetta_ideal_ratio.png");
+    let lie_detector_violetta_face =
+        resources_dir.join("lie_detector_violetta_face_ideal_ratio.png");
     let lie_detector_violetta_prepare =
         resources_dir.join("lie_detector_violetta_prepare_ideal_ratio.png");
+    let lie_detector_violetta_number =
+        resources_dir.join("lie_detector_violetta_number_ideal_ratio.png");
+    let lie_detector_violetta_number_mask =
+        resources_dir.join("lie_detector_violetta_number_mask_ideal_ratio.png");
 
     let rune = resources_dir.join("rune_ideal_ratio.png");
     let rune_mask = resources_dir.join("rune_mask_ideal_ratio.png");
@@ -59,6 +65,7 @@ fn main() {
     let spin_test = resources_dir.join("spin_test");
     let transparent_shape_test_normal = resources_dir.join("transparent_shape_test_normal.mp4");
     let transparent_shape_test_hard = resources_dir.join("transparent_shape_test_hard.mp4");
+    let violetta_test = resources_dir.join("violetta_test.mp4");
 
     let sayram_elixir_buff = resources_dir.join("sayram_elixir_buff_ideal_ratio.png");
     let aurelia_elixir_buff = resources_dir.join("aurelia_elixir_buff_ideal_ratio.png");
@@ -141,6 +148,7 @@ fn main() {
     let rune_spin_model = resources_dir.join("rune_spin_nms.onnx");
     let minimap_model = resources_dir.join("minimap_nms.onnx");
     let transparent_shape_model = resources_dir.join("transparent_shape_nms.onnx");
+    let violetta_model = resources_dir.join("violetta_nms.onnx");
     let text_detection_model = resources_dir.join("text_detection.onnx");
     let text_recognition_model = resources_dir.join("text_recognition.onnx");
     let text_alphabet_txt = resources_dir.join("alphabet_94.txt");
@@ -267,8 +275,20 @@ fn main() {
         lie_detector_violetta.to_str().unwrap()
     );
     println!(
+        "cargo:rustc-env=LIE_DETECTOR_VIOLETTA_FACE_TEMPLATE={}",
+        lie_detector_violetta_face.to_str().unwrap()
+    );
+    println!(
         "cargo:rustc-env=LIE_DETECTOR_VIOLETTA_PREPARE_TEMPLATE={}",
         lie_detector_violetta_prepare.to_str().unwrap()
+    );
+    println!(
+        "cargo:rustc-env=LIE_DETECTOR_VIOLETTA_NUMBER_TEMPLATE={}",
+        lie_detector_violetta_number.to_str().unwrap()
+    );
+    println!(
+        "cargo:rustc-env=LIE_DETECTOR_VIOLETTA_NUMBER_MASK_TEMPLATE={}",
+        lie_detector_violetta_number_mask.to_str().unwrap()
     );
     println!("cargo:rustc-env=ADMIN_TEMPLATE={}", admin.to_str().unwrap());
 
@@ -292,6 +312,10 @@ fn main() {
     println!(
         "cargo:rustc-env=TRANSPARENT_SHAPE_TEST_HARD_VIDEO={}",
         transparent_shape_test_hard.to_str().unwrap()
+    );
+    println!(
+        "cargo:rustc-env=VIOLETTA_TEST_VIDEO={}",
+        violetta_test.to_str().unwrap()
     );
 
     // Collector's buffs
@@ -621,6 +645,10 @@ fn main() {
     println!(
         "cargo:rustc-env=TRANSPARENT_SHAPE_MODEL={}",
         transparent_shape_model.to_str().unwrap()
+    );
+    println!(
+        "cargo:rustc-env=VIOLETTA_MODEL={}",
+        violetta_model.to_str().unwrap()
     );
     println!(
         "cargo:rustc-env=RUNE_MODEL={}",

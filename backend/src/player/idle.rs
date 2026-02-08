@@ -17,8 +17,8 @@ use crate::{
     minimap::Minimap,
     player::{
         ChattingContent, PlayerEntity, SolvingShape, chat::Chatting,
-        exchange_booster::ExchangingBooster, transition_from_action, unstuck::Unstucking,
-        use_booster::UsingBooster,
+        exchange_booster::ExchangingBooster, solve_violetta::SolvingVioletta,
+        transition_from_action, unstuck::Unstucking, use_booster::UsingBooster,
     },
     rng::Rng,
 };
@@ -223,6 +223,10 @@ fn update_from_action(resources: &Resources, player: &mut PlayerEntity, minimap_
 
         Some(PlayerAction::SolveShape) => {
             transition!(player, Player::SolvingShape(SolvingShape::default()))
+        }
+
+        Some(PlayerAction::SolveVioletta) => {
+            transition!(player, Player::SolvingVioletta(SolvingVioletta::default()))
         }
 
         None => (),

@@ -37,7 +37,6 @@ use crate::{
     models::Localization,
     run::FPS,
     solvers::{RuneSolver, TransparentShapeSolver},
-    tracker::{ByteTracker, IouGating},
     utils::DatasetDir,
 };
 
@@ -156,7 +155,6 @@ impl DebugService {
 
             let mut frame_rx = frame_receiver_from_video(file);
             let mut solver = TransparentShapeSolver::debug();
-            let mut tracker = ByteTracker::new(FPS as u64, 0.25, 0.1, 0.25, IouGating::None);
             let localization = Arc::new(Localization::default());
 
             input.set_window(Window::new("Main HighGUI"));
@@ -170,7 +168,7 @@ impl DebugService {
                     let region = Rect::new(0, 0, frame.cols(), frame.rows());
                     let detector =
                         DefaultDetector::new(OwnedMat::from(frame), localization.clone());
-                    let cursor = solver.solve(&detector, &mut tracker, region);
+                    let cursor = solver.solve(&detector, region);
 
                     if let Some(cursor) = cursor {
                         input.send_mouse(cursor.x, cursor.y, MouseKind::Move);
@@ -181,6 +179,37 @@ impl DebugService {
             });
         });
     }
+
+    // TODO: Add proper test video
+    // pub fn test_violetta(&self) {
+    //     static VIDEO: &[u8] = include_bytes!(env!("VIOLETTA_TEST_VIDEO"));
+
+    //     spawn_blocking(move || {
+    //         let file = DatasetDir::Root.to_folder().join("violetta_test.mp4");
+    //         if !file.exists() {
+    //             let _ = fs::write(&file, VIDEO);
+    //         }
+
+    //         let mut frame_rx = frame_receiver_from_video(file);
+    //         let mut solver = ViolettaSolver::debug();
+    //         let localization = Arc::new(Localization::default());
+
+    //         loop_with_fps(FPS, || {
+    //             if frame_rx.is_closed() {
+    //                 return false;
+    //             }
+
+    //             if let Ok(frame) = frame_rx.try_recv() {
+    //                 let region = Rect::new(0, 0, frame.cols(), frame.rows());
+    //                 let detector =
+    //                     DefaultDetector::new(OwnedMat::from(frame), localization.clone());
+    //                 solver.solve(&detector, region);
+    //             }
+
+    //             true
+    //         });
+    //     });
+    // }
 }
 
 fn frame_receiver_from_video(file: PathBuf) -> mpsc::Receiver<Mat> {

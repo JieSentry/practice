@@ -249,6 +249,8 @@ pub enum PlayerAction {
     SolveRune,
     /// Solves the lie detector's transparent shape.
     SolveShape,
+    /// Solves the lie detector's violetta.
+    SolveVioletta,
     /// Auto-mobbing action.
     #[strum(to_string = "{0}")]
     AutoMob(AutoMob),

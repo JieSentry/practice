@@ -1,6 +1,6 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use opencv::core::Rect;
+use opencv::core::{Point2d, Rect};
 
 use super::kalman_filter::KalmanXYAH;
 use crate::tracker::tlwh_to_xyah;
@@ -120,9 +120,10 @@ impl STrack {
         )
     }
 
-    pub fn kalman_velocity(&self) -> (f32, f32) {
+    pub fn kalman_velocity(&self) -> Point2d {
         let vx = self.kalman.mean[4];
         let vy = self.kalman.mean[5];
-        (vx, vy)
+
+        Point2d::new(vx as f64, vy as f64)
     }
 }

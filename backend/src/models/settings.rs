@@ -13,6 +13,8 @@ pub struct Settings {
     pub enable_rune_solving: bool,
     #[serde(default = "enable_solving_default")]
     pub enable_transparent_shape_solving: bool,
+    #[serde(default = "enable_solving_default")]
+    pub enable_violetta_solving: bool,
     pub enable_panic_mode: bool,
     pub stop_on_fail_or_change_map: bool,
     #[serde(default = "stop_on_player_die_default")]
@@ -45,6 +47,7 @@ impl Default for Settings {
             capture_mode: CaptureMode::default(),
             enable_rune_solving: enable_solving_default(),
             enable_transparent_shape_solving: enable_solving_default(),
+            enable_violetta_solving: enable_solving_default(),
             enable_panic_mode: false,
             input_method: InputMethod::default(),
             input_method_rpc_server_url: String::default(),
