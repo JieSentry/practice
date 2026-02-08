@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use opencv::core::{Point, Point2d, Rect};
 
 use crate::{
@@ -21,6 +23,8 @@ pub struct ViolettaSolver {
     tracker: ByteTracker,
     numbers: Vec<Rect>,
     mushrooms: [Mushroom; MUSHROOM_COUNT],
+    last_moving_time: Instant,
+    is_moving: bool,
     is_initialized: bool,
     #[cfg(debug_assertions)]
     is_debugging: bool,
@@ -40,9 +44,11 @@ struct Mushroom {
 impl Default for ViolettaSolver {
     fn default() -> Self {
         Self {
-            tracker: ByteTracker::new(FPS as u64, 0.25, 0.1, 0.25, IouGating::Full),
+            tracker: ByteTracker::new(FPS as u64 * 2, 0.75, 0.6, 0.75, IouGating::Full),
             numbers: vec![],
             mushrooms: [Mushroom::default(); MUSHROOM_COUNT],
+            last_moving_time: Instant::now(),
+            is_moving: false,
             is_initialized: false,
             #[cfg(debug_assertions)]
             is_debugging: false,
@@ -70,6 +76,13 @@ impl ViolettaSolver {
 
         self.update_initial_state_if_needed(detector, region, &tracks);
         self.update_tracking(&tracks);
+        self.is_moving = self
+            .mushrooms
+            .iter()
+            .any(|mushroom| mushroom.last_direction != Direction::None);
+        if self.is_moving {
+            self.last_moving_time = Instant::now();
+        }
 
         #[cfg(debug_assertions)]
         if self.is_debugging {
@@ -96,7 +109,14 @@ impl ViolettaSolver {
             );
         }
 
-        if !self.is_initialized || self.numbers.is_empty() {
+        if !self.is_initialized || self.numbers.is_empty() || self.is_moving {
+            return None;
+        }
+
+        let stationary_secs = Instant::now()
+            .duration_since(self.last_moving_time)
+            .as_secs();
+        if stationary_secs == 0 {
             return None;
         }
 
@@ -208,7 +228,7 @@ fn update_mushroom_from_track(mushroom: &mut Mushroom, track: &STrack) {
         mushroom.last_candidate_direction_count = 0;
     }
 
-    if mushroom.last_candidate_direction_count >= 1 {
+    if mushroom.last_candidate_direction_count >= 2 {
         mushroom.last_candidate_direction_count = 0;
         mushroom.last_direction = mushroom.last_candidate_direction;
     }

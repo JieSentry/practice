@@ -115,8 +115,6 @@ fn update_waiting(resources: &Resources, solving_violetta: &mut SolvingVioletta)
 }
 
 fn update_solving(resources: &Resources, solving_violetta: &mut SolvingVioletta) {
-    const CLICK_INTERVAL: u32 = 60;
-
     let State::Solving(timeout) = solving_violetta.state else {
         panic!("solving violetta state is not solving")
     };
@@ -139,9 +137,7 @@ fn update_solving(resources: &Resources, solving_violetta: &mut SolvingVioletta)
                 let mut solving = solving_violetta.solving.as_mut().unwrap().borrow_mut();
                 let _ = solving.detector_tx.try_send(resources.detector_cloned());
 
-                if let Ok(cursor) = solving.cursor_rx.try_recv()
-                    && timeout.current.is_multiple_of(CLICK_INTERVAL)
-                {
+                if let Ok(cursor) = solving.cursor_rx.try_recv() {
                     resources
                         .input
                         .send_mouse(cursor.x, cursor.y, MouseKind::Click);
