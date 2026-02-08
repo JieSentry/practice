@@ -131,6 +131,8 @@ enum Request {
     #[cfg(debug_assertions)]
     TestSpinRune,
     #[cfg(debug_assertions)]
+    TestVioletta,
+    #[cfg(debug_assertions)]
     TestTransparentShape(TransparentShapeDifficulty),
 }
 
@@ -164,6 +166,8 @@ enum Response {
     RecordVideo,
     #[cfg(debug_assertions)]
     TestSpinRune,
+    #[cfg(debug_assertions)]
+    TestVioletta,
     #[cfg(debug_assertions)]
     TestTransparentShape,
 }
@@ -460,6 +464,11 @@ pub async fn record_video(start: bool) {
 #[cfg(debug_assertions)]
 pub async fn test_spin_rune() {
     send_request!(TestSpinRune)
+}
+
+#[cfg(debug_assertions)]
+pub async fn test_violetta() {
+    send_request!(TestVioletta)
 }
 
 #[cfg(debug_assertions)]

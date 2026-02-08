@@ -565,18 +565,21 @@ fn SectionOthers() -> Element {
                     },
                     checked: settings().stop_on_player_die,
                 }
-                div {}
-                FileInput {
-                    class: "flex-grow",
-                    on_file: move |file| async move {
-                        import_settings(file).await;
-                    },
-                    Button { class: "w-full", style: ButtonStyle::Primary, "Import" }
-                }
-                FileOutput {
-                    on_file: move |_| { serde_json::to_vec_pretty(&*settings.peek()).unwrap_or_default() },
-                    download: "settings.json",
-                    Button { class: "w-full", style: ButtonStyle::Primary, "Export" }
+                div { class: "col-span-full",
+                    div { class: "grid grid-cols-2 gap-3",
+                        FileInput {
+                            on_file: move |file| async move {
+                                import_settings(file).await;
+                            },
+                            Button { class: "w-full", style: ButtonStyle::Primary, "Import" }
+                        }
+
+                        FileOutput {
+                            on_file: move |_| { serde_json::to_vec_pretty(&*settings.peek()).unwrap_or_default() },
+                            download: "settings.json",
+                            Button { class: "w-full", style: ButtonStyle::Primary, "Export" }
+                        }
+                    }
                 }
             }
         }

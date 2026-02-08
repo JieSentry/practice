@@ -1,6 +1,6 @@
 use backend::{
     DebugState, TransparentShapeDifficulty, auto_save_rune, debug_state_receiver, record_video,
-    test_spin_rune, test_transparent_shape,
+    test_spin_rune, test_transparent_shape, test_violetta,
 };
 use dioxus::prelude::*;
 use tokio::sync::broadcast::error::RecvError;
@@ -39,6 +39,14 @@ pub fn DebugScreen() -> Element {
                         },
 
                         "Test spin rune"
+                    }
+                    Button {
+                        style: ButtonStyle::Secondary,
+                        on_click: move |_| async {
+                            test_violetta().await;
+                        },
+
+                        "Test Violetta"
                     }
                     Button {
                         style: ButtonStyle::Secondary,

@@ -267,6 +267,13 @@ fn handle_ui_request(
             Response::TestSpinRune
         }
         #[cfg(debug_assertions)]
+        Request::TestVioletta => {
+            context
+                .debug_service
+                .test_violetta(context.resources.input.clone());
+            Response::TestVioletta
+        }
+        #[cfg(debug_assertions)]
         Request::TestTransparentShape(difficulty) => {
             test_transparent_shape(context, difficulty);
             Response::TestTransparentShape

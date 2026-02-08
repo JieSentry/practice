@@ -36,7 +36,7 @@ use crate::{
     mat::OwnedMat,
     models::Localization,
     run::FPS,
-    solvers::{RuneSolver, TransparentShapeSolver},
+    solvers::{RuneSolver, TransparentShapeSolver, ViolettaSolver},
     utils::DatasetDir,
 };
 
@@ -159,9 +159,9 @@ impl DebugService {
 
             input.set_window(Window::new("Main HighGUI"));
 
-            loop_with_fps(FPS, || {
+            loop {
                 if frame_rx.is_closed() {
-                    return false;
+                    return;
                 }
 
                 if let Ok(frame) = frame_rx.try_recv() {
@@ -174,42 +174,41 @@ impl DebugService {
                         input.send_mouse(cursor.x, cursor.y, MouseKind::Move);
                     }
                 }
-
-                true
-            });
+            }
         });
     }
 
-    // TODO: Add proper test video
-    // pub fn test_violetta(&self) {
-    //     static VIDEO: &[u8] = include_bytes!(env!("VIOLETTA_TEST_VIDEO"));
+    pub fn test_violetta(&self, mut input: Box<dyn Input>) {
+        static VIDEO: &[u8] = include_bytes!(env!("VIOLETTA_TEST_VIDEO"));
 
-    //     spawn_blocking(move || {
-    //         let file = DatasetDir::Root.to_folder().join("violetta_test.mp4");
-    //         if !file.exists() {
-    //             let _ = fs::write(&file, VIDEO);
-    //         }
+        spawn_blocking(move || {
+            let file = DatasetDir::Root.to_folder().join("violetta_test.mp4");
+            if !file.exists() {
+                let _ = fs::write(&file, VIDEO);
+            }
 
-    //         let mut frame_rx = frame_receiver_from_video(file);
-    //         let mut solver = ViolettaSolver::debug();
-    //         let localization = Arc::new(Localization::default());
+            let mut frame_rx = frame_receiver_from_video(file);
+            let mut solver = ViolettaSolver::debug();
+            let localization = Arc::new(Localization::default());
 
-    //         loop_with_fps(FPS, || {
-    //             if frame_rx.is_closed() {
-    //                 return false;
-    //             }
+            input.set_window(Window::new("Main HighGUI"));
 
-    //             if let Ok(frame) = frame_rx.try_recv() {
-    //                 let region = Rect::new(0, 0, frame.cols(), frame.rows());
-    //                 let detector =
-    //                     DefaultDetector::new(OwnedMat::from(frame), localization.clone());
-    //                 solver.solve(&detector, region);
-    //             }
+            loop {
+                if frame_rx.is_closed() {
+                    return;
+                }
 
-    //             true
-    //         });
-    //     });
-    // }
+                if let Ok(frame) = frame_rx.try_recv() {
+                    let region = Rect::new(0, 0, frame.cols(), frame.rows());
+                    let detector =
+                        DefaultDetector::new(OwnedMat::from(frame), localization.clone());
+                    if let Some(cursor) = solver.solve(&detector, region) {
+                        input.send_mouse(cursor.x, cursor.y, MouseKind::Move);
+                    }
+                }
+            }
+        });
+    }
 }
 
 fn frame_receiver_from_video(file: PathBuf) -> mpsc::Receiver<Mat> {
@@ -225,7 +224,7 @@ fn frame_receiver_from_video(file: PathBuf) -> mpsc::Receiver<Mat> {
         true
     }
 
-    let (tx, rx) = mpsc::channel(1);
+    let (tx, rx) = mpsc::channel(3);
     let mut capture = VideoCapture::from_file_def(file.to_str().expect("invalid UTF-8 path"))
         .expect("failed to open video");
     let fps = capture.get(CAP_PROP_FPS).expect("failed to read FPS") as u32;
