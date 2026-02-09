@@ -470,17 +470,12 @@ fn Canvas(
     map_preset: ReadSignal<Option<String>>,
     position: Signal<(i32, i32)>,
 ) -> Element {
-    let mut platforms_bound = use_signal(|| None);
     let rotation_bound_and_type = use_memo(move || {
-        let platforms_bound = platforms_bound();
         let map = map()?;
 
         match map.rotation_mode {
             RotationMode::StartToEnd | RotationMode::StartToEndThenReverse => None,
-            RotationMode::AutoMobbing => Some((
-                platforms_bound.unwrap_or(map.rotation_auto_mob_bound),
-                "AutoMobbing",
-            )),
+            RotationMode::AutoMobbing => Some((map.rotation_auto_mob_bound, "AutoMobbing")),
             RotationMode::PingPong => Some((map.rotation_ping_pong_bound, "PingPong")),
         }
     });
@@ -534,7 +529,6 @@ fn Canvas(
                 continue;
             };
             let destinations = current_state.destinations;
-            let bound = current_state.platforms_bound;
             let quadrant = current_state
                 .auto_mob_quadrant
                 .map(|quadrant| quadrant.to_string());
@@ -552,9 +546,6 @@ fn Canvas(
                 detected_size: frame.as_ref().map(|(_, width, height)| (*width, *height)),
             };
 
-            if *platforms_bound.peek() != bound {
-                platforms_bound.set(bound);
-            }
             if *position.peek() != current_state.position.unwrap_or_default() {
                 position.set(current_state.position.unwrap_or_default());
             }

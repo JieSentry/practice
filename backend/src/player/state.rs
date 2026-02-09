@@ -184,10 +184,6 @@ pub struct PlayerConfiguration {
     pub auto_mob_platforms_pathing: bool,
     /// Uses only up jump(s) in auto mob platform pathing.
     pub auto_mob_platforms_pathing_up_jump_only: bool,
-    /// Uses platforms to compute auto mobbing bound.
-    ///
-    /// TODO: This shouldn't be here...
-    pub auto_mob_platforms_bound: bool,
     pub auto_mob_use_key_when_pathing: bool,
     pub auto_mob_use_key_when_pathing_update_millis: u64,
 
@@ -236,7 +232,6 @@ impl Default for PlayerConfiguration {
             rune_platforms_pathing_up_jump_only: false,
             auto_mob_platforms_pathing: false,
             auto_mob_platforms_pathing_up_jump_only: false,
-            auto_mob_platforms_bound: false,
             auto_mob_use_key_when_pathing: false,
             auto_mob_use_key_when_pathing_update_millis: 0,
             interact_key: KeyKind::A,

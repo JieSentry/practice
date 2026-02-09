@@ -45,7 +45,7 @@ impl Event for MediatorEvent {}
 pub trait MediatorService: Debug {
     fn subscribe_state(&self) -> broadcast::Receiver<State>;
 
-    fn broadcast_state(&self, resources: &Resources, world: &World, map: Option<&Map>);
+    fn broadcast_state(&self, resources: &Resources, world: &World);
 
     /// Queues a [`MediatorEvent::UpdateCharacter`].
     fn queue_update_character(&self, character: Option<Character>);
@@ -85,7 +85,7 @@ impl MediatorService for DefaultMediatorService {
         self.state_tx.subscribe()
     }
 
-    fn broadcast_state(&self, resources: &Resources, world: &World, map: Option<&Map>) {
+    fn broadcast_state(&self, resources: &Resources, world: &World) {
         if !self.state_tx.is_empty() {
             return;
         }
@@ -111,10 +111,6 @@ impl MediatorService for DefaultMediatorService {
             Minimap::Idle(idle) => Some(idle),
             Minimap::Detecting => None,
         };
-
-        let platforms_bound = idle
-            .zip(map.filter(|map| map.auto_mob_platforms_bound))
-            .and_then(|(idle, _)| idle.platforms_bound.map(Into::into));
 
         let portals = idle
             .map(|idle| idle.portals().into_iter().map(Into::into).collect())
@@ -159,7 +155,6 @@ impl MediatorService for DefaultMediatorService {
                 destinations,
                 operation,
                 frame,
-                platforms_bound,
                 portals,
                 auto_mob_quadrant,
             };

@@ -250,7 +250,6 @@ impl Services {
 
         #[cfg(debug_assertions)]
         self.debug.poll(resources);
-        self.mediator
-            .broadcast_state(resources, world, self.map.map());
+        self.mediator.broadcast_state(resources, world);
     }
 }

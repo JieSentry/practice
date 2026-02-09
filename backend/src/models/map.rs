@@ -28,7 +28,6 @@ pub struct Map {
     pub rune_platforms_pathing_up_jump_only: bool,
     pub auto_mob_platforms_pathing: bool,
     pub auto_mob_platforms_pathing_up_jump_only: bool,
-    pub auto_mob_platforms_bound: bool,
     #[serde(default)]
     pub auto_mob_use_key_when_pathing: bool,
     #[serde(default)]

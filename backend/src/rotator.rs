@@ -564,11 +564,7 @@ impl DefaultRotator {
         let Some(pos) = player_context.last_known_pos else {
             return;
         };
-        let bound = if player_context.config.auto_mob_platforms_bound {
-            idle.platforms_bound.unwrap_or(bound.into())
-        } else {
-            bound.into()
-        };
+        let bound = bound.into();
 
         let Update::Ok(points) =
             update_detection_task(resources, 0, &mut self.auto_mob_task, move |detector| {

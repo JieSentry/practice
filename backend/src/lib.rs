@@ -216,7 +216,6 @@ pub struct State {
     pub destinations: Vec<(i32, i32)>,
     pub operation: Operation,
     pub frame: Option<(Vec<u8>, usize, usize)>,
-    pub platforms_bound: Option<Bound>,
     pub portals: Vec<Bound>,
     pub auto_mob_quadrant: Option<BoundQuadrant>,
 }

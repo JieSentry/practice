@@ -14,9 +14,7 @@ use crate::{
     detect::{Detector, OtherPlayerKind},
     ecs::{Resources, transition, transition_if, try_some_transition},
     notification::NotificationKind,
-    pathing::{
-        MAX_PLATFORMS_COUNT, Platform, PlatformWithNeighbors, find_neighbors, find_platforms_bound,
-    },
+    pathing::{MAX_PLATFORMS_COUNT, Platform, PlatformWithNeighbors, find_neighbors},
     player::{DOUBLE_JUMP_THRESHOLD, GRAPPLING_MAX_THRESHOLD, JUMP_THRESHOLD, Player},
     task::{Task, Update, update_detection_task},
 };
@@ -147,10 +145,6 @@ pub struct MinimapIdle {
     ///
     /// The platforms are in player-relative coordinate, which is bottom-left.
     pub platforms: Array<PlatformWithNeighbors, MAX_PLATFORMS_COUNT>,
-    /// The largest rectangle containing all the platforms.
-    ///
-    /// The platforms bound is in OpenCV native coordinate, which is top-left.
-    pub platforms_bound: Option<Rect>,
 }
 
 impl MinimapIdle {
@@ -231,7 +225,6 @@ fn update_detecting_state(resources: &Resources, minimap: &mut MinimapEntity) {
         return;
     };
 
-    let (platforms, platforms_bound) = platforms_and_bound(bbox, &minimap.context.platforms);
     minimap.context.platforms_dirty = false;
     minimap.context.rune_task = None;
     minimap.context.portals_task = None;
@@ -249,8 +242,7 @@ fn update_detecting_state(resources: &Resources, minimap: &mut MinimapEntity) {
         has_stranger_player: Threshold::new(2),
         has_friend_player: Threshold::new(2),
         portals: Array::new(),
-        platforms,
-        platforms_bound,
+        platforms: compute_platforms(&minimap.context.platforms),
     });
 }
 
@@ -271,7 +263,6 @@ fn update_idle_state(
         has_friend_player,
         portals,
         mut platforms,
-        mut platforms_bound,
         ..
     } = minimap_state;
     let detector = resources.detector();
@@ -336,10 +327,7 @@ fn update_idle_state(
     );
 
     if minimap.context.platforms_dirty {
-        let (updated_platforms, updated_bound) =
-            platforms_and_bound(bbox, &minimap.context.platforms);
-        platforms = updated_platforms;
-        platforms_bound = updated_bound;
+        platforms = compute_platforms(&minimap.context.platforms);
         minimap.context.platforms_dirty = false;
     }
 
@@ -351,7 +339,6 @@ fn update_idle_state(
         has_friend_player,
         portals,
         platforms,
-        platforms_bound,
         ..minimap_state
     });
 }
@@ -509,18 +496,13 @@ fn merge_portals_and_invalidate_if_needed(
     Array::from_iter(merged_portals.into_iter().map(|portal| portal.inner))
 }
 
-fn platforms_and_bound(
-    bbox: Rect,
-    platforms: &[Platform],
-) -> (Array<PlatformWithNeighbors, 24>, Option<Rect>) {
-    let platforms = Array::from_iter(find_neighbors(
+fn compute_platforms(platforms: &[Platform]) -> Array<PlatformWithNeighbors, 24> {
+    Array::from_iter(find_neighbors(
         platforms,
         DOUBLE_JUMP_THRESHOLD,
         JUMP_THRESHOLD,
         GRAPPLING_MAX_THRESHOLD,
-    ));
-    let bound = find_platforms_bound(bbox, &platforms);
-    (platforms, bound)
+    ))
 }
 
 #[inline]
@@ -725,7 +707,6 @@ mod tests {
             has_friend_player: Threshold::default(),
             portals: Array::new(),
             platforms: Array::new(),
-            platforms_bound: None,
         };
         let mut minimap = MinimapEntity {
             state: Minimap::Idle(idle),

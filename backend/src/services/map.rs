@@ -85,7 +85,6 @@ impl MapService for DefaultMapService {
                 .config
                 .auto_mob_platforms_pathing_up_jump_only =
                 map.auto_mob_platforms_pathing_up_jump_only;
-            player_context.config.auto_mob_platforms_bound = map.auto_mob_platforms_bound;
             player_context.config.auto_mob_use_key_when_pathing = map.auto_mob_use_key_when_pathing;
             player_context
                 .config
@@ -126,7 +125,6 @@ mod tests {
             rune_platforms_pathing: true,
             rune_platforms_pathing_up_jump_only: true,
             auto_mob_platforms_pathing: true,
-            auto_mob_platforms_bound: true,
             ..Default::default()
         }
     }
@@ -233,6 +231,5 @@ mod tests {
         assert!(player_state.config.rune_platforms_pathing);
         assert!(player_state.config.rune_platforms_pathing_up_jump_only);
         assert!(player_state.config.auto_mob_platforms_pathing);
-        assert!(player_state.config.auto_mob_platforms_bound);
     }
 }
