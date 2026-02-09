@@ -560,11 +560,7 @@ fn update_saving(resources: &Resources, swapping: &mut FamiliarsSwapping) {
             });
         }
         Lifecycle::Ended => transition!(swapping, State::Completing(Timeout::default(), false), {
-            if let Ok(button) = resources.detector().detect_popup_confirm_button() {
-                let (x, y) = bbox_click_point(button);
-                resources.input.send_mouse(x, y, MouseKind::Click);
-                swapping.success = true;
-            }
+            swapping.success = true;
         }),
         Lifecycle::Updated(timeout) => transition!(swapping, State::Saving(timeout)),
     }
@@ -909,29 +905,6 @@ mod tests {
         update_saving(&resources, &mut swapping);
 
         assert_matches!(swapping.state, State::Saving(_));
-    }
-
-    #[test]
-    fn update_saving_press_ok_button() {
-        let mut keys = MockInput::default();
-        keys.expect_send_mouse().once();
-
-        let mut detector = MockDetector::default();
-        detector
-            .expect_detect_popup_confirm_button()
-            .once()
-            .returning(|| Ok(Default::default()));
-
-        let resources = Resources::new(Some(keys), Some(detector));
-        let mut swapping = FamiliarsSwapping::new(SwappableFamiliars::All, Array::new());
-
-        swapping.state = State::Saving(Timeout {
-            current: 20,
-            started: true,
-            ..Default::default()
-        });
-        update_saving(&resources, &mut swapping);
-        assert_matches!(swapping.state, State::Completing(_, false));
     }
 
     // TODO: more tests
