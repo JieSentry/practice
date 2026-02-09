@@ -17,3 +17,6 @@ fern = "0.7.1"
 log = { workspace = true }
 log-panics = "2.1.0"
 tw_merge = "0.1.7"
+
+[features]
+violetta = []
