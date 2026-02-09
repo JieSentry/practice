@@ -37,7 +37,6 @@ mod grpc;
 mod mat;
 mod minimap;
 mod models;
-mod navigator;
 mod notification;
 mod operation;
 mod pathing;
@@ -109,9 +108,6 @@ enum Request {
     UpdateOperation(OperationUpdate),
     CreateMap(String),
     UpdateMap(Option<String>, Option<Map>),
-    CreateNavigationPath,
-    RecaptureNavigationPath(NavigationPath),
-    NavigationSnapshotAsGrayscale(String),
     UpdateCharacter(Option<Character>),
     RedetectMinimap,
     StateReceiver,
@@ -145,9 +141,6 @@ enum Response {
     UpdateOperation,
     CreateMap(Option<Map>),
     UpdateMap,
-    CreateNavigationPath(Option<NavigationPath>),
-    RecaptureNavigationPath(NavigationPath),
-    NavigationSnapshotAsGrayscale(String),
     UpdateCharacter,
     RedetectMinimap,
     StateReceiver(broadcast::Receiver<State>),
@@ -232,7 +225,6 @@ pub struct State {
 pub enum Operation {
     Halting,
     TemporaryHalting(Duration),
-    HaltUntil(Instant),
     Running,
     RunUntil(Instant),
 }
@@ -319,55 +311,6 @@ pub async fn update_map(preset: Option<String>, map: Option<Map>) {
 /// Returns `true` if the map was deleted.
 pub async fn delete_map(map: Map) -> bool {
     spawn_blocking(move || database::delete_map(&map).is_ok())
-        .await
-        .unwrap()
-}
-
-/// Queries navigation paths from the database.
-pub async fn query_navigation_paths() -> Option<Vec<NavigationPaths>> {
-    spawn_blocking(database::query_navigation_paths)
-        .await
-        .unwrap()
-        .ok()
-}
-
-/// Creates a navigation path from currently detected map.
-pub async fn create_navigation_path() -> Option<NavigationPath> {
-    send_request!(CreateNavigationPath => (path))
-}
-
-/// Upserts `paths` to the database.
-///
-/// Returns the updated [`NavigationPaths`] on success.
-pub async fn upsert_navigation_paths(mut paths: NavigationPaths) -> Option<NavigationPaths> {
-    spawn_blocking(move || {
-        database::upsert_navigation_paths(&mut paths)
-            .is_ok()
-            .then_some(paths)
-    })
-    .await
-    .unwrap()
-}
-
-/// Recaptures snapshots for the provided `path`.
-///
-/// Snapshots include name and map will be recaptured and re-assigned to the given `path` if
-/// the map is currently detected.
-///
-/// Returns the updated [`NavigationPath`] or original if map is currently not detectable.
-pub async fn recapture_navigation_path(path: NavigationPath) -> NavigationPath {
-    send_request!(RecaptureNavigationPath(path) => (path))
-}
-
-pub async fn navigation_snapshot_as_grayscale(base64: String) -> String {
-    send_request!(NavigationSnapshotAsGrayscale(base64) => (base64))
-}
-
-/// Deletes `paths` from the database.
-///
-/// Returns `true` if `paths` was deleted.
-pub async fn delete_navigation_paths(paths: NavigationPaths) -> bool {
-    spawn_blocking(move || database::delete_navigation_paths(&paths).is_ok())
         .await
         .unwrap()
 }

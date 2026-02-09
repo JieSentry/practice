@@ -25,7 +25,6 @@ use crate::{
     ecs::{Resources, World, WorldEvent},
     mat::OwnedMat,
     minimap::{self, Minimap, MinimapContext, MinimapEntity},
-    navigator::{DefaultNavigator, Navigator},
     notification::DiscordNotification,
     operation::{Operation, OperationConfiguration, OperationState},
     player::{self, Player, PlayerContext, PlayerEntity},
@@ -80,7 +79,7 @@ fn systems_loop() {
     let localization = Rc::new(RefCell::new(Arc::new(query_or_upsert_localization())));
     let seeds = query_and_upsert_seeds();
     let rng = Rng::new(seeds.rng_seed, seeds.perlin_seed);
-    let (event_tx, event_rx) = channel::<WorldEvent>(5);
+    let (event_tx, _) = channel::<WorldEvent>(5);
 
     let mut service = Services::new(settings.clone(), localization.clone(), event_tx.subscribe());
     let window = service.selected_window();
@@ -89,7 +88,6 @@ fn systems_loop() {
     service.update_window(&mut input, &mut capture);
 
     let mut rotator = DefaultRotator::default();
-    let mut navigator = DefaultNavigator::new(event_rx);
     let notification = DiscordNotification::new(settings.clone());
     let mut resources = Resources {
         #[cfg(debug_assertions)]
@@ -174,8 +172,6 @@ fn systems_loop() {
         if let Ok(detector) = detector {
             let was_running_cycle =
                 matches!(resources.operation.state, OperationState::RunUntil { .. });
-            let was_stopping_cycle =
-                matches!(resources.operation.state, OperationState::HaltUntil { .. });
             let was_player_alive = !world.player.context.is_dead();
             let was_minimap_idle = matches!(world.minimap.state, Minimap::Idle(_));
 
@@ -191,20 +187,12 @@ fn systems_loop() {
                 buff::run_system(&resources, buff, world.player.state.clone());
             }
 
-            if navigator.navigate_player(&resources, &mut world.player.context, world.minimap.state)
-            {
-                rotator.rotate_action(&resources, &mut world);
-            }
+            rotator.rotate_action(&resources, &mut world);
 
             let did_cycled_to_stop = resources.operation.halting();
-            let did_cycled_to_run =
-                matches!(resources.operation.state, OperationState::RunUntil { .. });
             // Go to town on stop cycle
             if was_running_cycle && did_cycled_to_stop {
-                let _ = event_tx.send(WorldEvent::CycledToHalt);
-            }
-            if was_stopping_cycle && did_cycled_to_run {
-                let _ = event_tx.send(WorldEvent::CycledToRun);
+                let _ = event_tx.send(WorldEvent::RunTimerEnded);
             }
 
             let player_died = was_player_alive && world.player.context.is_dead();
@@ -231,13 +219,7 @@ fn systems_loop() {
             .notification
             .update(resources.detector.as_ref().map(|detector| detector.mat()));
 
-        service.poll(
-            &mut resources,
-            &mut world,
-            &mut rotator,
-            &mut navigator,
-            &mut capture,
-        );
+        service.poll(&mut resources, &mut world, &mut rotator, &mut capture);
     });
 }
 

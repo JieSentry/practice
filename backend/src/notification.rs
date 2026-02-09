@@ -38,8 +38,7 @@ pub enum NotificationKind {
     PlayerIsDead,
     LieDetectorShapeAppear,
     LieDetectorViolettaAppear,
-    CycledToHalt,
-    CycledToRun,
+    RunTimerEnded,
 }
 
 impl NotificationKind {
@@ -64,9 +63,7 @@ impl NotificationKind {
             | NotificationKind::LieDetectorShapeAppear => {
                 settings.notifications.notify_on_lie_detector_appear
             }
-            NotificationKind::CycledToHalt | NotificationKind::CycledToRun => {
-                settings.notifications.notify_on_cycle_run_stop
-            }
+            NotificationKind::RunTimerEnded => settings.notifications.notify_on_run_timer_end,
         }
     }
 
@@ -111,11 +108,8 @@ impl NotificationKind {
             | NotificationKind::LieDetectorShapeAppear => {
                 format!("{user_id}Bot has detected the lie detector")
             }
-            NotificationKind::CycledToRun => {
-                format!("{user_id}Bot has cycled to run.")
-            }
-            NotificationKind::CycledToHalt => {
-                format!("{user_id}Bot has cycled to stop.")
+            NotificationKind::RunTimerEnded => {
+                format!("{user_id}Bot run timer has ended.")
             }
         }
     }
@@ -126,8 +120,7 @@ impl NotificationKind {
                 ScheduledFrame::new_deadline(2),
                 ScheduledFrame::new_deadline(4),
             ],
-            NotificationKind::CycledToHalt
-            | NotificationKind::CycledToRun
+            NotificationKind::RunTimerEnded
             | NotificationKind::EliteBossAppear
             | NotificationKind::PlayerIsDead
             | NotificationKind::PlayerGuildieAppear
@@ -144,8 +137,7 @@ impl NotificationKind {
     fn schedule_delay_duration(&self) -> Duration {
         let secs = match self {
             NotificationKind::FailOrMapChange => 5,
-            NotificationKind::CycledToHalt
-            | NotificationKind::CycledToRun
+            NotificationKind::RunTimerEnded
             | NotificationKind::EliteBossAppear
             | NotificationKind::PlayerIsDead
             | NotificationKind::PlayerGuildieAppear

@@ -6,7 +6,6 @@ mod character;
 mod keys;
 mod localization;
 mod map;
-mod navigation;
 mod seeds;
 mod settings;
 
@@ -15,7 +14,6 @@ pub use character::*;
 pub use keys::*;
 pub use localization::*;
 pub use map::*;
-pub use navigation::*;
 pub use seeds::*;
 pub use settings::*;
 

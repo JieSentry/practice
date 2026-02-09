@@ -35,9 +35,6 @@ pub struct Map {
     pub auto_mob_use_key_when_pathing_update_millis: u64,
     pub actions_any_reset_on_erda_condition: bool,
     pub actions: HashMap<String, Vec<Action>>,
-    // Not FK, loose coupling to another navigation paths and its index
-    #[serde(default)]
-    pub paths_id_index: Option<(i64, usize)>,
 }
 
 impl_identifiable!(Map);

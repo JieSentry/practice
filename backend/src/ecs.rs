@@ -163,10 +163,7 @@ pub struct Resources {
 impl Resources {
     #[cfg(test)]
     pub fn new(input: Option<MockInput>, detector: Option<MockDetector>) -> Self {
-        use crate::{
-            CycleRunStopMode,
-            operation::{OperationConfiguration, OperationState},
-        };
+        use crate::operation::{OperationConfiguration, OperationState};
 
         Self {
             #[cfg(debug_assertions)]
@@ -177,9 +174,8 @@ impl Resources {
             detector: detector.map(|detector| Arc::new(detector) as Arc<dyn Detector>),
             operation: Operation {
                 config: OperationConfiguration {
-                    mode: CycleRunStopMode::None,
-                    run_duration_millis: 0,
-                    stop_duration_millis: 0,
+                    run_timer: false,
+                    run_timer_millis: 0,
                 },
                 state: OperationState::Running,
             },
@@ -213,8 +209,7 @@ impl Resources {
 /// Different game-related events.
 #[derive(Debug, Clone, Copy)]
 pub enum WorldEvent {
-    CycledToHalt,
-    CycledToRun,
+    RunTimerEnded,
     PlayerDied,
     MinimapChanged,
     CaptureFailed,

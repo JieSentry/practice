@@ -13,8 +13,7 @@
     - [Auto-mobbing](#auto-mobbing)
     - [Ping Pong](#ping-pong)
   - [Platforms Pathing](#platforms-pathing)
-  - [Navigation](#navigation)
-  - [Run/Stop Cycle](#runstop-cycle)
+  - [Run Timer](#run-timer)
   - [Capture Modes](#capture-modes)
   - [Familiars Swapping](#familiars-swapping)
   - [Panic Mode](#panic-mode)
@@ -287,58 +286,12 @@ Use hotkeys to add them quickly.
 
 ---
 
-### Navigation
+### Run Timer
 
-Introduced in **v0.19**.
+Introduced in **v0.24**. (previously known as `Run/stop cycle`)
 
-Enables the bot to navigate automatically between maps using portals.
-
-#### Core Concepts
-
-- `Paths group` – A collection of related paths (e.g., Hotel Arcus).  
-- `Path` – A minimap snapshot containing its name, minimap images and coordinates (e.g., portals).  
-- `Point` – A transition marker to another path.
-
-#### Setup Steps
-
-1. Opens the `Navigation` tab.  
-2. Notes down the desired route (e.g., Esfera Base Camp → Esfera Mirror-touched Sea 3).  
-3. Creates a `Paths group` (e.g., Esfera).  
-4. Goes to each map and ensures the minimap is detected.  
-5. Clicks `Add path` – captures the minimap and name images for matching.  
-6. Clicks `Add point` – records portal coordinates and links to next path.  
-7. Repeats from 3. until all paths are added.  
-8. Attaches a created path to the current map under `Navigation` → `Selected map` → `Attached paths group` and `Attached path`.
-
-When started, the bot will navigate to the attached path before rotating actions.  
-Useful for:
-- Run/stop cycles (e.g., returns to town on stop cycle and navigates back).  
-- Navigates back to original map if the bot changes map accidentally.
-
-#### Limitations
-
-- No interaction-based navigation yet.  
-- Cannot handle portals leading to `Unstucking` state positions.
-
-![Navigation](https://github.com/sasanquaa/komari/blob/master/.github/images/navigation.png?raw=true)
-
-From **v0.21**, added `Use grayscale for map` option for better minimap matching if color-based detection fails.
-
----
-
-### Run/Stop Cycle
-
-Introduced in **v0.19**.
-
-Found under `Settings` → `Run/stop cycle`:
-
-- `None` – Runs or stops indefinately (default behavior).  
-- `Once` – Runs for a specified duration, then stops and returns to town.  
-- `Repeat` – Alternates between running and resting in town.
-
-**For this to work:**
-- Key binding for `To town` is set.  
-- If `Repeat` mode is used, navigation paths must be setup.
+Found under `Settings` → `Run timer`. When enabled, the bot runs for the specified duration, stop
+and return to town. **As such, the key binding for `To town` must be set.**
 
 The `Suspend` button allows pausing temporarily without resetting timer.
 

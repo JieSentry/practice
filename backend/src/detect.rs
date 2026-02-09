@@ -153,20 +153,6 @@ pub trait Detector: Debug + Send + Sync {
     /// the minimap's white border.
     fn detect_minimap(&self, border_threshold: u8) -> Result<Rect>;
 
-    /// Detects the minimap name rectangle.
-    fn detect_minimap_name(&self, minimap: Rect) -> Result<Rect>;
-
-    /// Detects whether the given `minimap_snapshot` and `minimap_name_snapshot` matches the one
-    /// cropped by `minimap_name_bbox` and `minimap_bbox` rectangles.
-    fn detect_minimap_match(
-        &self,
-        minimap_snapshot: &Mat,
-        minimap_snapshot_grayscale: bool,
-        minimap_name_snapshot: &Mat,
-        minimap_bbox: Rect,
-        minimap_name_bbox: Rect,
-    ) -> Result<f64>;
-
     /// Detects the portals from the given `minimap` rectangle.
     ///
     /// Returns `Rect` relative to `minimap` coordinate.
@@ -379,29 +365,6 @@ impl Detector for DefaultDetector {
 
     fn detect_minimap(&self, border_threshold: u8) -> Result<Rect> {
         detect_minimap(self.bgr(), border_threshold)
-    }
-
-    fn detect_minimap_name(&self, minimap: Rect) -> Result<Rect> {
-        detect_minimap_name(self.grayscale(), minimap)
-    }
-
-    fn detect_minimap_match(
-        &self,
-        minimap_snapshot: &Mat,
-        minimap_snapshot_grayscale: bool,
-        minimap_name_snapshot: &Mat,
-        minimap_bbox: Rect,
-        minimap_name_bbox: Rect,
-    ) -> Result<f64> {
-        detect_minimap_match(
-            &self.bgra(),
-            self.grayscale(),
-            minimap_snapshot,
-            minimap_snapshot_grayscale,
-            minimap_name_snapshot,
-            minimap_bbox,
-            minimap_name_bbox,
-        )
     }
 
     fn detect_minimap_portals(&self, minimap: Rect) -> Vec<Rect> {
@@ -1092,90 +1055,6 @@ fn detect_minimap(bgr: &impl MatTraitConst, border_threshold: u8) -> Result<Rect
     debug!(target: "minimap", "bbox {bbox:?}");
 
     Ok(bbox + contour_bbox.tl())
-}
-
-fn detect_minimap_name(grayscale: &impl MatTraitConst, minimap: Rect) -> Result<Rect> {
-    /// Top offset backward from the `y` of `minimap`.
-    const TOP_OFFSET: i32 = 24;
-    /// Left offset from the `x` of `minimap`.
-    const LEFT_OFFSET: i32 = 36;
-    /// The height of the name region.
-    const NAME_HEIGHT: i32 = 20;
-
-    let x = minimap.x + LEFT_OFFSET;
-    let y = minimap.y - TOP_OFFSET;
-    let kernel = get_structuring_element_def(MORPH_RECT, Size::new(5, 5)).unwrap();
-    let name_bbox = Rect::new(x, y, minimap.x + minimap.width - x, NAME_HEIGHT);
-    let mut name = grayscale.roi(name_bbox)?.clone_pointee();
-    unsafe {
-        name.modify_inplace(|mat, mat_mut| {
-            threshold(mat, mat_mut, 200.0, 255.0, THRESH_BINARY).unwrap();
-            dilate_def(mat, mat_mut, &kernel).unwrap();
-        });
-    }
-
-    let mut contours = Vector::<Vector<Point>>::new();
-    find_contours_def(&name, &mut contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE).unwrap();
-    if contours.is_empty() {
-        bail!("cannot find the minimap name contours")
-    }
-    let contour_bbox = contours
-        .into_iter()
-        .map(|contour| bounding_rect(&contour).unwrap())
-        .reduce(|first, second| first | second)
-        .ok_or(anyhow!("minimap name contours is empty"))?;
-    let name_bbox = contour_bbox + name_bbox.tl();
-
-    Ok(name_bbox)
-}
-
-fn detect_minimap_match<T: ToInputArray + MatTraitConst>(
-    bgra: &impl MatTraitConst,
-    grayscale: &impl MatTraitConst,
-    minimap_snapshot: &T,
-    minimap_snapshot_grayscale: bool,
-    minimap_name_snapshot: &T,
-    minimap_bbox: Rect,
-    minimap_name_bbox: Rect,
-) -> Result<f64> {
-    const EXPAND_BBOX_SIZE: i32 = 4;
-
-    let minimap_name_bbox = expand_bbox(
-        Some(grayscale.size().expect("size available")),
-        minimap_name_bbox,
-        EXPAND_BBOX_SIZE,
-    );
-    let minimap_name = grayscale.roi(minimap_name_bbox)?;
-
-    let minimap_bbox = expand_bbox(
-        Some(bgra.size().expect("size available")),
-        minimap_bbox,
-        EXPAND_BBOX_SIZE,
-    );
-    let minimap = if minimap_snapshot_grayscale {
-        to_grayscale(&bgra.roi(minimap_bbox)?, false)
-    } else {
-        bgra.roi(minimap_bbox)?.clone_pointee()
-    };
-
-    let name_score = detect_template_single(
-        &minimap_name,
-        minimap_name_snapshot,
-        no_array(),
-        Point::default(),
-        0.8,
-    )
-    .map(|(_, score)| score)?;
-    let minimap_score = detect_template_single(
-        &minimap,
-        minimap_snapshot,
-        no_array(),
-        Point::default(),
-        0.6,
-    )
-    .map(|(_, score)| score)?;
-
-    Ok((name_score + minimap_score) / 2.0)
 }
 
 fn detect_minimap_portals<T: MatTraitConst + ToInputArray>(minimap_bgr: T) -> Vec<Rect> {

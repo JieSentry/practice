@@ -9,12 +9,11 @@ use serde::{Serialize, de::DeserializeOwned};
 use tokio::sync::broadcast::{Receiver, Sender, channel};
 
 use crate::{
-    models::{Character, Identifiable, Localization, Map, NavigationPaths, Seeds, Settings},
+    models::{Character, Identifiable, Localization, Map, Seeds, Settings},
     services::Event,
 };
 
 const MAPS: &str = "maps";
-const NAVIGATION_PATHS: &str = "navigation_paths";
 const CHARACTERS: &str = "characters";
 const SETTINGS: &str = "settings";
 const SEEDS: &str = "seeds";
@@ -32,10 +31,6 @@ static CONNECTION: LazyLock<Mutex<Connection>> = LazyLock::new(|| {
         format!(
             r#"
             CREATE TABLE IF NOT EXISTS {MAPS} (
-                id INTEGER PRIMARY KEY,
-                data TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS {NAVIGATION_PATHS} (
                 id INTEGER PRIMARY KEY,
                 data TEXT NOT NULL
             );
@@ -69,8 +64,6 @@ static EVENT: LazyLock<Sender<DatabaseEvent>> = LazyLock::new(|| channel(5).0);
 pub enum DatabaseEvent {
     MapUpdated(Map),
     MapDeleted(i64),
-    NavigationPathsUpdated,
-    NavigationPathsDeleted,
     SettingsUpdated(Settings),
     LocalizationUpdated(Localization),
     CharacterUpdated(Character),
@@ -208,22 +201,6 @@ pub fn delete_map(map: &Map) -> Result<()> {
         let _ = EVENT.send(DatabaseEvent::MapDeleted(
             map.id.expect("valid id if deleted"),
         ));
-    })
-}
-
-pub fn query_navigation_paths() -> Result<Vec<NavigationPaths>> {
-    query_from_table(NAVIGATION_PATHS)
-}
-
-pub fn upsert_navigation_paths(paths: &mut NavigationPaths) -> Result<()> {
-    upsert_to_table(NAVIGATION_PATHS, paths).inspect(|_| {
-        let _ = EVENT.send(DatabaseEvent::NavigationPathsUpdated);
-    })
-}
-
-pub fn delete_navigation_paths(paths: &NavigationPaths) -> Result<()> {
-    delete_from_table(NAVIGATION_PATHS, paths).inspect(|_| {
-        let _ = EVENT.send(DatabaseEvent::NavigationPathsDeleted);
     })
 }
 

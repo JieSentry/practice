@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use strum::{Display, EnumIter, EnumString};
 
-use super::{deserialize_with_ok_or_default, impl_identifiable};
+use super::impl_identifiable;
 use crate::{KeyBinding, KeyBindingConfiguration};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -19,12 +19,10 @@ pub struct Settings {
     pub stop_on_fail_or_change_map: bool,
     #[serde(default = "stop_on_player_die_default")]
     pub stop_on_player_die: bool,
-    #[serde(default, deserialize_with = "deserialize_with_ok_or_default")]
-    pub cycle_run_stop: CycleRunStopMode,
-    #[serde(default = "cycle_run_duration_millis_default")]
-    pub cycle_run_duration_millis: u64,
-    #[serde(default = "cycle_stop_duration_millis_default")]
-    pub cycle_stop_duration_millis: u64,
+    #[serde(default)]
+    pub run_timer: bool,
+    #[serde(default = "run_timer_millis_default")]
+    pub run_timer_millis: u64,
     pub input_method: InputMethod,
     pub input_method_rpc_server_url: String,
     #[serde(default)]
@@ -53,9 +51,8 @@ impl Default for Settings {
             input_method_rpc_server_url: String::default(),
             stop_on_fail_or_change_map: false,
             stop_on_player_die: stop_on_player_die_default(),
-            cycle_run_stop: CycleRunStopMode::default(),
-            cycle_run_duration_millis: cycle_run_duration_millis_default(),
-            cycle_stop_duration_millis: cycle_stop_duration_millis_default(),
+            run_timer: false,
+            run_timer_millis: run_timer_millis_default(),
             discord_bot_access_token: String::default(),
             notifications: Notifications::default(),
             toggle_actions_key: toggle_actions_key_default(),
@@ -72,12 +69,8 @@ fn stop_on_player_die_default() -> bool {
     true
 }
 
-fn cycle_run_duration_millis_default() -> u64 {
+fn run_timer_millis_default() -> u64 {
     14400000 // 4 hours
-}
-
-fn cycle_stop_duration_millis_default() -> u64 {
-    3600000 // 1 hour
 }
 
 fn enable_solving_default() -> bool {
@@ -124,16 +117,6 @@ pub enum InputMethod {
 #[derive(
     Clone, Copy, PartialEq, Default, Debug, Serialize, Deserialize, EnumIter, Display, EnumString,
 )]
-pub enum CycleRunStopMode {
-    #[default]
-    None,
-    Once,
-    Repeat,
-}
-
-#[derive(
-    Clone, Copy, PartialEq, Default, Debug, Serialize, Deserialize, EnumIter, Display, EnumString,
-)]
 pub enum CaptureMode {
     BitBlt,
     #[strum(to_string = "Windows 10 (1903 and up)")] // Thanks OBS
@@ -156,5 +139,5 @@ pub struct Notifications {
     #[serde(default)]
     pub notify_on_lie_detector_appear: bool,
     #[serde(default)]
-    pub notify_on_cycle_run_stop: bool,
+    pub notify_on_run_timer_end: bool,
 }

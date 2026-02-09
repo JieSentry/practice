@@ -22,7 +22,6 @@ use dioxus::{
 use fern::Dispatch;
 use log::LevelFilter;
 use minimap::MinimapScreen;
-use navigation::NavigationScreen;
 use rand::distr::{Alphanumeric, SampleString};
 use settings::SettingsScreen;
 
@@ -35,7 +34,6 @@ mod components;
 mod debug;
 mod localization;
 mod minimap;
-mod navigation;
 mod settings;
 
 const TAILWIND_CSS: Asset = asset!("public/tailwind.css");
@@ -43,7 +41,6 @@ const AUTO_NUMERIC_JS: Asset = asset!("public/autoNumeric.min.js");
 const SORTABLE_JS: Asset = asset!("public/Sortable.min.js");
 const TAB_ACTIONS: &str = "Actions";
 const TAB_CHARACTERS: &str = "Characters";
-const TAB_NAVIGATION: &str = "Navigation";
 const TAB_SETTINGS: &str = "Settings";
 const TAB_LOCALIZATION: &str = "Localization";
 #[cfg(debug_assertions)]
@@ -53,7 +50,6 @@ static TABS: LazyLock<Vec<String>> = LazyLock::new(|| {
     vec![
         TAB_ACTIONS.to_string(),
         TAB_CHARACTERS.to_string(),
-        TAB_NAVIGATION.to_string(),
         TAB_SETTINGS.to_string(),
         TAB_LOCALIZATION.to_string(),
         #[cfg(debug_assertions)]
@@ -143,9 +139,6 @@ fn App() -> Element {
                         },
                         TAB_SETTINGS => rsx! {
                             SettingsScreen {}
-                        },
-                        TAB_NAVIGATION => rsx! {
-                            NavigationScreen {}
                         },
                         TAB_LOCALIZATION => rsx! {
                             LocalizationScreen {}

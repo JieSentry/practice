@@ -14,8 +14,8 @@ use tokio::{
 };
 
 use crate::{
-    BoundQuadrant, Character, DetectionTemplate, KeyBinding, NavigationPath, Operation,
-    OperationUpdate, Request, Response, State,
+    BoundQuadrant, Character, DetectionTemplate, KeyBinding, Operation, OperationUpdate, Request,
+    Response, State,
     detect::to_base64_from_mat,
     ecs::{Resources, World},
     minimap::Minimap,
@@ -121,7 +121,6 @@ impl MediatorService for DefaultMediatorService {
             .unwrap_or_default();
 
         let operation = match resources.operation.state {
-            OperationState::HaltUntil { instant, .. } => Operation::HaltUntil(instant),
             OperationState::TemporaryHalting { resume, .. } => Operation::TemporaryHalting(resume),
             OperationState::Halting => Operation::Halting,
             OperationState::Running => Operation::Running,
@@ -209,15 +208,6 @@ fn handle_ui_request(
             update_map(context, preset, map);
             Response::UpdateMap
         }
-        Request::CreateNavigationPath => {
-            Response::CreateNavigationPath(create_navigation_path(context))
-        }
-        Request::RecaptureNavigationPath(path) => {
-            Response::RecaptureNavigationPath(recapture_navigation_path(context, path))
-        }
-        Request::NavigationSnapshotAsGrayscale(base64) => Response::NavigationSnapshotAsGrayscale(
-            convert_navigation_path_snapshot_to_grayscale(context, base64),
-        ),
         Request::UpdateCharacter(character) => {
             update_character(context, character);
             Response::UpdateCharacter
@@ -306,39 +296,10 @@ fn update_map(context: &mut EventContext<'_>, preset: Option<String>, map: Optio
     let preset = map_service.preset();
     rotator_service.update_from_map(map, preset);
     rotator_service.apply(context.rotator);
-
-    context
-        .navigator
-        .mark_dirty_with_destination(map.and_then(|map| map.paths_id_index));
 }
 
 fn redetect_map_minimap(context: &mut EventContext<'_>) {
     context.map_service.redetect(&mut context.world.minimap);
-    context.navigator.mark_dirty(true);
-}
-
-fn create_navigation_path(context: &mut EventContext<'_>) -> Option<NavigationPath> {
-    context
-        .navigator_service
-        .create_path(context.resources, context.world.minimap.state)
-}
-
-fn recapture_navigation_path(
-    context: &mut EventContext<'_>,
-    path: NavigationPath,
-) -> NavigationPath {
-    context
-        .navigator_service
-        .recapture_path(context.resources, context.world.minimap.state, path)
-}
-
-fn convert_navigation_path_snapshot_to_grayscale(
-    context: &mut EventContext<'_>,
-    base64: String,
-) -> String {
-    context
-        .navigator_service
-        .navigation_snapshot_as_grayscale(base64)
 }
 
 fn update_character(context: &mut EventContext<'_>, character: Option<Character>) {

@@ -1,9 +1,9 @@
 use std::{fmt::Display, mem};
 
 use backend::{
-    CaptureMode, CycleRunStopMode, InputMethod, IntoEnumIterator, KeyBinding,
-    KeyBindingConfiguration, Notifications, Settings, query_capture_handles, query_settings,
-    refresh_capture_handles, select_capture_handle, upsert_settings,
+    CaptureMode, InputMethod, IntoEnumIterator, KeyBinding, KeyBindingConfiguration, Notifications,
+    Settings, query_capture_handles, query_settings, refresh_capture_handles,
+    select_capture_handle, upsert_settings,
 };
 use dioxus::{html::FileData, prelude::*};
 use futures_util::StreamExt;
@@ -74,7 +74,7 @@ pub fn SettingsScreen() -> Element {
             SectionInput {}
             SectionControlAndNotifications {}
             SectionHotkeys {}
-            SectionRunStopCycle {}
+            SectionRunTimer {}
             SectionOthers {}
         }
     }
@@ -334,17 +334,17 @@ fn SectionControlAndNotifications() -> Element {
                     checked: notifications().notify_on_lie_detector_appear,
                 }
                 SettingsCheckbox {
-                    label: "Run/stop cycles",
-                    on_checked: move |notify_on_cycle_run_stop| {
+                    label: "Run timer ends",
+                    on_checked: move |notify_on_run_timer_end| {
                         save_settings(Settings {
                             notifications: Notifications {
-                                notify_on_cycle_run_stop,
+                                notify_on_run_timer_end,
                                 ..notifications.peek().clone()
                             },
                             ..settings.peek().clone()
                         });
                     },
-                    checked: notifications().notify_on_cycle_run_stop,
+                    checked: notifications().notify_on_run_timer_end,
                 }
             }
         }
@@ -439,43 +439,33 @@ fn SectionHotkeys() -> Element {
 }
 
 #[component]
-fn SectionRunStopCycle() -> Element {
+fn SectionRunTimer() -> Element {
     let context = use_context::<SettingsContext>();
     let settings = context.settings;
     let save_settings = context.save_settings;
 
     rsx! {
-        Section { title: "Run/stop cycle",
-            div { class: "grid grid-cols-3 gap-3",
+        Section { title: "Run timer",
+            div { class: "grid grid-cols-2 gap-3",
                 SettingsMillisInput {
-                    label: "Run duration",
-                    on_value: move |cycle_run_duration_millis| {
+                    label: "Duration",
+                    on_value: move |run_timer_millis| {
                         save_settings(Settings {
-                            cycle_run_duration_millis,
+                            run_timer_millis,
                             ..settings.peek().clone()
                         });
                     },
-                    value: settings().cycle_run_duration_millis,
+                    value: settings().run_timer_millis,
                 }
-                SettingsMillisInput {
-                    label: "Stop duration",
-                    on_value: move |cycle_stop_duration_millis| {
+                SettingsCheckbox {
+                    label: "Enabled",
+                    on_checked: move |run_timer| {
                         save_settings(Settings {
-                            cycle_stop_duration_millis,
+                            run_timer,
                             ..settings.peek().clone()
                         });
                     },
-                    value: settings().cycle_stop_duration_millis,
-                }
-                SettingsEnumSelect::<CycleRunStopMode> {
-                    label: "Mode",
-                    on_selected: move |cycle_run_stop| {
-                        save_settings(Settings {
-                            cycle_run_stop,
-                            ..settings.peek().clone()
-                        });
-                    },
-                    selected: settings().cycle_run_stop,
+                    checked: settings().run_timer,
                 }
             }
         }

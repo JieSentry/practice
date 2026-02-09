@@ -63,9 +63,6 @@ impl EventHandler<DatabaseEvent> for DatabaseEventHandler {
             DatabaseEvent::LocalizationUpdated(localization) => context
                 .localization_service
                 .update_localization(localization),
-            DatabaseEvent::NavigationPathsDeleted | DatabaseEvent::NavigationPathsUpdated => {
-                context.navigator.mark_dirty(true)
-            }
         }
     }
 }

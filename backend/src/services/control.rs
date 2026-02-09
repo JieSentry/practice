@@ -76,13 +76,9 @@ impl EventHandler<ControlEvent> for ControlEventHandler {
                 let _ = event
                     .sender
                     .send(EditInteractionResponse::new().content("Bot stopped running."));
-                context.operation_service.queue_halt(
-                    true,
-                    Halt {
-                        go_to_town,
-                        check_for_navigation: false,
-                    },
-                );
+                context
+                    .operation_service
+                    .queue_halt(true, Halt { go_to_town });
             }
             CommandKind::Suspend => {
                 let _ = event

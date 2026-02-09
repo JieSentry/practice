@@ -13,7 +13,7 @@ use tokio::{
 
 use super::EventContext;
 use crate::{
-    CycleRunStopMode, OperationUpdate,
+    OperationUpdate,
     ecs::Resources,
     operation::{Operation, OperationConfiguration, OperationState},
     player::{Panic, PanicTo, PlayerAction},
@@ -25,7 +25,6 @@ const PENDING_HALT_SECS: u64 = 12;
 #[derive(Debug, Clone, Copy)]
 pub struct Halt {
     pub go_to_town: bool,
-    pub check_for_navigation: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -135,15 +134,11 @@ fn update_operation(mut operation: Operation, update: OperationUpdate) -> Operat
                     instant: Instant::now() + resume,
                 };
             }
-            OperationState::HaltUntil { .. } => {
-                operation.state = OperationState::run_until(operation.config);
-            }
             OperationState::Halting => {
-                operation.state = match operation.config.mode {
-                    CycleRunStopMode::None => OperationState::Running,
-                    CycleRunStopMode::Once | CycleRunStopMode::Repeat => {
-                        OperationState::run_until(operation.config)
-                    }
+                operation.state = if operation.config.run_timer {
+                    OperationState::run_until(operation.config)
+                } else {
+                    OperationState::Running
                 };
             }
             _ => {
@@ -157,36 +152,21 @@ fn update_operation(mut operation: Operation, update: OperationUpdate) -> Operat
 
 fn config_operation(mut operation: Operation, config: OperationConfiguration) -> Operation {
     match operation.state {
-        OperationState::HaltUntil { .. } => match config.mode {
-            CycleRunStopMode::None | CycleRunStopMode::Once => {
-                operation.state = OperationState::Halting
-            }
-            CycleRunStopMode::Repeat => {
-                if operation.config.stop_duration_millis != config.stop_duration_millis {
-                    operation.state = OperationState::halt_until(config);
-                }
-            }
-        },
         OperationState::TemporaryHalting { resume } => {
-            operation.state = if operation.config.run_duration_millis != config.run_duration_millis
-                || matches!(config.mode, CycleRunStopMode::None)
-            {
+            operation.state = if operation.config.run_timer_millis != config.run_timer_millis {
                 OperationState::Halting
             } else {
                 OperationState::TemporaryHalting { resume }
             };
         }
         OperationState::Halting => operation.state = OperationState::Halting,
-        OperationState::Running | OperationState::RunUntil { .. } => match config.mode {
-            CycleRunStopMode::None => operation.state = OperationState::Running,
-            CycleRunStopMode::Once | CycleRunStopMode::Repeat => {
-                if matches!(operation.state, OperationState::Running)
-                    || operation.config.run_duration_millis != config.run_duration_millis
-                {
-                    operation.state = OperationState::run_until(config)
-                }
+        OperationState::Running | OperationState::RunUntil { .. } => {
+            if config.run_timer {
+                operation.state = OperationState::run_until(config);
+            } else {
+                operation.state = OperationState::Running;
             }
-        },
+        }
     }
 
     operation.config = config;
@@ -198,15 +178,7 @@ pub struct OperationEventHandler;
 impl EventHandler<OperationEvent> for OperationEventHandler {
     fn handle(&mut self, context: &mut EventContext<'_>, event: OperationEvent) {
         match event {
-            OperationEvent::Halt(Halt {
-                go_to_town,
-                check_for_navigation,
-            }) => {
-                if check_for_navigation && context.navigator.was_last_point_available_or_completed()
-                {
-                    return;
-                }
-
+            OperationEvent::Halt(Halt { go_to_town }) => {
                 context.resources.operation =
                     update_operation(context.resources.operation, OperationUpdate::TemporaryHalt);
                 context.rotator.reset_queue();
@@ -241,11 +213,10 @@ mod tests {
 
     use super::*;
 
-    fn base_config(mode: CycleRunStopMode) -> OperationConfiguration {
+    fn base_config(run_timer: bool) -> OperationConfiguration {
         OperationConfiguration {
-            mode,
-            run_duration_millis: 1_000,
-            stop_duration_millis: 500,
+            run_timer,
+            run_timer_millis: 1_000,
         }
     }
 
@@ -255,7 +226,7 @@ mod tests {
 
     #[test]
     fn update_temporary_halt_from_run_until_keeps_remaining_duration() {
-        let config = base_config(CycleRunStopMode::Once);
+        let config = base_config(true);
         let future = Instant::now() + Duration::from_secs(5);
 
         let op = op_with_state(OperationState::RunUntil { instant: future }, config);
@@ -272,7 +243,7 @@ mod tests {
 
     #[test]
     fn update_temporary_halt_from_non_run_state_becomes_halting() {
-        let config = base_config(CycleRunStopMode::Once);
+        let config = base_config(true);
         let op = op_with_state(OperationState::Running, config);
 
         let updated = update_operation(op, OperationUpdate::TemporaryHalt);
@@ -282,7 +253,7 @@ mod tests {
 
     #[test]
     fn update_halt_always_forces_halting() {
-        let config = base_config(CycleRunStopMode::Repeat);
+        let config = base_config(true);
         let op = op_with_state(OperationState::Running, config);
 
         let updated = update_operation(op, OperationUpdate::Halt);
@@ -292,7 +263,7 @@ mod tests {
 
     #[test]
     fn update_run_from_temporary_halting_restores_run_until() {
-        let config = base_config(CycleRunStopMode::Once);
+        let config = base_config(true);
         let resume = Duration::from_secs(3);
 
         let op = op_with_state(OperationState::TemporaryHalting { resume }, config);
@@ -308,8 +279,8 @@ mod tests {
     }
 
     #[test]
-    fn update_run_from_halting_respects_cycle_mode() {
-        let config = base_config(CycleRunStopMode::None);
+    fn update_run_from_halting_no_timer_to_running() {
+        let config = base_config(false);
         let op = op_with_state(OperationState::Halting, config);
 
         let updated = update_operation(op, OperationUpdate::Run);
@@ -318,57 +289,10 @@ mod tests {
     }
 
     #[test]
-    fn config_change_from_halt_until_to_none_forces_halting() {
-        let old_config = base_config(CycleRunStopMode::Repeat);
-        let new_config = base_config(CycleRunStopMode::None);
-
-        let op = op_with_state(
-            OperationState::HaltUntil {
-                instant: Instant::now() + Duration::from_secs(2),
-            },
-            old_config,
-        );
-
-        let updated = config_operation(op, new_config);
-
-        assert_matches!(updated.state, OperationState::Halting);
-    }
-
-    #[test]
-    fn config_repeat_preserves_halt_until_if_stop_duration_unchanged() {
-        let config = base_config(CycleRunStopMode::Repeat);
-        let instant = Instant::now() + Duration::from_secs(2);
-
-        let op = op_with_state(OperationState::HaltUntil { instant }, config);
-
-        let updated = config_operation(op, config);
-
-        assert_matches!(updated.state, OperationState::HaltUntil { .. });
-    }
-
-    #[test]
-    fn config_repeat_recomputes_halt_until_if_stop_duration_changes() {
-        let old = base_config(CycleRunStopMode::Repeat);
-        let mut new = base_config(CycleRunStopMode::Repeat);
-        new.stop_duration_millis += 100;
-
-        let op = op_with_state(
-            OperationState::HaltUntil {
-                instant: Instant::now(),
-            },
-            old,
-        );
-
-        let updated = config_operation(op, new);
-
-        assert_matches!(updated.state, OperationState::HaltUntil { .. });
-    }
-
-    #[test]
     fn config_from_temporary_halting_invalidates_if_run_duration_changes() {
-        let old = base_config(CycleRunStopMode::Once);
-        let mut new = base_config(CycleRunStopMode::Once);
-        new.run_duration_millis += 500;
+        let old = base_config(true);
+        let mut new = base_config(true);
+        new.run_timer_millis += 500;
 
         let op = op_with_state(
             OperationState::TemporaryHalting {
@@ -384,8 +308,8 @@ mod tests {
 
     #[test]
     fn config_from_running_to_repeat_enters_run_until() {
-        let old = base_config(CycleRunStopMode::None);
-        let new = base_config(CycleRunStopMode::Repeat);
+        let old = base_config(false);
+        let new = base_config(true);
 
         let op = op_with_state(OperationState::Running, old);
 

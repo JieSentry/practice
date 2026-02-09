@@ -21,7 +21,6 @@ use crate::{
     bridge::{Capture, DefaultInputReceiver, Input, InputMethod},
     database_event_receiver,
     ecs::{Resources, World, WorldEvent},
-    navigator::Navigator,
     rotator::Rotator,
     services::{
         capture::{CaptureService, DefaultCaptureService},
@@ -32,7 +31,6 @@ use crate::{
         localization::{DefaultLocalizationService, LocalizationService},
         map::{DefaultMapService, MapService},
         mediator::{DefaultMediatorService, MediatorEventHandler, MediatorService},
-        navigator::{DefaultNavigatorService, NavigatorService},
         operation::{DefaultOperationService, OperationEventHandler, OperationService},
         rotator::{DefaultRotatorService, RotatorService},
         settings::{DefaultSettingsService, SettingsService},
@@ -50,7 +48,6 @@ mod input;
 mod localization;
 mod map;
 mod mediator;
-mod navigator;
 mod operation;
 mod rotator;
 mod settings;
@@ -97,12 +94,10 @@ struct EventContext<'a> {
     pub resources: &'a mut Resources,
     pub world: &'a mut World,
     pub rotator: &'a mut dyn Rotator,
-    pub navigator: &'a mut dyn Navigator,
     pub capture: &'a mut dyn Capture,
     pub map_service: &'a mut Box<dyn MapService>,
     pub character_service: &'a mut Box<dyn CharacterService>,
     pub rotator_service: &'a mut Box<dyn RotatorService>,
-    pub navigator_service: &'a mut Box<dyn NavigatorService>,
     pub capture_service: &'a mut Box<dyn CaptureService>,
     pub input_service: &'a mut Box<dyn InputService>,
     pub settings_service: &'a mut Box<dyn SettingsService>,
@@ -121,7 +116,6 @@ pub struct Services {
     map: Box<dyn MapService>,
     character: Box<dyn CharacterService>,
     rotator: Box<dyn RotatorService>,
-    navigator: Box<dyn NavigatorService>,
     capture: Box<dyn CaptureService>,
     input: Box<dyn InputService>,
     settings: Box<dyn SettingsService>,
@@ -196,7 +190,6 @@ impl Services {
             map: Box::new(DefaultMapService::default()),
             character: Box::new(DefaultCharacterService::default()),
             rotator: Box::new(rotator),
-            navigator: Box::new(DefaultNavigatorService),
             capture: Box::new(capture_service),
             input: Box::new(input_service),
             settings: Box::new(settings_service),
@@ -230,7 +223,6 @@ impl Services {
         resources: &mut Resources,
         world: &mut World,
         rotator: &mut dyn Rotator,
-        navigator: &mut dyn Navigator,
         capture: &mut dyn Capture,
     ) {
         if let Ok(event) = self.event_rx.try_recv() {
@@ -238,12 +230,10 @@ impl Services {
                 resources,
                 world,
                 rotator,
-                navigator,
                 capture,
                 map_service: &mut self.map,
                 character_service: &mut self.character,
                 rotator_service: &mut self.rotator,
-                navigator_service: &mut self.navigator,
                 capture_service: &mut self.capture,
                 input_service: &mut self.input,
                 settings_service: &mut self.settings,

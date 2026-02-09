@@ -607,7 +607,7 @@ fn Info(state: ReadSignal<Option<MinimapState>>, map: ReadSignal<Option<Map>>) -
         input_state: String,
         detected_map_size: String,
         selected_map_size: String,
-        cycle_duration: String,
+        run_timer_duration: String,
     }
 
     let info = use_memo(move || {
@@ -621,7 +621,7 @@ fn Info(state: ReadSignal<Option<MinimapState>>, map: ReadSignal<Option<Map>>) -
             input_state: "Unknown".to_string(),
             detected_map_size: "Unknown".to_string(),
             selected_map_size: "Unknown".to_string(),
-            cycle_duration: "None".to_string(),
+            run_timer_duration: "None".to_string(),
         };
 
         if let Some(map) = map() {
@@ -632,10 +632,10 @@ fn Info(state: ReadSignal<Option<MinimapState>>, map: ReadSignal<Option<Map>>) -
             info.state = state.state;
             info.erda_shower_state = state.erda_shower_state;
             info.input_state = state.input_state;
-            info.cycle_duration = match state.operation {
+            info.run_timer_duration = match state.operation {
                 Operation::Halting | Operation::Running => "None".to_string(),
                 Operation::TemporaryHalting(duration) => duration_from(duration),
-                Operation::HaltUntil(instant) | Operation::RunUntil(instant) => {
+                Operation::RunUntil(instant) => {
                     duration_from(instant.saturating_duration_since(Instant::now()))
                 }
             };
@@ -669,7 +669,7 @@ fn Info(state: ReadSignal<Option<MinimapState>>, map: ReadSignal<Option<Map>>) -
             InfoItem { name: "Erda Shower", value: info().erda_shower_state }
             InfoItem { name: "Detected size", value: info().detected_map_size }
             InfoItem { name: "Selected size", value: info().selected_map_size }
-            InfoItem { name: "Run/stop cycle", value: info().cycle_duration }
+            InfoItem { name: "Run timer", value: info().run_timer_duration }
             InfoItem { name: "Input method", value: info().input_state }
         }
     }
@@ -690,9 +690,7 @@ fn Buttons(state: ReadSignal<Option<MinimapState>>, map: ReadSignal<Option<Map>>
             .map(|state| match state.operation {
                 Operation::Halting => OperationUpdate::Halt,
                 Operation::TemporaryHalting(_) => OperationUpdate::TemporaryHalt,
-                Operation::HaltUntil(_) | Operation::Running | Operation::RunUntil(_) => {
-                    OperationUpdate::Run
-                }
+                Operation::Running | Operation::RunUntil(_) => OperationUpdate::Run,
             })
             .unwrap_or(OperationUpdate::Halt)
     });
@@ -713,10 +711,7 @@ fn Buttons(state: ReadSignal<Option<MinimapState>>, map: ReadSignal<Option<Map>>
         state()
             .map(|state| match state.operation {
                 Operation::TemporaryHalting(_) => "Resume",
-                Operation::Halting
-                | Operation::HaltUntil(_)
-                | Operation::Running
-                | Operation::RunUntil(_) => "Suspend",
+                Operation::Halting | Operation::Running | Operation::RunUntil(_) => "Suspend",
             })
             .unwrap_or("Suspend")
     });

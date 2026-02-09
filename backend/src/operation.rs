@@ -4,32 +4,25 @@ use std::fmt::Formatter;
 use std::time::Duration;
 use std::time::Instant;
 
-use crate::models::{CycleRunStopMode, Settings};
+use crate::models::Settings;
 
 #[derive(Debug, Clone, Copy)]
 pub struct OperationConfiguration {
-    pub mode: CycleRunStopMode,
-    pub run_duration_millis: u64,
-    pub stop_duration_millis: u64,
+    pub run_timer: bool,
+    pub run_timer_millis: u64,
 }
 
 impl From<&Settings> for OperationConfiguration {
     fn from(settings: &Settings) -> Self {
-        let mode = settings.cycle_run_stop;
-        let run_duration_millis = settings.cycle_run_duration_millis;
-        let stop_duration_millis = settings.cycle_stop_duration_millis;
-
         Self {
-            mode,
-            run_duration_millis,
-            stop_duration_millis,
+            run_timer: settings.run_timer,
+            run_timer_millis: settings.run_timer_millis,
         }
     }
 }
 
 #[derive(Debug, Clone, Copy)]
 pub enum OperationState {
-    HaltUntil { instant: Instant },
     TemporaryHalting { resume: Duration },
     Halting,
     Running,
@@ -38,16 +31,9 @@ pub enum OperationState {
 
 impl OperationState {
     #[inline]
-    pub fn halt_until(config: OperationConfiguration) -> OperationState {
-        OperationState::HaltUntil {
-            instant: Instant::now() + Duration::from_millis(config.stop_duration_millis),
-        }
-    }
-
-    #[inline]
     pub fn run_until(config: OperationConfiguration) -> OperationState {
         OperationState::RunUntil {
-            instant: Instant::now() + Duration::from_millis(config.run_duration_millis),
+            instant: Instant::now() + Duration::from_millis(config.run_timer_millis),
         }
     }
 }
@@ -64,31 +50,19 @@ impl Operation {
     pub fn halting(&self) -> bool {
         matches!(
             self.state,
-            OperationState::Halting
-                | OperationState::HaltUntil { .. }
-                | OperationState::TemporaryHalting { .. }
+            OperationState::Halting | OperationState::TemporaryHalting { .. }
         )
     }
 
     pub fn update_tick(&mut self) {
         let now = Instant::now();
-        let config = self.config;
         let current_state = self.state;
         let next_state = match current_state {
-            OperationState::HaltUntil { instant } => {
-                if now < instant {
-                    current_state
-                } else {
-                    OperationState::run_until(config)
-                }
-            }
             OperationState::RunUntil { instant } => {
                 if now < instant {
                     current_state
-                } else if matches!(config.mode, CycleRunStopMode::Once) {
-                    OperationState::Halting
                 } else {
-                    OperationState::halt_until(config)
+                    OperationState::Halting
                 }
             }
             OperationState::Halting
@@ -103,9 +77,6 @@ impl Operation {
 impl Display for Operation {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self.state {
-            OperationState::HaltUntil { instant, .. } => {
-                write!(f, "Halting for {}", duration_from_instant(instant))
-            }
             OperationState::TemporaryHalting { resume, .. } => write!(
                 f,
                 "Halting temporarily with {} remaining",
