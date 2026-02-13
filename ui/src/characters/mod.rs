@@ -1,9 +1,8 @@
 use std::{fmt::Display, mem};
 
 use backend::{
-    ActionConfiguration, ActionConfigurationCondition, ActionKeyWith, Character, EliteBossBehavior,
-    ExchangeHexaBoosterCondition, FamiliarRarity, Familiars, IntoEnumIterator, KeyBinding,
-    KeyBindingConfiguration, LinkKeyBinding, PotionMode, SwappableFamiliars, WaitAfterBuffered,
+    Character, EliteBossBehavior, ExchangeHexaBoosterCondition, FamiliarRarity, Familiars,
+    IntoEnumIterator, KeyBinding, KeyBindingConfiguration, PotionMode, SwappableFamiliars,
     delete_character, query_characters, update_character, upsert_character,
 };
 use dioxus::{html::FileData, prelude::*};
@@ -14,14 +13,13 @@ use crate::{
     characters::{actions::SectionFixedActions, bindings::SectionKeyBindings, buffs::SectionBuffs},
     components::{
         ContentAlign, ContentSide,
-        button::{Button, ButtonStyle},
+        button::Button,
         checkbox::Checkbox,
         file::{FileInput, FileOutput},
         key::KeyInput,
         labeled::Labeled,
         named_select::NamedSelect,
         numbers::{MillisInput, PercentageInput, PrimitiveIntegerInput},
-        popup::PopupContent,
         section::Section,
         select::{Select, SelectOption},
     },
@@ -706,236 +704,6 @@ fn SectionOthers() -> Element {
                         Button { class: "w-full", disabled, "Export" }
                     }
                 }
-            }
-        }
-    }
-}
-
-#[component]
-fn PopupActionConfigurationContent(
-    modifying: bool,
-    can_create_linked_action: bool,
-    on_copy: Callback,
-    on_cancel: Callback,
-    on_value: Callback<ActionConfiguration>,
-    value: Option<ActionConfiguration>,
-) -> Element {
-    let section_text = if modifying {
-        "Modify a fixed action".to_string()
-    } else {
-        "Add a new fixed action".to_string()
-    };
-
-    rsx! {
-        PopupContent { title: section_text,
-            ActionConfigurationInput {
-                modifying,
-                can_create_linked_action,
-                on_copy,
-                on_cancel,
-                on_value,
-                value: value.unwrap_or_default(),
-            }
-        }
-    }
-}
-
-#[component]
-fn ActionConfigurationInput(
-    modifying: bool,
-    can_create_linked_action: bool,
-    on_copy: Callback,
-    on_cancel: Callback,
-    on_value: Callback<ActionConfiguration>,
-    value: ReadSignal<ActionConfiguration>,
-) -> Element {
-    let mut action = use_signal(&*value);
-    let millis = use_memo(move || match action().condition {
-        ActionConfigurationCondition::EveryMillis(millis) => Some(millis),
-        ActionConfigurationCondition::Linked => None,
-    });
-
-    use_effect(move || {
-        action.set(value());
-    });
-
-    rsx! {
-        div { class: "grid grid-cols-3 gap-3 pb-10 overflow-y-auto",
-            if modifying {
-                div { class: "flex flex-col col-span-3",
-                    Button {
-                        style: ButtonStyle::Primary,
-                        on_click: on_copy,
-                        class: "col-span-3",
-                        "Copy"
-                    }
-                    div { class: "border-b border-primary-border" }
-                }
-            }
-            // Key, count and link key
-            CharactersKeyInput {
-                label: "Key",
-                input_class: "border border-primary-border",
-                on_value: move |key: Option<KeyBinding>| {
-                    let mut action = action.write();
-                    action.key = key.expect("not optional");
-                },
-                value: Some(action().key),
-            }
-            div { class: "grid grid-cols-2 gap-3",
-                CharactersNumberU32Input {
-                    label: "Use count",
-                    on_value: move |count| {
-                        let mut action = action.write();
-                        action.count = count;
-                    },
-                    value: action().count,
-                }
-                CharactersMillisInput {
-                    label: "Hold for",
-                    on_value: move |millis| {
-                        let mut action = action.write();
-                        action.key_hold_millis = millis;
-                    },
-                    value: action().key_hold_millis,
-                }
-            }
-            CharactersCheckbox {
-                label: "Holding buffered",
-                tooltip: "Require [Wait after buffered] to be enabled and without [Link key]. When enabled, the holding time will be added to [Wait after] during the last key use. Useful for holding down key and moving simultaneously.",
-                tooltip_align: ContentAlign::End,
-                tooltip_side: ContentSide::Bottom,
-                on_checked: move |checked| {
-                    let mut action = action.write();
-                    action.key_hold_buffered_to_wait_after = checked;
-                },
-                checked: action().key_hold_buffered_to_wait_after,
-            }
-
-            CharactersKeyInput {
-                label: "Link key",
-                input_class: "border border-primary-border",
-                disabled: matches!(action().link_key, LinkKeyBinding::None),
-                on_value: move |key: Option<KeyBinding>| {
-                    let mut action = action.write();
-                    action.link_key = action.link_key.with_key(key.expect("not optional"));
-                },
-                value: action().link_key.key().unwrap_or_default(),
-            }
-            CharactersSelect::<LinkKeyBinding> {
-                label: "Link key type",
-                on_selected: move |link_key: LinkKeyBinding| {
-                    let mut action = action.write();
-                    action.link_key = link_key;
-                },
-                selected: action().link_key,
-            }
-            if can_create_linked_action {
-                CharactersCheckbox {
-                    label: "Linked action",
-                    checked: matches!(action().condition, ActionConfigurationCondition::Linked),
-                    on_checked: move |is_linked: bool| {
-                        let mut action = action.write();
-                        action.condition = if is_linked {
-                            ActionConfigurationCondition::Linked
-                        } else {
-                            value.peek().condition
-                        };
-                    },
-                }
-            } else {
-                div {} // Spacer
-            }
-
-            // Use with
-            CharactersSelect::<ActionKeyWith> {
-                label: "Use with",
-                on_selected: move |with| {
-                    let mut action = action.write();
-                    action.with = with;
-                },
-                selected: action().with,
-            }
-            CharactersMillisInput {
-                label: "Use every",
-                disabled: millis().is_none(),
-                on_value: move |new_millis| {
-                    if millis.peek().is_some() {
-                        let mut action = action.write();
-                        action.condition = ActionConfigurationCondition::EveryMillis(new_millis);
-                    }
-                },
-                value: millis().unwrap_or_default(),
-            }
-            div {} // Spacer
-
-            // Wait before use
-            CharactersMillisInput {
-                label: "Wait before use",
-                on_value: move |millis| {
-                    let mut action = action.write();
-                    action.wait_before_millis = millis;
-                },
-                value: action().wait_before_millis,
-            }
-            CharactersMillisInput {
-                label: "Wait random range",
-                on_value: move |millis| {
-                    let mut action = action.write();
-                    action.wait_before_millis_random_range = millis;
-                },
-                value: action().wait_before_millis_random_range,
-            }
-            div {} // Spacer
-
-            // Wait after use
-            CharactersMillisInput {
-                label: "Wait after use",
-                on_value: move |millis| {
-                    let mut action = action.write();
-                    action.wait_after_millis = millis;
-                },
-                value: action().wait_after_millis,
-            }
-            CharactersMillisInput {
-                label: "Wait random range",
-                on_value: move |millis| {
-                    let mut action = action.write();
-                    action.wait_after_millis_random_range = millis;
-                },
-                value: action().wait_after_millis_random_range,
-            }
-            CharactersSelect::<WaitAfterBuffered> {
-                label: "Wait after buffered",
-                tooltip: "After the last key use, instead of waiting inplace, the bot is allowed to execute the next action partially. This can be useful for movable skill with casting animation.",
-                tooltip_align: ContentAlign::End,
-                on_selected: move |wait_after_buffered: WaitAfterBuffered| {
-                    let mut action = action.write();
-                    action.wait_after_buffered = wait_after_buffered;
-                },
-                selected: action().wait_after_buffered,
-            }
-        }
-        div { class: "flex w-full gap-3 absolute bottom-0 py-2 bg-secondary-surface",
-            Button {
-                class: "flex-grow",
-                style: ButtonStyle::OutlinePrimary,
-                on_click: move |_| {
-                    on_value(*action.peek());
-                },
-                if modifying {
-                    "Save"
-                } else {
-                    "Add"
-                }
-            }
-            Button {
-                class: "flex-grow",
-                style: ButtonStyle::OutlineSecondary,
-                on_click: move |_| {
-                    on_cancel(());
-                },
-                "Cancel"
             }
         }
     }
