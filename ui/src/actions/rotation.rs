@@ -79,6 +79,12 @@ pub fn SectionRotation(disabled: bool) -> Element {
         popup_content.set(PopupContent::Bound(bound));
     };
 
+    use_effect(move || {
+        if !popup_open() {
+            popup_content.set(PopupContent::None);
+        }
+    });
+
     rsx! {
         PopupContext {
             open: popup_open,

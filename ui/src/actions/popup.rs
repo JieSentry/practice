@@ -1,5 +1,5 @@
-use backend::{Action, ActionCondition, ActionKey, Bound, MobbingKey, Platform};
-use dioxus::prelude::*;
+use backend::{Action, ActionCondition, ActionKey, Bound, MobbingKey, Platform, state_receiver};
+use dioxus::{core::Task, document::EvalError, prelude::*};
 
 use crate::{
     AppState,
@@ -89,9 +89,134 @@ pub fn PopupMobbingBoundInputContent(
     value: Bound,
 ) -> Element {
     let mut value = use_signal(|| value);
+    let mut frame = use_signal::<Option<(Vec<u8>, usize, usize)>>(|| None);
+    let mut task = use_signal::<Option<Task>>(|| None);
+
+    use_effect(move || {
+        spawn(async move {
+            if let Ok(mut state) = state_receiver().await.recv().await {
+                frame.set(state.frame.take());
+            }
+        });
+    });
+
+    use_effect(move || {
+        if let Some(task) = task.take() {
+            task.cancel();
+        }
+
+        let Some(frame) = frame() else {
+            return;
+        };
+        let bound = value();
+        let js = r#"
+            const canvas = document.getElementById("bound");
+            const ctx = canvas.getContext("2d");
+
+            const [buffer, width, height] = await dioxus.recv();
+            const data = new ImageData(new Uint8ClampedArray(buffer), width, height);
+            const bitmap = await createImageBitmap(data);
+
+            let rect = rescaleRect(await dioxus.recv(), false);
+            let drawing = false;
+            let startX = 0;
+            let startY = 0;
+
+            redraw();
+
+            canvas.addEventListener("mousedown", e => {
+                const pos = getMousePos(e);
+                drawing = true;
+                startX = pos.x;
+                startY = pos.y;
+            });
+
+            canvas.addEventListener("mousemove", e => {
+                if (!drawing) return;
+
+                const pos = getMousePos(e);
+
+                rect = makeRect(startX, startY, pos.x, pos.y);
+
+                redraw();
+            });
+
+            canvas.addEventListener("mouseup", async () => {
+                drawing = false;
+                await dioxus.send(rescaleRect(rect, true));
+            });
+
+            function redraw() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(bitmap, 0, 0, width, height, 0, 0, canvas.width, canvas.height);
+                if (rect) {
+                    ctx.setLineDash([8]);
+                    ctx.strokeStyle = "rgb(152, 233, 32)";
+                    ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
+                }
+            }
+
+            function getMousePos(evt) {
+                const rect = canvas.getBoundingClientRect();
+
+                const scaleX = canvas.width / rect.width;
+                const scaleY = canvas.height / rect.height;
+
+                return {
+                    x: (evt.clientX - rect.left) * scaleX,
+                    y: (evt.clientY - rect.top) * scaleY
+                };
+            }
+
+            function rescaleRect(rect, canvasToOriginal) {
+                const scaleX = canvasToOriginal ? (width / canvas.width) : (canvas.width / width);
+                const scaleY = canvasToOriginal ? (height / canvas.height) : (canvas.height / height);
+
+                return {
+                    x: Math.round(rect.x * scaleX),
+                    y: Math.round(rect.y * scaleY),
+                    width: Math.round(rect.width * scaleX),
+                    height: Math.round(rect.height * scaleY),
+                };
+            }
+
+            function makeRect(x1, y1, x2, y2) {
+                return {
+                    x: Math.round(Math.min(x1, x2)),
+                    y: Math.round(Math.min(y1, y2)),
+                    width: Math.round(Math.abs(x2 - x1)),
+                    height: Math.round(Math.abs(y2 - y1))
+                };
+            }
+
+            "#
+        .to_string();
+
+        let mut eval = document::eval(&js);
+        let _ = eval.send(frame);
+        let _ = eval.send(bound);
+
+        task.set(Some(spawn(async move {
+            loop {
+                let result = eval.recv::<Bound>().await;
+                match result {
+                    Ok(bound) => {
+                        value.set(bound);
+                    }
+                    Err(EvalError::Finished) => {
+                        eval = document::eval(&js);
+                    }
+                    Err(_) => break,
+                }
+            }
+        })));
+    });
 
     rsx! {
         PopupContent { title: "Modify mobbing bound",
+            if frame().is_some() {
+                canvas { class: "w-full h-full", id: "bound" }
+            }
             div { class: "grid grid-cols-2 gap-3 pb-10 overflow-y-auto",
                 ActionsNumberInputI32 {
                     label: "X offset",
