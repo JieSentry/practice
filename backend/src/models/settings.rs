@@ -124,8 +124,11 @@ pub enum CaptureMode {
 
 #[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
 pub struct Notifications {
-    pub discord_webhook_url: String,
     pub discord_user_id: String,
+    #[serde(default, alias = "discord_webhook_url")]
+    pub webhook_url: String,
+    #[serde(default)]
+    pub webhook_provider: WebhookProvider,
     pub notify_on_fail_or_change_map: bool,
     pub notify_on_rune_appear: bool,
     pub notify_on_elite_boss_appear: bool,
@@ -137,4 +140,12 @@ pub struct Notifications {
     pub notify_on_lie_detector_appear: bool,
     #[serde(default)]
     pub notify_on_run_timer_end: bool,
+}
+
+#[derive(
+    Clone, Copy, PartialEq, Default, Debug, Serialize, Deserialize, EnumIter, Display, EnumString,
+)]
+pub enum WebhookProvider {
+    #[default]
+    Discord,
 }

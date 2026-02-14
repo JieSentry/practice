@@ -7,7 +7,7 @@ use std::{
     time::Duration,
 };
 
-use anyhow::{Error, Ok, bail};
+use anyhow::{Error, bail};
 use bit_vec::BitVec;
 use log::{debug, error};
 use opencv::{
@@ -24,7 +24,7 @@ use tokio::{
     time::{Instant, sleep},
 };
 
-use crate::Settings;
+use crate::{Settings, WebhookProvider};
 
 static TRUE: bool = true;
 static FALSE: bool = false;
@@ -181,7 +181,9 @@ struct ScheduledNotification {
     /// The kind of notification.
     kind: NotificationKind,
     /// The webhook url.
-    url: String,
+    url: Url,
+    /// The provider of the webhook service.
+    provider: WebhookProvider,
     /// The content of the message.
     content: String,
     /// The username of the message's owner.
@@ -245,9 +247,6 @@ impl Notification {
         if !kind.enabled(&settings) {
             bail!("notification not enabled");
         }
-        if settings.notifications.discord_webhook_url.is_empty() {
-            bail!("webhook url not provided");
-        }
 
         {
             let mut pending = self.pending.lock().unwrap();
@@ -255,10 +254,10 @@ impl Notification {
                 bail!("notification is already sending");
             }
 
-            let url = settings.notifications.discord_webhook_url.clone();
-            if Url::try_from(url.as_str()).is_err() {
+            let provider = settings.notifications.webhook_provider;
+            let Ok(url) = Url::try_from(settings.notifications.webhook_url.as_str()) else {
                 bail!("failed to parse webhook url");
-            }
+            };
 
             let content = kind.content(&settings);
             let frames = kind.scheduled_frames();
@@ -267,6 +266,7 @@ impl Notification {
                 instant: Instant::now(),
                 kind,
                 url,
+                provider,
                 content,
                 username: "Komari",
                 frames,
@@ -336,6 +336,15 @@ async fn post_notification(
     client: Client,
     notification: ScheduledNotification,
 ) -> Result<(), Error> {
+    match notification.provider {
+        WebhookProvider::Discord => post_discord_notification(client, notification).await,
+    }
+}
+
+async fn post_discord_notification(
+    client: Client,
+    notification: ScheduledNotification,
+) -> Result<(), Error> {
     let attachments = notification
         .frames
         .iter()
@@ -390,16 +399,19 @@ mod test {
     use std::{cell::RefCell, rc::Rc, time::Duration};
 
     use opencv::core::{CV_8UC4, Mat, MatExprTraitConst};
+    use reqwest::Url;
     use tokio::time::{Instant, advance};
 
     use super::{Notification, NotificationKind, ScheduledNotification};
-    use crate::{Notifications, Settings, mat::OwnedMat, notification::ScheduledFrame};
+    use crate::{
+        Notifications, Settings, WebhookProvider, mat::OwnedMat, notification::ScheduledFrame,
+    };
 
     #[tokio::test(start_paused = true)]
     async fn schedule_kind_unique() {
         let noti = Notification::new(Rc::new(RefCell::new(Settings {
             notifications: Notifications {
-                discord_webhook_url: "https://discord.com/api/webhooks/foo/bar".to_string(),
+                webhook_url: "https://discord.com/api/webhooks/foo/bar".to_string(),
                 notify_on_fail_or_change_map: true,
                 notify_on_rune_appear: true,
                 ..Default::default()
@@ -452,7 +464,8 @@ mod test {
         noti.scheduled.lock().unwrap().push(ScheduledNotification {
             instant: Instant::now(),
             kind: NotificationKind::FailOrMapChange,
-            url: "https://example.com".into(),
+            url: Url::parse("https://example.com").unwrap(),
+            provider: WebhookProvider::Discord,
             content: "content".into(),
             username: "username",
             frames: vec![

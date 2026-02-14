@@ -2,7 +2,7 @@ use std::{fmt::Display, mem};
 
 use backend::{
     CaptureMode, InputMethod, IntoEnumIterator, KeyBinding, KeyBindingConfiguration, Notifications,
-    Settings, query_capture_handles, query_settings, refresh_capture_handles,
+    Settings, WebhookProvider, query_capture_handles, query_settings, refresh_capture_handles,
     select_capture_handle, upsert_settings,
 };
 use dioxus::{html::FileData, prelude::*};
@@ -186,24 +186,39 @@ fn SectionNotifications() -> Element {
     rsx! {
         Section { title: "Notifications",
             div { class: "grid grid-cols-2 gap-3 mb-2",
-                SettingsTextInput {
-                    text_label: "Discord webhook URL",
-                    button_label: "Update",
-                    sensitive: true,
-                    on_value: move |discord_webhook_url| {
+                SettingsEnumSelect::<WebhookProvider> {
+                    label: "Webhook provider",
+                    on_selected: move |webhook_provider| {
                         save_settings(Settings {
                             notifications: Notifications {
-                                discord_webhook_url,
+                                webhook_provider,
                                 ..notifications.peek().clone()
                             },
                             ..settings.peek().clone()
                         });
                     },
-                    value: notifications().discord_webhook_url,
+                    selected: settings().notifications.webhook_provider,
+                }
+                div {}
+                SettingsTextInput {
+                    text_label: "Webhook URL",
+                    button_label: "Update",
+                    sensitive: true,
+                    on_value: move |webhook_url| {
+                        save_settings(Settings {
+                            notifications: Notifications {
+                                webhook_url,
+                                ..notifications.peek().clone()
+                            },
+                            ..settings.peek().clone()
+                        });
+                    },
+                    value: notifications().webhook_url,
                 }
                 SettingsTextInput {
                     text_label: "Discord ping user ID",
                     button_label: "Update",
+                    sensitive: true,
                     on_value: move |discord_user_id| {
                         save_settings(Settings {
                             notifications: Notifications {
