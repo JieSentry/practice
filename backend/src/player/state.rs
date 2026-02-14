@@ -174,6 +174,8 @@ pub struct PlayerConfiguration {
     pub disable_adjusting: bool,
     /// Whether to disable teleportation in [`Player::Falling`].
     pub disable_teleport_on_fall: bool,
+    /// Whether to disable grappling in [`Player::DoubleJump`] when near the destination.
+    pub disable_grapple_on_double_jumping: bool,
 
     /// Enables platform pathing for rune.
     pub rune_platforms_pathing: bool,
@@ -226,6 +228,7 @@ impl Default for PlayerConfiguration {
             disable_double_jumping: false,
             disable_adjusting: false,
             disable_teleport_on_fall: false,
+            disable_grapple_on_double_jumping: false,
             up_jump_is_flight: false,
             up_jump_specific_key_should_jump: false,
             rune_platforms_pathing: false,

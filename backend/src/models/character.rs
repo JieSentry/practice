@@ -78,6 +78,8 @@ pub struct Character {
     #[serde(default)]
     pub disable_teleport_on_fall: bool,
     #[serde(default)]
+    pub disable_grapple_on_double_jumping: bool,
+    #[serde(default)]
     pub up_jump_is_flight: bool,
     #[serde(default)]
     pub up_jump_specific_key_should_jump: bool,
@@ -140,6 +142,7 @@ impl Default for Character {
             disable_double_jumping: false,
             disable_adjusting: false,
             disable_teleport_on_fall: false,
+            disable_grapple_on_double_jumping: false,
             up_jump_is_flight: false,
             up_jump_specific_key_should_jump: false,
             actions: vec![],

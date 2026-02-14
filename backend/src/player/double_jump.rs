@@ -129,7 +129,9 @@ pub fn update_double_jumping_state(
         panic!("state is not double jumping")
     };
     let moving = double_jumping.moving;
-    let ignore_grappling = double_jumping.forced || player.context.should_disable_grappling();
+    let ignore_grappling = player.context.config.disable_grapple_on_double_jumping
+        || double_jumping.forced
+        || player.context.should_disable_grappling();
     let is_intermediate = moving.is_destination_intermediate();
     let timeout = if double_jumping.forced {
         TIMEOUT_FORCED

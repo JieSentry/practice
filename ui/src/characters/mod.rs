@@ -514,6 +514,18 @@ fn SectionMovement() -> Element {
                     disabled,
                 }
                 CharactersCheckbox {
+                    label: "Disable grapple on double jumping",
+                    checked: character().disable_grapple_on_double_jumping,
+                    on_checked: move |disable_grapple_on_double_jumping| {
+                        save_character(Character {
+                            disable_grapple_on_double_jumping,
+                            ..character.peek().clone()
+                        });
+                    },
+                    tooltip: "Applicable only if grapple key is set.",
+                    disabled,
+                }
+                CharactersCheckbox {
                     label: "Disable walking",
                     checked: character().disable_adjusting,
                     on_checked: move |disable_adjusting| {

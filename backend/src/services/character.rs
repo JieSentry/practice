@@ -35,6 +35,8 @@ impl CharacterService for DefaultCharacterService {
             player_context.config.disable_double_jumping = character.disable_double_jumping;
             player_context.config.disable_adjusting = character.disable_adjusting;
             player_context.config.disable_teleport_on_fall = character.disable_teleport_on_fall;
+            player_context.config.disable_grapple_on_double_jumping =
+                character.disable_grapple_on_double_jumping;
             player_context.config.up_jump_is_flight = character.up_jump_is_flight;
             player_context.config.up_jump_specific_key_should_jump =
                 character.up_jump_specific_key_should_jump;
