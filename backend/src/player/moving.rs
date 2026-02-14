@@ -474,8 +474,7 @@ fn update_from_action(player: &mut PlayerEntity, moving: Moving) {
         Some(PlayerAction::PingPong(_)) => transition_from_action!(player, Player::Idle),
 
         Some(
-            PlayerAction::Chat(_)
-            | PlayerAction::SolveShape
+            PlayerAction::SolveShape
             | PlayerAction::SolveVioletta
             | PlayerAction::Unstuck
             | PlayerAction::Panic(_)

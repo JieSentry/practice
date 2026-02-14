@@ -43,7 +43,6 @@ fn main() {
     let erda_shower = resources_dir.join("erda_shower_ideal_ratio.png");
     let portal = resources_dir.join("portal_ideal_ratio.png");
     let change_channel_menu = resources_dir.join("change_channel_menu_ideal_ratio.png");
-    let chat_menu = resources_dir.join("chat_menu_ideal_ratio.png");
     let admin = resources_dir.join("admin_ideal_ratio.png");
     let timer = resources_dir.join("timer_ideal_ratio.png");
     let lie_detector_shape = resources_dir.join("lie_detector_shape_ideal_ratio.png");
@@ -257,10 +256,6 @@ fn main() {
     println!(
         "cargo:rustc-env=CHANGE_CHANNEL_MENU_TEMPLATE={}",
         change_channel_menu.to_str().unwrap()
-    );
-    println!(
-        "cargo:rustc-env=CHAT_MENU_TEMPLATE={}",
-        chat_menu.to_str().unwrap()
     );
     println!("cargo:rustc-env=TIMER_TEMPLATE={}", timer.to_str().unwrap());
     println!(

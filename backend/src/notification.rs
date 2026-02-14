@@ -14,8 +14,11 @@ use opencv::{
     core::{ToInputArray, Vector, VectorToVec},
     imgcodecs::imencode_def,
 };
-use reqwest::Url;
-use serenity::all::{CreateAttachment, ExecuteWebhook, Http, Webhook};
+use reqwest::{
+    Client, Url,
+    multipart::{Form, Part},
+};
+use serde_json::{Value, json};
 use tokio::{
     spawn,
     time::{Instant, sleep},
@@ -185,7 +188,7 @@ struct ScheduledNotification {
     username: &'static str,
     /// Stores fixed size tuples of frame and frame deadline in seconds.
     ///
-    /// During each [`DiscordNotification::update_schedule`], the first frame not passing the
+    /// During each [`Notification::update_schedule`], the first frame not passing the
     /// deadline will try to capture the image from current game state. This is useful for showing
     /// `before and after` when map changes. So frame that cannot capture when the deadline is
     /// reached will be skipped.
@@ -208,7 +211,8 @@ impl ScheduledFrame {
 }
 
 #[derive(Debug)]
-pub struct DiscordNotification {
+pub struct Notification {
+    client: Client,
     /// A reference to [`Settings`] for checking if a notification is enabled.
     settings: Rc<RefCell<Settings>>,
     /// Stores pending notifications.
@@ -219,9 +223,10 @@ pub struct DiscordNotification {
     pending: Arc<Mutex<BitVec>>,
 }
 
-impl DiscordNotification {
+impl Notification {
     pub fn new(settings: Rc<RefCell<Settings>>) -> Self {
         Self {
+            client: Client::new(),
             settings,
             scheduled: Arc::new(Mutex::new(vec![])),
             pending: Arc::new(Mutex::new(BitVec::from_elem(
@@ -269,6 +274,7 @@ impl DiscordNotification {
             pending.set(kind.into(), true);
         }
 
+        let client = self.client.clone();
         let delay = kind.schedule_delay_duration();
         let pending = self.pending.clone();
         let scheduled = self.scheduled.clone();
@@ -292,7 +298,7 @@ impl DiscordNotification {
                 notification
             };
 
-            let _ = post_notification(notification).await;
+            let _ = post_notification(client, notification).await;
         });
 
         Ok(())
@@ -326,25 +332,48 @@ impl DiscordNotification {
     }
 }
 
-async fn post_notification(notification: ScheduledNotification) -> Result<(), Error> {
-    let http = Http::new("");
-    let webhook = Webhook::from_url(&http, &notification.url).await?;
-    let files = notification
+async fn post_notification(
+    client: Client,
+    notification: ScheduledNotification,
+) -> Result<(), Error> {
+    let attachments = notification
+        .frames
+        .iter()
+        .filter(|frame| frame.inner.is_some())
+        .enumerate()
+        .map(|(i, _)| {
+            json!({
+                "id": i,
+                "description": format!("Game snapshot #{i}"),
+                "filename": format!("image_{i}.png"),
+            })
+        })
+        .collect::<Vec<Value>>();
+    let body = json!({
+        "content": notification.content,
+        "username": notification.username,
+        "attachments": attachments,
+    });
+    let mut form = Form::new().text("payload_json", serde_json::to_string(&body).unwrap());
+    for (i, frame) in notification
         .frames
         .into_iter()
         .filter_map(|frame| frame.inner)
         .enumerate()
-        .map(|(index, frame)| {
-            CreateAttachment::bytes(frame, format!("image_{index}.png"))
-                .description(format!("Game snapshot #{index}"))
-        });
+    {
+        form = form.part(
+            format!("files[{i}]"),
+            Part::bytes(frame)
+                .mime_str("image/png")
+                .unwrap()
+                .file_name(format!("image_{i}.png")),
+        );
+    }
 
-    let builder = ExecuteWebhook::new()
-        .content(notification.content)
-        .username(notification.username)
-        .files(files);
-    let _ = webhook
-        .execute(&http, false, builder)
+    let _ = client
+        .post(notification.url)
+        .multipart(form)
+        .send()
         .await
         .inspect(|_| {
             debug!(target: "notification", "calling Webhook API {:?} succeeded", notification.kind);
@@ -363,12 +392,12 @@ mod test {
     use opencv::core::{CV_8UC4, Mat, MatExprTraitConst};
     use tokio::time::{Instant, advance};
 
-    use super::{DiscordNotification, NotificationKind, ScheduledNotification};
+    use super::{Notification, NotificationKind, ScheduledNotification};
     use crate::{Notifications, Settings, mat::OwnedMat, notification::ScheduledFrame};
 
     #[tokio::test(start_paused = true)]
     async fn schedule_kind_unique() {
-        let noti = DiscordNotification::new(Rc::new(RefCell::new(Settings {
+        let noti = Notification::new(Rc::new(RefCell::new(Settings {
             notifications: Notifications {
                 discord_webhook_url: "https://discord.com/api/webhooks/foo/bar".to_string(),
                 notify_on_fail_or_change_map: true,
@@ -402,7 +431,7 @@ mod test {
 
     #[tokio::test(start_paused = true)]
     async fn schedule_invalid_url() {
-        let noti = DiscordNotification::new(Rc::new(RefCell::new(Settings {
+        let noti = Notification::new(Rc::new(RefCell::new(Settings {
             notifications: Notifications {
                 notify_on_fail_or_change_map: true,
                 ..Default::default()
@@ -419,7 +448,7 @@ mod test {
     #[tokio::test(start_paused = true)]
     #[allow(clippy::await_holding_lock)]
     async fn update_scheduled_frames_deadline() {
-        let noti = DiscordNotification::new(Rc::new(RefCell::new(Settings::default())));
+        let noti = Notification::new(Rc::new(RefCell::new(Settings::default())));
         noti.scheduled.lock().unwrap().push(ScheduledNotification {
             instant: Instant::now(),
             kind: NotificationKind::FailOrMapChange,

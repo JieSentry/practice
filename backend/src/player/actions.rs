@@ -214,11 +214,6 @@ pub enum PanicTo {
     Channel,
 }
 
-#[derive(Clone, Debug)]
-pub struct Chat {
-    pub content: String,
-}
-
 #[derive(Clone, Copy, Debug)]
 pub struct UseBooster {
     pub kind: Booster,
@@ -261,8 +256,6 @@ pub enum PlayerAction {
     FamiliarsSwap(FamiliarsSwap),
     /// Panics to town or another channel action.
     Panic(Panic),
-    /// Chats in-game action.
-    Chat(Chat),
     /// Use Generic or HEXA booster action.
     UseBooster(UseBooster),
     /// Exchange HEXA booster action.

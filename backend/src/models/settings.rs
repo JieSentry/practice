@@ -25,8 +25,6 @@ pub struct Settings {
     pub run_timer_millis: u64,
     pub input_method: InputMethod,
     pub input_method_rpc_server_url: String,
-    #[serde(default)]
-    pub discord_bot_access_token: String,
     pub notifications: Notifications,
     #[serde(default = "toggle_actions_key_default")]
     pub toggle_actions_key: KeyBindingConfiguration,
@@ -53,7 +51,6 @@ impl Default for Settings {
             stop_on_player_die: stop_on_player_die_default(),
             run_timer: false,
             run_timer_millis: run_timer_millis_default(),
-            discord_bot_access_token: String::default(),
             notifications: Notifications::default(),
             toggle_actions_key: toggle_actions_key_default(),
             platform_start_key: platform_start_key_default(),

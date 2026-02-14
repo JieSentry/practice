@@ -5,6 +5,7 @@ use std::{
 };
 
 use anyhow::{Result, anyhow};
+use futures::StreamExt;
 use futures::stream::BoxStream;
 use log::info;
 #[cfg(test)]
@@ -19,7 +20,6 @@ use platforms::{
         InputReceiver as PlatformInputReceiver, MouseKind as PlatformMouseKind,
     },
 };
-use serenity::futures::StreamExt;
 
 use crate::{
     grpc::{InputService, input::Coordinate as RpcCoordinate},

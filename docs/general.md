@@ -18,7 +18,7 @@
   - [Familiars Swapping](#familiars-swapping)
   - [Panic Mode](#panic-mode)
   - [Elite Boss Spawns Behavior](#elite-boss-spawns-behavior)
-  - [Control and Notifications](#control-and-notifications)
+  - [Notifications](#notifications)
   - [Localization](#localization)
   - [Generic/HEXA Booster](#generichexa-booster)
   - [HEXA Booster Exchange](#hexa-booster-exchange)
@@ -365,13 +365,9 @@ Available behaviors:
 
 ---
 
-### Control and Notifications
+### Notifications
 
-Uses Discord webhook or bot token for notifications and remote control.
-
-#### Notifications
-
-Provide a **webhook URL** (for notifications only) or a **bot token** (for full control).
+Provide a **webhook URL** for notifications in `Settings` → `Notifications`.
 
 Available notification types:
 - Rune Spawns  
@@ -383,21 +379,6 @@ Available notification types:
 - Detection Fails / Map Changes
 
 If `Discord ping user ID` is set, the bot pings that user in the notification message.
-
-#### Discord Commands
-
-Introduced in **v0.20**.
-
-- `/status` – Shows current status, runtime, and image.  
-- `/start` – Starts the bot.  
-- `/stop` – Stops the bot (optionally goes to town).  
-- `/suspend` – Pauses temporarily (or fully if no cycle is active).  
-- `/start-stream` – Streams status periodically (up to 15 min).  
-- `/stop-stream` – Stops streaming.  
-- `/chat` – Sends in-game chat (ASCII only).  
-- `/action` – Performs a specified action (with kind and count).
-
-> The Discord bot is experimental and may change.
 
 ---
 

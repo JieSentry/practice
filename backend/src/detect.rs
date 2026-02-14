@@ -235,9 +235,6 @@ pub trait Detector: Debug + Send + Sync {
     /// Detects whether the change channel menu is opened.
     fn detect_change_channel_menu_opened(&self) -> bool;
 
-    /// Detects whether the chat menu is opened.
-    fn detect_chat_menu_opened(&self) -> bool;
-
     /// Detects whether the admin image is visible inside the currently opened popup/dialog.
     fn detect_admin_visible(&self) -> bool;
 
@@ -485,10 +482,6 @@ impl Detector for DefaultDetector {
 
     fn detect_change_channel_menu_opened(&self) -> bool {
         detect_change_channel_menu_opened(self.grayscale(), &self.localization)
-    }
-
-    fn detect_chat_menu_opened(&self) -> bool {
-        detect_chat_menu_opened(self.grayscale())
     }
 
     fn detect_admin_visible(&self) -> bool {
@@ -2187,14 +2180,6 @@ fn detect_change_channel_menu_opened(
         0.75,
     )
     .is_ok()
-}
-
-fn detect_chat_menu_opened(grayscale: &impl ToInputArray) -> bool {
-    static TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {
-        imgcodecs::imdecode(include_bytes!(env!("CHAT_MENU_TEMPLATE")), IMREAD_GRAYSCALE).unwrap()
-    });
-
-    detect_template(grayscale, &*TEMPLATE, Point::default(), 0.75).is_ok()
 }
 
 fn detect_admin_visible(grayscale: &impl ToInputArray) -> bool {

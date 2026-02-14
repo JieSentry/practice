@@ -54,7 +54,6 @@ impl EventHandler<DatabaseEvent> for DatabaseEventHandler {
                 context
                     .operation_service
                     .config(context.resources, OperationConfiguration::from(&settings));
-                context.control_service.update(&settings);
                 context.rotator_service.update_from_settings(&settings);
                 context.rotator_service.apply(context.rotator);
 

@@ -9,7 +9,7 @@ use crate::services::Event;
 use crate::{Settings, bridge::MockInput, detect::MockDetector};
 use crate::{
     bridge::Input, buff::BuffEntities, detect::Detector, minimap::MinimapEntity,
-    notification::DiscordNotification, operation::Operation, player::PlayerEntity, rng::Rng,
+    notification::Notification, operation::Operation, player::PlayerEntity, rng::Rng,
     skill::SkillEntities,
 };
 #[cfg(debug_assertions)]
@@ -149,7 +149,7 @@ pub struct Resources {
     /// A resource for generating random values.
     pub rng: Rng,
     /// A resource for sending notifications through web hook.
-    pub notification: DiscordNotification,
+    pub notification: Notification,
     /// A resource to detect game information.
     ///
     /// This is [`None`] when no frame as ever been captured.
@@ -170,7 +170,7 @@ impl Resources {
             debug: Debug::default(),
             input: Box::new(input.unwrap_or_default()),
             rng: Rng::new(rand::random(), rand::random()),
-            notification: DiscordNotification::new(Rc::new(RefCell::new(Settings::default()))),
+            notification: Notification::new(Rc::new(RefCell::new(Settings::default()))),
             detector: detector.map(|detector| Arc::new(detector) as Arc<dyn Detector>),
             operation: Operation {
                 config: OperationConfiguration {

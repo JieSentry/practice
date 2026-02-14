@@ -26,7 +26,6 @@ use crate::{
     minimap::{Minimap, MinimapEntity},
     models::ActionKeyDirection,
     player::{
-        chat::{Chatting, update_chatting_state},
         exchange_booster::{ExchangingBooster, update_exchanging_booster_state},
         fall::Falling,
         grapple::Grappling,
@@ -40,7 +39,6 @@ use crate::{
 mod actions;
 mod adjust;
 mod cash_shop;
-mod chat;
 mod double_jump;
 mod exchange_booster;
 mod fall;
@@ -63,7 +61,7 @@ mod use_key;
 
 pub use actions::*;
 pub use {
-    chat::ChattingContent, double_jump::DOUBLE_JUMP_THRESHOLD, grapple::GRAPPLING_MAX_THRESHOLD,
+    double_jump::DOUBLE_JUMP_THRESHOLD, grapple::GRAPPLING_MAX_THRESHOLD,
     grapple::GRAPPLING_THRESHOLD, panic::Panicking, state::PlayerContext, state::Quadrant,
 };
 
@@ -115,7 +113,6 @@ pub enum Player {
     #[strum(to_string = "FamiliarsSwapping({0})")]
     FamiliarsSwapping(FamiliarsSwapping),
     Panicking(Panicking),
-    Chatting(Chatting),
     UsingBooster(UsingBooster),
     ExchangingBooster(ExchangingBooster),
 }
@@ -154,7 +151,6 @@ impl Player {
             | Player::DoubleJumping(DoubleJumping { forced: true, .. })
             | Player::UseKey(_)
             | Player::FamiliarsSwapping(_)
-            | Player::Chatting(_)
             | Player::Panicking(_)
             | Player::UsingBooster(_)
             | Player::ExchangingBooster(_)
@@ -276,7 +272,6 @@ fn update_non_positional_state(
         Player::Panicking(panicking) => {
             update_panicking_state(resources, player, minimap_state, panicking);
         }
-        Player::Chatting(chatting) => update_chatting_state(resources, player, chatting),
         Player::UsingBooster(_) => update_using_booster_state(resources, player),
         Player::ExchangingBooster(_) => update_exchanging_booster_state(resources, player),
         Player::Detecting
@@ -316,7 +311,6 @@ fn update_positional_state(
         | Player::SolvingRune(_)
         | Player::FamiliarsSwapping(_)
         | Player::Panicking(_)
-        | Player::Chatting(_)
         | Player::UsingBooster(_)
         | Player::ExchangingBooster(_)
         | Player::SolvingShape(_)

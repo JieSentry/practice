@@ -25,7 +25,6 @@ use crate::{
     services::{
         capture::{CaptureService, DefaultCaptureService},
         character::{CharacterService, DefaultCharacterService},
-        control::{ControlEventHandler, ControlService, DefaultControlService},
         database::DatabaseEventHandler,
         input::{DefaultInputService, InputEventHandler, InputService},
         localization::{DefaultLocalizationService, LocalizationService},
@@ -40,7 +39,6 @@ use crate::{
 
 mod capture;
 mod character;
-mod control;
 mod database;
 #[cfg(debug_assertions)]
 mod debug;
@@ -102,7 +100,6 @@ struct EventContext<'a> {
     pub input_service: &'a mut Box<dyn InputService>,
     pub settings_service: &'a mut Box<dyn SettingsService>,
     pub localization_service: &'a mut Box<dyn LocalizationService>,
-    pub control_service: &'a mut Box<dyn ControlService>,
     pub operation_service: &'a mut Box<dyn OperationService>,
     pub mediator_service: &'a mut Box<dyn MediatorService>,
     #[cfg(debug_assertions)]
@@ -120,7 +117,6 @@ pub struct Services {
     input: Box<dyn InputService>,
     settings: Box<dyn SettingsService>,
     localization: Box<dyn LocalizationService>,
-    control: Box<dyn ControlService>,
     operation: Box<dyn OperationService>,
     mediator: Box<dyn MediatorService>,
     #[cfg(debug_assertions)]
@@ -144,9 +140,6 @@ impl Services {
         let input_service = DefaultInputService::new(input_rx);
         let mut input_event_rx = input_service.subscribe_event();
 
-        let (mut control, mut control_event_rx) = DefaultControlService::new();
-        control.update(&settings_service.settings());
-
         let operation_service = DefaultOperationService::default();
         let mut operation_event_rx = operation_service.subscribe();
 
@@ -158,7 +151,6 @@ impl Services {
         };
         event_bus.subscribe(MediatorEventHandler);
         event_bus.subscribe(DatabaseEventHandler);
-        event_bus.subscribe(ControlEventHandler);
         event_bus.subscribe(WorldEventHandler);
         event_bus.subscribe(OperationEventHandler);
         event_bus.subscribe(InputEventHandler);
@@ -168,7 +160,6 @@ impl Services {
             loop {
                 let event: Box<dyn Event> = select! {
                     Some(event) = mediator_event_rx.recv() => Box::new(event),
-                    Some(event) = control_event_rx.recv() => Box::new(event),
                     Ok(event) = world_event_rx.recv() => Box::new(event),
                     Ok(event) = operation_event_rx.recv() => Box::new(event),
                     Ok(event) = input_event_rx.recv() => Box::new(event),
@@ -194,7 +185,6 @@ impl Services {
             input: Box::new(input_service),
             settings: Box::new(settings_service),
             localization: Box::new(DefaultLocalizationService::new(localization)),
-            control: Box::new(control),
             operation: Box::new(operation_service),
             mediator: Box::new(mediator_service),
             #[cfg(debug_assertions)]
@@ -238,7 +228,6 @@ impl Services {
                 input_service: &mut self.input,
                 settings_service: &mut self.settings,
                 localization_service: &mut self.localization,
-                control_service: &mut self.control,
                 operation_service: &mut self.operation,
                 mediator_service: &mut self.mediator,
                 #[cfg(debug_assertions)]

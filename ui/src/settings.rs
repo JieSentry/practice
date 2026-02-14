@@ -72,7 +72,7 @@ pub fn SettingsScreen() -> Element {
         div { class: "flex flex-col h-full overflow-y-auto",
             SectionCapture {}
             SectionInput {}
-            SectionControlAndNotifications {}
+            SectionNotifications {}
             SectionHotkeys {}
             SectionRunTimer {}
             SectionOthers {}
@@ -177,27 +177,15 @@ fn SectionInput() -> Element {
 }
 
 #[component]
-fn SectionControlAndNotifications() -> Element {
+fn SectionNotifications() -> Element {
     let context = use_context::<SettingsContext>();
     let settings = context.settings;
     let save_settings = context.save_settings;
     let notifications = use_memo(move || settings().notifications);
 
     rsx! {
-        Section { title: "Control and notifications",
+        Section { title: "Notifications",
             div { class: "grid grid-cols-2 gap-3 mb-2",
-                SettingsTextInput {
-                    text_label: "Discord bot access token",
-                    button_label: "Update",
-                    sensitive: true,
-                    on_value: move |discord_bot_access_token| {
-                        save_settings(Settings {
-                            discord_bot_access_token,
-                            ..settings.peek().clone()
-                        });
-                    },
-                    value: settings().discord_bot_access_token,
-                }
                 SettingsTextInput {
                     text_label: "Discord webhook URL",
                     button_label: "Update",

@@ -25,7 +25,7 @@ use crate::{
     ecs::{Resources, World, WorldEvent},
     mat::OwnedMat,
     minimap::{self, Minimap, MinimapContext, MinimapEntity},
-    notification::DiscordNotification,
+    notification::Notification,
     operation::{Operation, OperationConfiguration, OperationState},
     player::{self, Player, PlayerContext, PlayerEntity},
     rng::Rng,
@@ -88,7 +88,7 @@ fn systems_loop() {
     service.update_window(&mut input, &mut capture);
 
     let mut rotator = DefaultRotator::default();
-    let notification = DiscordNotification::new(settings.clone());
+    let notification = Notification::new(settings.clone());
     let mut resources = Resources {
         #[cfg(debug_assertions)]
         debug: Debug::default(),

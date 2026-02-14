@@ -16,9 +16,9 @@ use crate::{
     ecs::{Resources, transition, transition_if},
     minimap::Minimap,
     player::{
-        ChattingContent, PlayerEntity, SolvingShape, chat::Chatting,
-        exchange_booster::ExchangingBooster, solve_violetta::SolvingVioletta,
-        transition_from_action, unstuck::Unstucking, use_booster::UsingBooster,
+        PlayerEntity, SolvingShape, exchange_booster::ExchangingBooster,
+        solve_violetta::SolvingVioletta, transition_from_action, unstuck::Unstucking,
+        use_booster::UsingBooster,
     },
     rng::Rng,
 };
@@ -197,11 +197,6 @@ fn update_from_action(resources: &Resources, player: &mut PlayerEntity, minimap_
         Some(PlayerAction::Panic(panic)) => {
             transition!(player, Player::Panicking(Panicking::new(panic.to)))
         }
-
-        Some(PlayerAction::Chat(chat)) => transition!(
-            player,
-            Player::Chatting(Chatting::new(ChattingContent::from_string(chat.content)))
-        ),
 
         Some(PlayerAction::UseBooster(using)) => {
             transition!(player, Player::UsingBooster(UsingBooster::new(using.kind)))
