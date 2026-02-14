@@ -268,7 +268,7 @@ impl Notification {
                 kind,
                 url,
                 content,
-                username: "maple-bot",
+                username: "Komari",
                 frames,
             });
             pending.set(kind.into(), true);
