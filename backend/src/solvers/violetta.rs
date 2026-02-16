@@ -44,7 +44,7 @@ struct Mushroom {
 impl Default for ViolettaSolver {
     fn default() -> Self {
         Self {
-            tracker: ByteTracker::new(FPS as u64, 0.75, 0.6, 0.75, IouGating::Full),
+            tracker: ByteTracker::new(FPS as u64, 0.65, 0.5, 0.65, IouGating::Full),
             numbers: vec![],
             mushrooms: [Mushroom::default(); MUSHROOM_COUNT],
             last_moving_time: Instant::now(),
