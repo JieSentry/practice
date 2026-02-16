@@ -56,7 +56,7 @@ pub fn update_panicking_state(
                 Player::Idle,
                 player.context.config.change_channel_key,
                 {
-                    info!(target: "player", "aborted panicking because change channel key is not set");
+                    info!(target: "backend/player", "aborted panicking because change channel key is not set");
                     player.context.clear_action_completed();
                 }
             );
@@ -66,7 +66,7 @@ pub fn update_panicking_state(
         State::GoingToTown(_, _) => {
             let key =
                 try_some_transition!(player, Player::Idle, player.context.config.to_town_key, {
-                    info!(target: "player", "aborted panicking because to town key is not set");
+                    info!(target: "backend/player", "aborted panicking because to town key is not set");
                     player.context.clear_action_completed();
                 });
 

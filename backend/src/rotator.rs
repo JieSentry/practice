@@ -307,14 +307,14 @@ impl DefaultRotator {
                         .and_then(|action| action.metadata)
                         .is_some_and(|metadata| matches!(metadata, ActionMetadata::UseBooster))
                     {
-                        info!(target: "rotator", "ignored booster usage due to conflict with another booster kind");
+                        info!(target: "backend/rotator", "ignored booster usage due to conflict with another booster kind");
                         return ResolveConflict::Ignore;
                     }
 
                     for id in rotator.priority_actions_queue.iter() {
                         let action = rotator.priority_actions.get(id).expect("exists");
                         if matches!(action.metadata, Some(ActionMetadata::UseBooster)) {
-                            info!(target: "rotator", "ignored booster usage due to conflict with another booster kind");
+                            info!(target: "backend/rotator", "ignored booster usage due to conflict with another booster kind");
                             return ResolveConflict::Ignore;
                         }
                     }
@@ -583,7 +583,7 @@ impl DefaultRotator {
                 } else {
                     None
                 };
-                debug!(target: "rotator", "auto mob raw position {point:?}");
+                debug!(target: "backend/rotator", "auto mob raw position {point:?}");
                 point.and_then(|point| {
                     player_context.auto_mob_pick_reachable_y_position(
                         resources,
@@ -814,7 +814,7 @@ impl DefaultRotator {
 impl Rotator for DefaultRotator {
     #[cfg_attr(test, concretize)]
     fn build_actions(&mut self, args: RotatorBuildArgs) {
-        info!(target: "rotator", "preparing actions {args:?}");
+        info!(target: "backend/rotator", "preparing actions {args:?}");
         let RotatorBuildArgs {
             mode,
             character_actions,

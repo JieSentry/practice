@@ -182,7 +182,7 @@ impl MinimapIdle {
             let y_range = portal.y..(portal.y + portal.height);
 
             if x_range.contains(&pos.x) && y_range.contains(&pos.y) {
-                info!(target: "minimap", "position {pos:?} is inside portal {portal:?}");
+                info!(target: "backend/minimap", "position {pos:?} is inside portal {portal:?}");
                 return true;
             }
         }
@@ -218,7 +218,7 @@ fn update_detecting_state(resources: &Resources, minimap: &mut MinimapEntity) {
             let br = anchor_at(&detector.mat(), bbox.br(), size, -1)?;
             let anchors = Anchors { tl, br };
 
-            debug!(target: "minimap", "anchor points: {anchors:?}");
+            debug!(target: "backend/minimap", "anchor points: {anchors:?}");
             Ok((anchors, bbox))
         },
     ) else {
@@ -281,7 +281,7 @@ fn update_idle_state(
     let br_match = anchor_match(anchors.br.1, br_pixel);
     if !tl_match && !br_match {
         debug!(
-            target: "minimap",
+            target: "backend/minimap",
             "anchor pixels mismatch: {:?} != {:?}",
             (tl_pixel, br_pixel),
             (anchors.tl.1, anchors.br.1)
@@ -386,7 +386,7 @@ fn update_rune_task(
     });
 
     if was_none && rune.value.is_some() && !resources.operation.halting() {
-        info!(target: "minimap", "sending notification for rune...");
+        info!(target: "backend/minimap", "sending notification for rune...");
         resources
             .notification
             .schedule_notification(NotificationKind::RuneAppear);
@@ -411,7 +411,7 @@ fn update_other_player_task(
         }
     });
     if !resources.operation.halting() && !has_player && threshold.value.is_some() {
-        info!(target: "minimap", "sending {kind:?} notification...");
+        info!(target: "backend/minimap", "sending {kind:?} notification...");
         let notification = match kind {
             OtherPlayerKind::Guildie => NotificationKind::PlayerGuildieAppear,
             OtherPlayerKind::Stranger => NotificationKind::PlayerStrangerAppear,

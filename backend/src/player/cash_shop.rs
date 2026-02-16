@@ -41,7 +41,7 @@ pub fn update_cash_shop_state(
 ) {
     let cash_shop_key =
         try_some_transition!(player, Player::Idle, player.context.config.cash_shop_key, {
-            info!(target: "player", "aborted entering cash shop because cash shop key is not set");
+            info!(target: "backend/player", "aborted entering cash shop because cash shop key is not set");
             player.context.clear_action_completed();
         });
 
