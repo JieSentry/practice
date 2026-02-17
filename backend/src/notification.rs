@@ -338,6 +338,7 @@ async fn post_notification(
 ) -> Result<(), Error> {
     match notification.provider {
         WebhookProvider::Discord => post_discord_notification(client, notification).await,
+        WebhookProvider::Feishu => post_feishu_notification(client, notification).await,
     }
 }
 
@@ -382,6 +383,31 @@ async fn post_discord_notification(
     let _ = client
         .post(notification.url)
         .multipart(form)
+        .send()
+        .await
+        .inspect(|_| {
+            debug!(target: "notification", "calling Webhook API {:?} succeeded", notification.kind);
+        })
+        .inspect_err(|err| {
+            error!(target: "notification", "calling Webhook API failed {err}");
+        });
+
+    Ok(())
+}
+
+async fn post_feishu_notification(
+    client: Client,
+    notification: ScheduledNotification,
+) -> Result<(), Error> {
+    let body: Value = json!({
+        "msg_type": "text",
+        "content": {
+            "text": format!("{} from {}", notification.content, notification.username),
+        },
+    });
+    let _ = client
+        .post(notification.url)
+        .json(&body)
         .send()
         .await
         .inspect(|_| {

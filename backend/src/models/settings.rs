@@ -148,4 +148,5 @@ pub struct Notifications {
 pub enum WebhookProvider {
     #[default]
     Discord,
+    Feishu,
 }
