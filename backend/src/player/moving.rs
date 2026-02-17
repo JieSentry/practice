@@ -35,7 +35,7 @@ pub const MOVE_TIMEOUT: u32 = 5;
 
 /// Jumpable y distances.
 const JUMPABLE_RANGE: Range<i32> = 4..JUMP_THRESHOLD;
-const UP_JUMP_THRESHOLD: i32 = 10;
+const UP_JUMP_THRESHOLD: i32 = JUMP_THRESHOLD;
 
 /// Intermediate points to move by.
 ///
