@@ -37,7 +37,7 @@ const TELEPORT_FALL_THRESHOLD: i32 = 16;
 
 /// Maximum y distance from the destination allowed to skip normal falling and use teleportation
 /// for mage when teleport boost is enabled.
-const EXTENDED_TELEPORT_FALL_THRESHOLD: i32 = 19;
+const EXTENDED_TELEPORT_FALL_THRESHOLD: i32 = 20;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Falling {
