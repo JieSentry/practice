@@ -407,7 +407,8 @@ async fn post_feishu_notification(
     });
     let _ = client
         .post(notification.url)
-        .json(&body)
+        .header("Content-Type", "application/json")
+        .body(serde_json::to_string(&body).unwrap())
         .send()
         .await
         .inspect(|_| {
