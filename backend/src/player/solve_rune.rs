@@ -165,7 +165,7 @@ fn update_solving(resources: &Resources, solving_rune: &mut SolvingRune) {
                 solving_rune,
                 State::PressKeys(Timeout::default(), arrows.map(|arrow| arrow.key), 0),
                 {
-                    info!(target: "rune", "solve result {arrows:?}");
+                    info!(target: "backend/rune", "solve result {arrows:?}");
                     #[cfg(debug_assertions)]
                     resources
                         .debug

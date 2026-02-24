@@ -490,6 +490,18 @@ fn SectionMovement() -> Element {
                     disabled,
                 }
                 CharactersCheckbox {
+                    label: "Has extended teleport range",
+                    on_checked: move |has_extended_teleport_range| {
+                        save_character(Character {
+                            has_extended_teleport_range,
+                            ..character.peek().clone()
+                        });
+                    },
+                    checked: character().has_extended_teleport_range,
+                    tooltip: "Applicable only for mage class when teleport range increase buff is turned on.",
+                    disabled,
+                }
+                CharactersCheckbox {
                     label: "Disable teleport on fall",
                     on_checked: move |disable_teleport_on_fall| {
                         save_character(Character {

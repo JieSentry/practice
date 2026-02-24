@@ -994,7 +994,7 @@ fn detect_minimap(bgr: &impl MatTraitConst, border_threshold: u8) -> Result<Rect
         })
         .ok_or(anyhow!("minimap detection failed"))?;
 
-    debug!(target: "minimap", "yolo detection: {pred:?}");
+    debug!(target: "backend/minimap", "yolo detection: {pred:?}");
 
     // Extract the thresholded minimap
     let minimap_bbox = remap_from_yolo(pred, size, w_ratio, h_ratio, left, top);
@@ -1037,7 +1037,7 @@ fn detect_minimap(bgr: &impl MatTraitConst, border_threshold: u8) -> Result<Rect
     let left = scan_border(&minimap, Border::Left, border_threshold.saturating_sub(10));
     let right = scan_border(&minimap, Border::Right, border_threshold);
 
-    debug!(target: "minimap", "crop white border left {left}, top {top}, bottom {bottom}, right {right}");
+    debug!(target: "backend/minimap", "crop white border left {left}, top {top}, bottom {bottom}, right {right}");
 
     let bbox = Rect::new(
         left,
@@ -1045,7 +1045,7 @@ fn detect_minimap(bgr: &impl MatTraitConst, border_threshold: u8) -> Result<Rect
         minimap.cols() - right - left,
         minimap.rows() - bottom - top,
     );
-    debug!(target: "minimap", "bbox {bbox:?}");
+    debug!(target: "backend/minimap", "bbox {bbox:?}");
 
     Ok(bbox + contour_bbox.tl())
 }
@@ -1866,7 +1866,7 @@ fn detect_rune_spin_arrow(bgr: &impl MatTraitConst, spin_arrow: &mut SpinArrow) 
     // https://stackoverflow.com/a/13221874
     let dot = prev_arrow_head.x * -cur_arrow_head.y + prev_arrow_head.y * cur_arrow_head.x;
     if dot >= SPIN_LAG_THRESHOLD {
-        debug!(target: "rune", "spinning arrow lag detected");
+        debug!(target: "backend/rune", "spinning arrow lag detected");
         let directions = [
             (KeyKind::Up, prev_arrow_head.dot(Point::new(0, -1))),
             (KeyKind::Down, prev_arrow_head.dot(Point::new(0, 1))),
@@ -1877,7 +1877,7 @@ fn detect_rune_spin_arrow(bgr: &impl MatTraitConst, spin_arrow: &mut SpinArrow) 
             .into_iter()
             .max_by_key(|(_, score)| *score)
             .unwrap();
-        info!(target: "rune", "spinning arrow result {arrow:?} {directions:?}");
+        info!(target: "backend/rune", "spinning arrow result {arrow:?} {directions:?}");
         spin_arrow.final_arrow = Some(arrow);
     }
     #[cfg(debug_assertions)]
@@ -2683,7 +2683,7 @@ fn detect_template_multiple<T: ToInputArray + MatTraitConst>(
 
     let mut result = Mat::default();
     if let Err(err) = match_template(mat, template, &mut result, TM_CCOEFF_NORMED, &mask) {
-        error!(target: "detect", "template detection error {err}");
+        error!(target: "backend/detect", "template detection error {err}");
         return vec![];
     }
 

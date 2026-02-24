@@ -87,7 +87,7 @@ fn update_from_action(resources: &Resources, player: &mut PlayerEntity, minimap_
             let x = get_x_destination(&resources.rng, position);
             let point = Point::new(x, position.y);
 
-            debug!(target: "player", "handling move: {point:?}");
+            debug!(target: "backend/player", "handling move: {point:?}");
             transition!(
                 player,
                 Player::Moving(point, position.allow_adjusting, None)
@@ -101,7 +101,7 @@ fn update_from_action(resources: &Resources, player: &mut PlayerEntity, minimap_
             let x = get_x_destination(&resources.rng, position);
             let point = Point::new(x, position.y);
 
-            debug!(target: "player", "handling move: {point:?}");
+            debug!(target: "backend/player", "handling move: {point:?}");
             transition!(
                 player,
                 Player::Moving(point, position.allow_adjusting, None)

@@ -110,7 +110,7 @@ fn update_waiting(resources: &Resources, solving_violetta: &mut SolvingVioletta)
         let region = Rect::from_points(tl, br);
 
         solving_violetta.solving = Some(Rc::new(RefCell::new(start_solving_task(region))));
-        debug!(target: "player", "lie detector violetta region: {region:?}");
+        debug!(target: "backend/player", "lie detector violetta region: {region:?}");
     });
 }
 

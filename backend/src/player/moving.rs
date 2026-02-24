@@ -35,7 +35,7 @@ pub const MOVE_TIMEOUT: u32 = 5;
 
 /// Jumpable y distances.
 const JUMPABLE_RANGE: Range<i32> = 4..JUMP_THRESHOLD;
-const UP_JUMP_THRESHOLD: i32 = 10;
+const UP_JUMP_THRESHOLD: i32 = JUMP_THRESHOLD;
 
 /// Intermediate points to move by.
 ///
@@ -344,7 +344,7 @@ pub fn update_moving_state(
                 && intermediates.is_none()
                 && y_distance >= GRAPPLING_THRESHOLD,
             {
-                debug!(target: "player", "auto mob aborted because distance for up jump only is too big");
+                debug!(target: "backend/player", "auto mob aborted because distance for up jump only is too big");
                 context.clear_action_completed();
             }
         );
@@ -370,7 +370,7 @@ pub fn update_moving_state(
         );
     }
 
-    debug!(target: "player", "reached {dest:?} with actual position {cur_pos:?}");
+    debug!(target: "backend/player", "reached {dest:?} with actual position {cur_pos:?}");
     if let Some(mut intermediates) = intermediates
         && let Some((dest, exact)) = intermediates.next()
     {
@@ -417,7 +417,7 @@ fn abort_action_on_state_repeat(
         Player::Idle,
         player.context.track_last_movement_repeated(),
         {
-            info!(target: "player", "abort action due to repeated state");
+            info!(target: "backend/player", "abort action due to repeated state");
             player.context.auto_mob_track_ignore_xs(minimap_state, true);
             player.context.clear_action_completed();
         }

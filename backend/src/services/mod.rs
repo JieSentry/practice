@@ -168,7 +168,7 @@ impl Services {
                 match event_tx.send(event) {
                     Ok(_) => (),
                     Err(err) => {
-                        error!(target: "services", "error when occured trying to send event {err}");
+                        error!(target: "backend/services", "error when occured trying to send event {err}");
                         break;
                     }
                 }
@@ -233,7 +233,7 @@ impl Services {
                 #[cfg(debug_assertions)]
                 debug_service: &mut self.debug,
             };
-            debug!(target: "services", "processing event {event:?}");
+            debug!(target: "backend/services", "processing event {event:?}");
             self.event_bus.emit(&mut context, event);
         }
 

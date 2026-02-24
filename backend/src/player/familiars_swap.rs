@@ -113,7 +113,7 @@ pub fn update_familiars_swapping_state(resources: &Resources, player: &mut Playe
         Player::Idle,
         player.context.config.familiar_key,
         {
-            info!(target: "player", "aborted familiars swapping because familiar menu key is not set");
+            info!(target: "backend/player", "aborted familiars swapping because familiar menu key is not set");
             player.context.clear_action_completed();
         }
     );
@@ -199,8 +199,8 @@ fn update_find_slots(resources: &Resources, swapping: &mut FamiliarsSwapping) {
                 });
             }
         } else {
-            debug!(target: "player", "familiar slots is not 3 but was {}, aborting...", vec.len());
-            debug!(target: "player", "detected familiar slots were {vec:?}");
+            debug!(target: "backend/player", "familiar slots is not 3 but was {}, aborting...", vec.len());
+            debug!(target: "backend/player", "detected familiar slots were {vec:?}");
             // Weird spots with false positives
             transition!(swapping, State::Completing(Timeout::default(), false), {
                 // Do not count as success

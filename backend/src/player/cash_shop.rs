@@ -39,11 +39,15 @@ pub fn update_cash_shop_state(
     mut cash_shop: CashShop,
     failed_to_detect_player: bool,
 ) {
-    let cash_shop_key =
-        try_some_transition!(player, Player::Idle, player.context.config.cash_shop_key, {
-            info!(target: "player", "aborted entering cash shop because cash shop key is not set");
+    let cash_shop_key = try_some_transition!(
+        player,
+        Player::Idle,
+        player.context.config.cash_shop_key,
+        {
+            info!(target: "backend/player", "aborted entering cash shop because cash shop key is not set");
             player.context.clear_action_completed();
-        });
+        }
+    );
 
     match cash_shop.state {
         State::Entering => update_entering(resources, &mut cash_shop, cash_shop_key),

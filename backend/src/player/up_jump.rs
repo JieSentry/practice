@@ -34,7 +34,11 @@ const X_NEAR_STATIONARY_THRESHOLD: f32 = 0.28;
 const Y_NEAR_STATIONARY_VELOCITY_THRESHOLD: f32 = 0.4;
 
 /// Minimum distance required to perform an up jump using teleport key with jump.
-const TELEPORT_WITH_JUMP_THRESHOLD: i32 = 20;
+const TELEPORT_WITH_JUMP_THRESHOLD: i32 = 19;
+
+/// Minimum distance required to perform an up jump using teleport key with jump when teleport
+/// increase buff is enabled.
+const EXTENDED_TELEPORT_WITH_JUMP_THRESHOLD: i32 = 20;
 
 /// Minimum distance required to perform an up jump and then teleport.
 const UP_JUMP_AND_TELEPORT_THRESHOLD: i32 = 23;
@@ -44,6 +48,7 @@ const SOFT_UP_JUMP_THRESHOLD: i32 = 16;
 #[derive(Debug, Clone, Copy)]
 struct Mage {
     state: MageState,
+    teleport_with_jump_threshold: i32,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -87,6 +92,7 @@ impl UpJumping {
         let kind = up_jumping_kind(
             player_context.config.up_jump_key,
             player_context.config.teleport_key.is_some(),
+            player_context.config.has_extended_teleport_range,
         );
 
         Self {
@@ -167,7 +173,7 @@ pub fn update_up_jumping_state(
 
                     resources.input.send_key_down(KeyKind::Up);
                     let can_jump =
-                        y_distance >= TELEPORT_WITH_JUMP_THRESHOLD && up_jump_key.is_none();
+                        y_distance >= mage.teleport_with_jump_threshold && up_jump_key.is_none();
                     if is_flight || can_jump {
                         resources.input.send_key(jump_key);
                     }
@@ -356,7 +362,7 @@ fn update_mage_up_jump(
 
     match mage.state {
         MageState::Teleporting => {
-            if y_direction > 0 && y_distance < TELEPORT_WITH_JUMP_THRESHOLD {
+            if y_direction > 0 && y_distance < mage.teleport_with_jump_threshold {
                 resources.input.send_key(teleport_key);
                 moving.completed = true;
             }
@@ -398,10 +404,19 @@ fn update_flying(resources: &Resources, moving: &mut Moving, y_direction: i32, k
 }
 
 #[inline]
-fn up_jumping_kind(up_jump_key: Option<KeyKind>, has_teleport_key: bool) -> UpJumpingKind {
+fn up_jumping_kind(
+    up_jump_key: Option<KeyKind>,
+    has_teleport_key: bool,
+    has_extended_teleport_range: bool,
+) -> UpJumpingKind {
     match (up_jump_key, has_teleport_key) {
         (Some(_), true) | (None, true) => UpJumpingKind::Mage(Mage {
             state: MageState::Teleporting, // Overwrite later
+            teleport_with_jump_threshold: if has_extended_teleport_range {
+                EXTENDED_TELEPORT_WITH_JUMP_THRESHOLD
+            } else {
+                TELEPORT_WITH_JUMP_THRESHOLD
+            },
         }),
         (Some(KeyKind::Up), false) => UpJumpingKind::UpArrow,
         (None, false) => UpJumpingKind::JumpKey,
@@ -501,6 +516,7 @@ mod tests {
             moving,
             kind: UpJumpingKind::Mage(Mage {
                 state: MageState::Teleporting,
+                teleport_with_jump_threshold: TELEPORT_WITH_JUMP_THRESHOLD,
             }),
             spam_delay: SPAM_DELAY,
             auto_mob_wait_completion: false,
@@ -622,6 +638,7 @@ mod tests {
             moving,
             kind: UpJumpingKind::Mage(Mage {
                 state: MageState::UpJumping,
+                teleport_with_jump_threshold: TELEPORT_WITH_JUMP_THRESHOLD,
             }),
             spam_delay: SPAM_DELAY,
             auto_mob_wait_completion: false,
