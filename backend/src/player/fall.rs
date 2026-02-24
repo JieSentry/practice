@@ -35,6 +35,10 @@ const TIMEOUT: u32 = MOVE_TIMEOUT + 3;
 /// for mage.
 const TELEPORT_FALL_THRESHOLD: i32 = 16;
 
+/// Maximum y distance from the destination allowed to skip normal falling and use teleportation
+/// for mage when teleport boost is enabled.
+const EXTENDED_TELEPORT_FALL_THRESHOLD: i32 = 19;
+
 #[derive(Clone, Copy, Debug)]
 pub struct Falling {
     pub moving: Moving,
@@ -115,9 +119,14 @@ pub fn update_falling_state(
             transition_to_moving_if!(player, moving, y_direction >= 0);
 
             // Do the fall
+            let teleport_fall_threshold = if player.context.config.has_extended_teleport_range {
+                EXTENDED_TELEPORT_FALL_THRESHOLD
+            } else {
+                TELEPORT_FALL_THRESHOLD
+            };
             let can_teleport = !player.context.config.disable_teleport_on_fall
                 && player.context.config.teleport_key.is_some()
-                && y_distance < TELEPORT_FALL_THRESHOLD;
+                && y_distance < teleport_fall_threshold;
             player.context.last_movement = Some(LastMovement::Falling);
             resources.input.send_key_down(KeyKind::Down);
             if can_teleport {

@@ -163,6 +163,8 @@ pub struct PlayerConfiguration {
     pub link_key_timing_millis: u64,
     /// Whether up jump requires helding down the key for flight.
     pub up_jump_is_flight: bool,
+    /// Whether teleport range is extended (e.g. Starry Boost by Sia).
+    pub has_extended_teleport_range: bool,
     /// Whether up jump using a specific key (e.g. Hero, Night Lord, ... classes) should do a jump
     /// before sending the key.
     ///
@@ -225,6 +227,7 @@ impl Default for PlayerConfiguration {
     fn default() -> Self {
         Self {
             link_key_timing_millis: 0,
+            has_extended_teleport_range: false,
             disable_double_jumping: false,
             disable_adjusting: false,
             disable_teleport_on_fall: false,
