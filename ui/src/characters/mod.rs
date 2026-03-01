@@ -207,10 +207,9 @@ fn FeedPet() -> Element {
     let save_character = context.save_character;
 
     rsx! {
-        div { class: "grid grid-cols-3 gap-4",
+        div { class: "grid grid-cols-4 gap-4",
             CharactersKeyBindingConfigurationInput {
                 label: "Feed key",
-                label_class: "col-span-2",
                 disabled: character().id.is_none(),
                 on_value: move |key_config: Option<KeyBindingConfiguration>| {
                     save_character(Character {
@@ -219,21 +218,6 @@ fn FeedPet() -> Element {
                     });
                 },
                 value: character().feed_pet_key,
-            }
-            CharactersCheckbox {
-                label: "Enabled",
-                disabled: character().id.is_none(),
-                on_checked: move |enabled| {
-                    let character = character.peek().clone();
-                    save_character(Character {
-                        feed_pet_key: KeyBindingConfiguration {
-                            enabled,
-                            ..character.feed_pet_key
-                        },
-                        ..character
-                    });
-                },
-                checked: character().feed_pet_key.enabled,
             }
             CharactersNumberU32Input {
                 label: "Count",
@@ -257,6 +241,21 @@ fn FeedPet() -> Element {
                 },
                 value: character().feed_pet_millis,
             }
+            CharactersCheckbox {
+                label: "Enabled",
+                disabled: character().id.is_none(),
+                on_checked: move |enabled| {
+                    let character = character.peek().clone();
+                    save_character(Character {
+                        feed_pet_key: KeyBindingConfiguration {
+                            enabled,
+                            ..character.feed_pet_key
+                        },
+                        ..character
+                    });
+                },
+                checked: character().feed_pet_key.enabled,
+            }
         }
     }
 }
@@ -268,10 +267,9 @@ fn UsePotion() -> Element {
     let save_character = context.save_character;
 
     rsx! {
-        div { class: "grid grid-cols-3 gap-4",
+        div { class: "grid grid-cols-4 gap-4",
             CharactersKeyBindingConfigurationInput {
                 label: "Potion key",
-                label_class: "col-span-2",
                 disabled: character().id.is_none(),
                 on_value: move |key_config: Option<KeyBindingConfiguration>| {
                     save_character(Character {
@@ -280,21 +278,6 @@ fn UsePotion() -> Element {
                     });
                 },
                 value: character().potion_key,
-            }
-            CharactersCheckbox {
-                label: "Enabled",
-                disabled: character().id.is_none(),
-                on_checked: move |enabled| {
-                    let character = character.peek().clone();
-                    save_character(Character {
-                        potion_key: KeyBindingConfiguration {
-                            enabled,
-                            ..character.potion_key
-                        },
-                        ..character
-                    });
-                },
-                checked: character().potion_key.enabled,
             }
             CharactersSelect::<PotionMode> {
                 label: "Mode",
@@ -324,7 +307,7 @@ fn UsePotion() -> Element {
                 PotionMode::Percentage(percent) => rsx! {
                     div { class: "grid grid-cols-2 gap-2",
                         CharactersPercentageInput {
-                            label: "Below health",
+                            label: "HP below",
                             disabled: character().id.is_none(),
                             on_value: move |percent| {
                                 save_character(Character {
@@ -335,7 +318,7 @@ fn UsePotion() -> Element {
                             value: percent as u32,
                         }
                         CharactersMillisInput {
-                            label: "Health update every",
+                            label: "HP update every",
                             disabled: character().id.is_none(),
                             on_value: move |millis| {
                                 save_character(Character {
@@ -347,6 +330,21 @@ fn UsePotion() -> Element {
                         }
                     }
                 },
+            }
+            CharactersCheckbox {
+                label: "Enabled",
+                disabled: character().id.is_none(),
+                on_checked: move |enabled| {
+                    let character = character.peek().clone();
+                    save_character(Character {
+                        potion_key: KeyBindingConfiguration {
+                            enabled,
+                            ..character.potion_key
+                        },
+                        ..character
+                    });
+                },
+                checked: character().potion_key.enabled,
             }
         }
     }
