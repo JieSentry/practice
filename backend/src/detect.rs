@@ -19,10 +19,6 @@ use opencv::{
         copy_make_border, divide2_def, extract_channel, find_non_zero, min_max_loc, no_array,
         subtract_def, transpose_nd,
     },
-    dnn::{
-        ModelTrait, TextRecognitionModel, TextRecognitionModelTrait,
-        TextRecognitionModelTraitConst, read_net_from_onnx_buffer,
-    },
     imgcodecs::{self, IMREAD_COLOR, IMREAD_GRAYSCALE, imdecode, imencode_def},
     imgproc::{
         CC_STAT_AREA, CC_STAT_HEIGHT, CC_STAT_LEFT, CC_STAT_TOP, CC_STAT_WIDTH,
@@ -2714,47 +2710,61 @@ fn detect_template_multiple<T: ToInputArray + MatTraitConst>(
     matches
 }
 
-/// Extracts texts from the non-preprocessed `Mat` and detected text bounding boxes.
+/// Extracts texts from the non-preprocessed BGR `Mat` and detected text bounding boxes.
 fn extract_texts(mat: &impl MatTraitConst, bboxes: &[Rect]) -> Vec<String> {
-    static TEXT_RECOGNITION_MODEL: LazyLock<Mutex<TextRecognitionModel>> = LazyLock::new(|| {
-        let model = read_net_from_onnx_buffer(&Vector::from_slice(include_bytes!(env!(
-            "TEXT_RECOGNITION_MODEL"
-        ))))
-        .unwrap();
+    static MODEL: LazyLock<Mutex<Session>> = LazyLock::new(|| {
         Mutex::new(
-            TextRecognitionModel::new(&model)
-                .and_then(|mut m| {
-                    m.set_input_params(
-                        1.0 / 127.5,
-                        Size::new(100, 32),
-                        Scalar::new(127.5, 127.5, 127.5, 0.0),
-                        false,
-                        false,
-                    )?;
-                    m.set_decode_type("CTC-greedy")?.set_vocabulary(
-                        &include_str!(env!("TEXT_RECOGNITION_ALPHABET"))
-                            .lines()
-                            .collect::<Vector<String>>(),
-                    )
-                })
-                .expect("build text recognition model successfully"),
+            build_session(include_bytes!(env!("TEXT_RECOGNITION_MODEL")))
+                .expect("build text recognition session normally"),
         )
     });
 
-    let recognizier = TEXT_RECOGNITION_MODEL.lock().unwrap();
+    static ALPHABET: LazyLock<String> = LazyLock::new(|| {
+        include_str!(env!("TEXT_RECOGNITION_ALPHABET"))
+            .split("\n")
+            .collect()
+    });
+
+    fn ctc_greedy_decode(mat: Mat) -> String {
+        let mut result = String::new();
+        let blank_class = 0usize;
+        let mut prev_class = blank_class;
+
+        for timestep in 0..mat.rows() {
+            let logits = mat.row(timestep).unwrap();
+            let class = logits
+                .iter::<f32>()
+                .unwrap()
+                .enumerate()
+                .max_by(|(_, (_, first)), (_, (_, second))| first.partial_cmp(second).unwrap())
+                .map(|(class, _)| class)
+                .unwrap();
+
+            if class != blank_class && class != prev_class {
+                result.push(ALPHABET.chars().nth(class - 1).unwrap());
+            }
+
+            prev_class = class;
+        }
+
+        result
+    }
+
+    let mut model = MODEL.lock().unwrap();
+
     bboxes
         .iter()
-        .copied()
-        .filter_map(|word| {
-            let mut mat = mat.roi(word).unwrap().clone_pointee();
-            unsafe {
-                mat.modify_inplace(|mat, mat_mut| {
-                    cvt_color_def(mat, mat_mut, COLOR_BGR2RGB).unwrap();
-                });
-            }
-            recognizier.recognize(&mat).ok()
+        .map(|&bbox| {
+            let roi = mat.roi(bbox).unwrap();
+            let input = preprocess_for_text(&roi);
+            to_input_value(&input)
         })
-        .collect()
+        .map(|input| {
+            let result = model.run([input]).unwrap();
+            let mat = from_output_value_with_batch_index(&result, 1);
+            ctc_greedy_decode(mat)
+        })
+        .collect::<Vec<_>>()
 }
 
 /// Extracts text bounding boxes from the preprocessed [`Mat`].
@@ -3009,8 +3019,8 @@ fn preprocess_for_yolo(mat: &impl MatTraitConst) -> (Mat, f32, f32, i32, i32) {
 ///
 /// Returns a `(Mat, width_ratio, height_ratio)`.
 #[inline]
-fn preprocess_for_text_bboxes(mat: &impl MatTraitConst) -> (Mat, f32, f32) {
-    let mut mat = mat.try_clone().unwrap();
+fn preprocess_for_text_bboxes(bgr: &impl MatTraitConst) -> (Mat, f32, f32) {
+    let mut mat = bgr.try_clone().unwrap();
     let size = mat.size().unwrap();
     let size_w = size.width as f32;
     let size_h = size.height as f32;
@@ -3045,6 +3055,24 @@ fn preprocess_for_text_bboxes(mat: &impl MatTraitConst) -> (Mat, f32, f32) {
         });
     }
     (mat, resize_w_ratio, resize_h_ratio)
+}
+
+/// Preprocesses a BGR `Mat` image to a normalized and resized RGB `Mat` image with type `f32`
+/// for CRNN+CTC text recognition.
+fn preprocess_for_text(bgr: &impl MatTraitConst) -> Mat {
+    let mut mat = bgr.try_clone().unwrap();
+
+    unsafe {
+        mat.modify_inplace(|mat, mat_mut| {
+            cvt_color_def(mat, mat_mut, COLOR_BGR2RGB).unwrap();
+            resize(mat, mat_mut, Size::new(100, 32), 0.0, 0.0, INTER_LINEAR).unwrap();
+            mat.convert_to(mat_mut, CV_32FC3, 1.0, 0.0).unwrap();
+            subtract_def(&mat, &Scalar::all(127.5), mat_mut).unwrap();
+            divide2_def(&mat, &Scalar::all(127.5), mat_mut).unwrap();
+        });
+    }
+
+    mat
 }
 
 /// Expands `bbox` in all the direction by `count` pixel(s) and clamps to `size` if provided.
@@ -3167,15 +3195,32 @@ pub fn to_base64_from_mat(mat: &Mat) -> Result<String> {
     Ok(BASE64_STANDARD.encode(bytes))
 }
 
-/// Extracts a borrowed `Mat` from `SessionOutputs`.
+/// Extracts a `Mat` from `SessionOutputs` assuming batch index is 0.
 ///
-/// The returned `Mat` has shape `[..dims]` with batch size (1) removed.
+/// The returned `Mat` has batch dimension removed.
 #[inline]
 fn from_output_value(result: &SessionOutputs) -> Mat {
-    let (dims, outputs) = result["output0"].try_extract_tensor::<f32>().unwrap();
+    from_output_value_with_batch_index(result, 0)
+}
+
+/// Extracts a `Mat` from `SessionOutputs` and `batch_index`.
+///
+/// The returned `Mat` has batch dimension removed.
+#[inline]
+fn from_output_value_with_batch_index(result: &SessionOutputs, batch_index: usize) -> Mat {
+    let key = result.keys().next().unwrap();
+    let (dims, outputs) = result[key].try_extract_tensor::<f32>().unwrap();
+
     let dims = dims.iter().map(|&dim| dim as i32).collect::<Vec<i32>>();
     let mat = Mat::new_nd_with_data(dims.as_slice(), outputs).unwrap();
-    let mat = mat.reshape_nd(1, &dims.as_slice()[1..]).unwrap();
+
+    let new_dims = dims
+        .iter()
+        .enumerate()
+        .filter_map(|(i, &dim)| if i == batch_index { None } else { Some(dim) })
+        .collect::<Vec<i32>>();
+    let mat = mat.reshape_nd(1, &new_dims).unwrap();
+
     mat.clone_pointee()
 }
 
@@ -3185,7 +3230,7 @@ fn from_output_value(result: &SessionOutputs) -> Mat {
 /// will panic if not. The `Mat` is reshaped to single channel, tranposed to `[1, 3, H, W]` and
 /// converted to `SessionInputValue`.
 #[inline]
-fn to_input_value(mat: &impl MatTraitConst) -> SessionInputValue<'_> {
+fn to_input_value(mat: &impl MatTraitConst) -> SessionInputValue<'static> {
     let mat = mat.reshape_nd(1, &[1, mat.rows(), mat.cols(), 3]).unwrap();
     let mut mat_t = Mat::default();
     transpose_nd(&mat, &Vector::from_slice(&[0, 3, 1, 2]), &mut mat_t).unwrap();

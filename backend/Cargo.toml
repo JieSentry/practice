@@ -19,7 +19,6 @@ ort = { version = "2.0.0-rc.10", default-features = false, features = [
     "cuda",
 ] }
 opencv = { version = "0.97.2", default-features = false, features = [
-    "dnn",
     "imgcodecs",
     "imgproc",
     "highgui",
