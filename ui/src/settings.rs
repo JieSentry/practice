@@ -518,17 +518,15 @@ fn SectionOthers() -> Element {
                     },
                     checked: settings().enable_transparent_shape_solving,
                 }
-                if cfg!(feature = "violetta") {
-                    SettingsCheckbox {
-                        label: "Enable Violetta solving",
-                        on_checked: move |enable_violetta_solving| {
-                            save_settings(Settings {
-                                enable_violetta_solving,
-                                ..settings.peek().clone()
-                            });
-                        },
-                        checked: settings().enable_violetta_solving,
-                    }
+                SettingsCheckbox {
+                    label: "Enable Violetta solving",
+                    on_checked: move |enable_violetta_solving| {
+                        save_settings(Settings {
+                            enable_violetta_solving,
+                            ..settings.peek().clone()
+                        });
+                    },
+                    checked: settings().enable_violetta_solving,
                 }
                 SettingsCheckbox {
                     label: "Enable panic mode",
