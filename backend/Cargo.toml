@@ -10,6 +10,7 @@ futures = { workspace = true }
 tonic = "0.13.1"
 bit-vec = "0.8"
 base64 = "0.22.1"
+strsim = "0.11.1"
 nalgebra = "0.34.1"
 lapjv = "0.3.0"
 prost = "0.13.5"

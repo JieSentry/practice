@@ -34,6 +34,7 @@ use ort::{
     session::{Session, SessionInputValue, SessionOutputs},
     value::TensorRef,
 };
+use strsim::jaro_winkler;
 
 use crate::mat::OwnedMat;
 use crate::{bridge::KeyKind, models::Localization};
@@ -129,7 +130,13 @@ pub trait Detector: Debug + Send + Sync {
     /// Detects a list of mobs.
     ///
     /// Returns a list of mobs coordinate relative to minimap coordinate.
-    fn detect_mobs(&self, minimap: Rect, bound: Rect, player: Point) -> Result<Vec<Point>>;
+    fn detect_mobs(
+        &self,
+        minimap: Rect,
+        bound: Rect,
+        player: Point,
+        player_name: Option<String>,
+    ) -> Result<Vec<Point>>;
 
     /// Detects whether to press ESC for unstucking.
     fn detect_esc_settings(&self) -> bool;
@@ -163,6 +170,11 @@ pub trait Detector: Debug + Send + Sync {
     ///
     /// Returns `Rect` relative to `minimap` coordinate.
     fn detect_player(&self, minimap: Rect) -> Result<Rect>;
+
+    /// Detects the player's name.
+    ///
+    /// Only English name is currently supported.
+    fn detect_player_name(&self) -> Result<String>;
 
     /// Detects whether a player of `kind` is in the minimap.
     fn detect_player_kind(&self, minimap: Rect, kind: OtherPlayerKind) -> bool;
@@ -336,8 +348,14 @@ impl Detector for DefaultDetector {
         &self.grayscale
     }
 
-    fn detect_mobs(&self, minimap: Rect, bound: Rect, player: Point) -> Result<Vec<Point>> {
-        detect_mobs(self.bgr(), minimap, bound, player)
+    fn detect_mobs(
+        &self,
+        minimap: Rect,
+        bound: Rect,
+        player: Point,
+        player_name: Option<String>,
+    ) -> Result<Vec<Point>> {
+        detect_mobs(self.bgr(), minimap, bound, player, player_name)
     }
 
     fn detect_esc_settings(&self) -> bool {
@@ -370,6 +388,10 @@ impl Detector for DefaultDetector {
 
     fn detect_player(&self, minimap: Rect) -> Result<Rect> {
         detect_player(&self.bgr().roi(minimap).unwrap())
+    }
+
+    fn detect_player_name(&self) -> Result<String> {
+        detect_player_name(self.bgr(), self.grayscale())
     }
 
     fn detect_player_kind(&self, minimap: Rect, kind: OtherPlayerKind) -> bool {
@@ -554,6 +576,7 @@ fn detect_mobs(
     minimap: Rect,
     bound: Rect,
     player: Point,
+    player_name: Option<String>,
 ) -> Result<Vec<Point>> {
     static MOB_MODEL: LazyLock<Mutex<Session>> = LazyLock::new(|| {
         Mutex::new(
@@ -564,53 +587,53 @@ fn detect_mobs(
 
     /// Approximates the mob coordinate on screen to mob coordinate on minimap.
     ///
-    /// This function tries to approximate the delta (dx, dy) that the player needs to move
-    /// in relative to the minimap coordinate in order to reach the mob. Returns the mob
+    /// This function tries to approximate the delta `(dx, dy)` that the player needs to move
+    /// in relative to the minimap coordinate in order to reach the mob. And returns the mob
     /// coordinate on the minimap by adding the delta to the player position.
-    ///
-    /// Note: It is not that accurate but that is that and this is this. Hey it seems better than
-    /// the previous alchemy.
     #[inline]
     fn to_minimap_coordinate(
         mob_bbox: Rect,
         minimap_bbox: Rect,
         mobbing_bound: Rect,
         player: Point,
+        player_on_screen: Option<Rect>,
         mat_size: Size,
     ) -> Option<Point> {
-        // These numbers are for scaling dx/dy on the screen to dx/dy on the minimap.
-        // They are approximated in 1280x720 resolution by going from one point to another point
-        // from the middle of the screen with both points visible on screen before traveling. Take
-        // the distance traveled on the minimap and divide it by half of the resolution
-        // (e.g. tralveled minimap x / 640). Whether it is correct or not, time will tell.
         const X_SCALE: f32 = 0.059_375;
         const Y_SCALE: f32 = 0.036_111;
 
-        // The main idea is to calculate the offset of the detected mob from the middle of screen
-        // and use that distance as dx/dy to move the player. This assumes the player will
-        // most of the time be near or very close to the middle of the screen. This is already
-        // not accurate in the sense that the camera will have a bit of lag before
-        // it is centered again on the player. And when the player is near edges of the map,
-        // this function is just plain wrong. For better accuracy, detecting where the player is
-        // on the screen and use that as the basis is required.
-        let x_screen_mid = mat_size.width / 2;
         let x_mob_mid = mob_bbox.x + mob_bbox.width / 2;
-        let x_screen_delta = x_screen_mid - x_mob_mid;
+        let x_screen_delta = if let Some(screen) = player_on_screen {
+            screen.x + screen.width / 2 - x_mob_mid
+        } else {
+            mat_size.width / 2 - x_mob_mid
+        };
         let x_minimap_delta = (x_screen_delta as f32 * X_SCALE) as i32;
 
-        // For dy, if the whole mob bounding box is above the screen mid point, then the
-        // box top edge is used to increase the dy distance as to help the player move up. The same
-        // goes for moving down. If the bounding box overlaps with the screen mid point, the box
-        // mid point is used as to to help the player stay in place.
-        let y_screen_mid = mat_size.height / 2;
-        let y_mob = if mob_bbox.y + mob_bbox.height < y_screen_mid {
-            mob_bbox.y
-        } else if mob_bbox.y > y_screen_mid {
-            mob_bbox.y + mob_bbox.height
-        } else {
-            mob_bbox.y + mob_bbox.height / 2
+        let y_screen_delta = match player_on_screen {
+            Some(screen) => {
+                let y_screen_mid = screen.y + screen.height / 2;
+                let y_mob = if mob_bbox.y > y_screen_mid {
+                    mob_bbox.y + mob_bbox.height
+                } else {
+                    mob_bbox.y + mob_bbox.height / 2
+                };
+
+                y_screen_mid - y_mob
+            }
+            None => {
+                let y_screen_mid = mat_size.height / 2;
+                let y_mob = if mob_bbox.y + mob_bbox.height < y_screen_mid {
+                    mob_bbox.y
+                } else if mob_bbox.y > y_screen_mid {
+                    mob_bbox.y + mob_bbox.height
+                } else {
+                    mob_bbox.y + mob_bbox.height / 2
+                };
+
+                y_screen_mid - y_mob
+            }
         };
-        let y_screen_delta = y_screen_mid - y_mob;
         let y_minimap_delta = (y_screen_delta as f32 * Y_SCALE) as i32;
 
         let point_x = if x_minimap_delta > 0 {
@@ -638,13 +661,70 @@ fn detect_mobs(
     let result = model.run([to_input_value(&mat_in)]).unwrap();
     let result = from_output_value(&result);
     // SAFETY: 0..result.rows() is within Mat bounds
+    let player_on_screen = player_name.and_then(|name| detect_player_on_screen(bgr, name).ok());
     let points = (0..result.rows())
         .map(|i| unsafe { result.at_row_unchecked::<f32>(i).unwrap() })
         .filter(|pred| pred[4] >= 0.5)
         .map(|pred| remap_from_yolo(pred, size, w_ratio, h_ratio, left, top))
-        .filter_map(|bbox| to_minimap_coordinate(bbox, minimap, bound, player, size))
+        .filter_map(|bbox| {
+            to_minimap_coordinate(bbox, minimap, bound, player, player_on_screen, size)
+        })
         .collect::<Vec<_>>();
     Ok(points)
+}
+
+fn detect_player_name(bgr: &impl MatTraitConst, grayscale: &impl ToInputArray) -> Result<String> {
+    static TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {
+        imgcodecs::imdecode(include_bytes!(env!("LEVEL_TEMPLATE")), IMREAD_GRAYSCALE).unwrap()
+    });
+
+    let name_area = detect_template(grayscale, &*TEMPLATE, Point::new(55, -6), 0.75)
+        .map(|level| Rect::new(level.x, level.y, 100, 25))?;
+    let bgr = bgr.roi(name_area)?;
+
+    let (mat_in, w_ratio, h_ratio) = preprocess_for_text_bboxes(&bgr);
+    let bboxes = extract_text_bboxes(&mat_in, w_ratio, h_ratio, 0, 0);
+    let name_area = name_area - name_area.tl();
+    let name_bbox = bboxes
+        .iter()
+        .find(|&&bbox| (bbox & name_area).area() > 0)
+        .copied()
+        .ok_or(anyhow!("failed to find name bbox"))?;
+
+    extract_texts(&bgr, &[name_bbox])
+        .into_iter()
+        .next()
+        .ok_or(anyhow!("failed to detect name text"))
+}
+
+fn detect_player_on_screen(bgr: &impl MatTraitConst, name: String) -> Result<Rect> {
+    let size = bgr.size().unwrap();
+    let player_area = Rect::new(
+        (size.width as f32 * 0.3) as i32,
+        (size.height as f32 * 0.3) as i32,
+        (size.width as f32 * 0.45) as i32,
+        (size.height as f32 * 0.65) as i32,
+    );
+    let bgr = bgr.roi(player_area)?;
+
+    let (mat_in, w_ratio, h_ratio) = preprocess_for_text_bboxes_magnified(&bgr, 1.0);
+    let bboxes = extract_text_bboxes(&mat_in, w_ratio, h_ratio, 0, 0);
+    let texts = extract_texts(&bgr, &bboxes);
+    let index = texts
+        .iter()
+        .enumerate()
+        .filter_map(|(index, text)| {
+            let score = jaro_winkler(text.as_str(), name.as_str());
+            if score < 0.7 {
+                return None;
+            }
+            Some((index, score))
+        })
+        .max_by(|(_, first), (_, second)| first.partial_cmp(second).unwrap())
+        .ok_or(anyhow!("failed to find player bbox"))?
+        .0;
+
+    Ok(bboxes[index] + player_area.tl())
 }
 
 pub static POPUP_CONFIRM_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {
@@ -2754,10 +2834,10 @@ fn extract_texts(mat: &impl MatTraitConst, bboxes: &[Rect]) -> Vec<String> {
 
     bboxes
         .iter()
-        .map(|&bbox| {
-            let roi = mat.roi(bbox).unwrap();
+        .filter_map(|&bbox| {
+            let roi = mat.roi(bbox).ok()?;
             let input = preprocess_for_text(&roi);
-            to_input_value(&input)
+            Some(to_input_value(&input))
         })
         .map(|input| {
             let result = model.run([input]).unwrap();
@@ -3012,20 +3092,29 @@ fn preprocess_for_yolo(mat: &impl MatTraitConst) -> (Mat, f32, f32, i32, i32) {
     (mat, min_ratio, min_ratio, left, top)
 }
 
+/// Preprocesses a BGR `Mat` image for text bounding boxes detection with `5.0` magnification ratio.
+/// This function is meant for small images.
+#[inline]
+fn preprocess_for_text_bboxes(bgr: &impl MatTraitConst) -> (Mat, f32, f32) {
+    preprocess_for_text_bboxes_magnified(bgr, 5.0)
+}
+
 /// Preprocesses a BGR `Mat` image to a normalized and resized RGB `Mat` image with type `f32`
 /// for text bounding boxes detection.
 ///
 /// The preprocess is adapted from: https://github.com/clovaai/CRAFT-pytorch/blob/master/imgproc.py
 ///
 /// Returns a `(Mat, width_ratio, height_ratio)`.
-#[inline]
-fn preprocess_for_text_bboxes(bgr: &impl MatTraitConst) -> (Mat, f32, f32) {
+fn preprocess_for_text_bboxes_magnified(
+    bgr: &impl MatTraitConst,
+    magnification_ratio: f32,
+) -> (Mat, f32, f32) {
     let mut mat = bgr.try_clone().unwrap();
     let size = mat.size().unwrap();
     let size_w = size.width as f32;
     let size_h = size.height as f32;
     let size_max = size_w.max(size_h);
-    let resize_size = 5.0 * size_max;
+    let resize_size = magnification_ratio * size_max;
     let resize_ratio = resize_size / size_max;
 
     let resize_w = (resize_ratio * size_w) as i32;

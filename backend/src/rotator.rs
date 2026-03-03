@@ -566,9 +566,10 @@ impl DefaultRotator {
         };
         let bound = bound.into();
 
+        let name = player_context.name();
         let Update::Ok(points) =
             update_detection_task(resources, 0, &mut self.auto_mob_task, move |detector| {
-                detector.detect_mobs(idle.bbox, bound, pos)
+                detector.detect_mobs(idle.bbox, bound, pos, name)
             })
         else {
             return;
