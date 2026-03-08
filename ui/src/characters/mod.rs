@@ -15,6 +15,7 @@ use crate::{
         ContentAlign, ContentSide,
         button::Button,
         checkbox::Checkbox,
+        duration::{DurationInput, DurationParts},
         file::{FileInput, FileOutput},
         key::KeyInput,
         labeled::Labeled,
@@ -230,8 +231,8 @@ fn FeedPet() -> Element {
                 },
                 value: character().feed_pet_count,
             }
-            CharactersMillisInput {
-                label: "Every",
+            CharactersDurationInput {
+                label: "Every (mm:ss)",
                 disabled: character().id.is_none(),
                 on_value: move |feed_pet_millis| {
                     save_character(Character {
@@ -292,8 +293,8 @@ fn UsePotion() -> Element {
             }
             match character().potion_mode {
                 PotionMode::EveryMillis(millis) => rsx! {
-                    CharactersMillisInput {
-                        label: "Every",
+                    CharactersDurationInput {
+                        label: "Every (mm:ss)",
                         disabled: character().id.is_none(),
                         on_value: move |millis| {
                             save_character(Character {
@@ -561,20 +562,7 @@ fn SectionFamiliars() -> Element {
 
     rsx! {
         Section { title: "Familiars",
-            CharactersCheckbox {
-                label: "Enable swapping",
-                on_checked: move |enable_familiars_swapping| {
-                    save_character(Character {
-                        familiars: Familiars {
-                            enable_familiars_swapping,
-                            ..familiars.peek().clone()
-                        },
-                        ..character.peek().clone()
-                    });
-                },
-                checked: familiars().enable_familiars_swapping,
-            }
-            div { class: "grid grid-cols-2 gap-3 mt-2",
+            div { class: "grid grid-cols-3 gap-4",
                 CharactersSelect::<SwappableFamiliars> {
                     label: "Swappable slots",
                     disabled: !familiars().enable_familiars_swapping,
@@ -589,8 +577,8 @@ fn SectionFamiliars() -> Element {
                     },
                     selected: familiars().swappable_familiars,
                 }
-                CharactersMillisInput {
-                    label: "Swap check every",
+                CharactersDurationInput {
+                    label: "Swap check every (mm:ss)",
                     disabled: !familiars().enable_familiars_swapping,
                     on_value: move |swap_check_millis| {
                         save_character(Character {
@@ -602,6 +590,20 @@ fn SectionFamiliars() -> Element {
                         });
                     },
                     value: familiars().swap_check_millis,
+                }
+
+                CharactersCheckbox {
+                    label: "Swapping enabled",
+                    on_checked: move |enable_familiars_swapping| {
+                        save_character(Character {
+                            familiars: Familiars {
+                                enable_familiars_swapping,
+                                ..familiars.peek().clone()
+                            },
+                            ..character.peek().clone()
+                        });
+                    },
+                    checked: familiars().enable_familiars_swapping,
                 }
 
                 CharactersCheckbox {
@@ -871,6 +873,25 @@ fn CharactersPercentageInput(
     rsx! {
         Labeled { label,
             PercentageInput { value, on_value, disabled }
+        }
+    }
+}
+
+#[component]
+fn CharactersDurationInput(
+    label: &'static str,
+    value: u64,
+    on_value: Callback<u64>,
+    #[props(default)] disabled: bool,
+) -> Element {
+    rsx! {
+        Labeled { label,
+            DurationInput {
+                value,
+                on_value,
+                disabled,
+                parts: DurationParts::MinutesAndSeconds,
+            }
         }
     }
 }
