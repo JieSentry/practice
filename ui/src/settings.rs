@@ -451,7 +451,7 @@ fn SectionRunTimer() -> Element {
     rsx! {
         Section { title: "Run timer",
             div { class: "grid grid-cols-2 gap-3",
-                Labeled { label: "Duration",
+                Labeled { label: "Duration (hh:mm:ss)",
                     DurationInput {
                         on_value: move |run_timer_millis| {
                             save_settings(Settings {
