@@ -3,12 +3,11 @@ use log::info;
 use super::{Player, actions::PanicTo, timeout::Timeout};
 use crate::{
     bridge::KeyKind,
-    ecs::{Resources, transition, transition_if, try_some_transition},
+    ecs::Resources,
     minimap::Minimap,
     player::{
         PlayerEntity, next_action,
         timeout::{Lifecycle, next_timeout_lifecycle},
-        transition_from_action,
     },
 };
 
@@ -51,28 +50,28 @@ pub fn update_panicking_state(
 ) {
     match panicking.state {
         State::ChangingChannel(_, _) => {
-            let key = try_some_transition!(
-                player,
-                Player::Idle,
-                player.context.config.change_channel_key,
-                {
-                    info!(target: "backend/player", "aborted panicking because change channel key is not set");
+            let key = match player.context.config.change_channel_key {
+                Some(val) => val,
+                None => {
+                    info!(target:"backend/player","aborted panicking because change channel key is not set");
                     player.context.clear_action_completed();
+                    player.state = Player::Idle;
+                    return;
                 }
-            );
+            };
 
             update_changing_channel(resources, &mut panicking, minimap_state, key)
         }
         State::GoingToTown(_, _) => {
-            let key = try_some_transition!(
-                player,
-                Player::Idle,
-                player.context.config.to_town_key,
-                {
-                    info!(target: "backend/player", "aborted panicking because to town key is not set");
+            let key = match player.context.config.to_town_key {
+                Some(val) => val,
+                None => {
+                    info!(target:"backend/player","aborted panicking because to town key is not set");
                     player.context.clear_action_completed();
+                    player.state = Player::Idle;
+                    return;
                 }
-            );
+            };
 
             update_going_to_town(resources, &mut panicking, key)
         }
@@ -86,19 +85,22 @@ pub fn update_panicking_state(
     };
 
     match next_action(&player.context) {
-        Some(_) => transition_from_action!(
-            player,
-            player_next_state,
-            matches!(player_next_state, Player::Idle)
-        ),
-        None => transition_if!(
-            player,
+        Some(_) => {
+            if matches!(player_next_state, Player::Idle) {
+                player.context.clear_action_completed();
+            }
+
+            player.state = player_next_state;
+        }
+        None => {
             // Allow continuing for town even if the bot has already halted
-            player_next_state,
             // Force cancel if it is not initiated from an action for other panic kind
-            Player::Idle,
-            matches!(panicking.to, PanicTo::Town)
-        ),
+            player.state = if matches!(panicking.to, PanicTo::Town) {
+                player_next_state
+            } else {
+                Player::Idle
+            };
+        }
     }
 }
 
@@ -126,46 +128,43 @@ fn update_changing_channel(
     };
     match next_timeout_lifecycle(timeout, max_timeout) {
         Lifecycle::Started(timeout) => {
-            transition!(panicking, State::ChangingChannel(timeout, retry_count), {
-                if !resources.detector().detect_change_channel_menu_opened() {
-                    resources.input.send_key(key);
-                }
-            })
+            if !resources.detector().detect_change_channel_menu_opened() {
+                resources.input.send_key(key);
+            }
+            panicking.state = State::ChangingChannel(timeout, retry_count);
         }
         Lifecycle::Ended => {
-            transition_if!(
-                panicking,
-                State::Completing(Timeout::default(), false),
-                !matches!(minimap_state, Minimap::Idle(_))
-            );
-            transition_if!(
-                panicking,
-                State::ChangingChannel(Timeout::default(), retry_count + 1),
-                State::Completing(Timeout::default(), true),
-                retry_count < MAX_RETRY
-            );
+            if !matches!(minimap_state, Minimap::Idle(_)) {
+                panicking.state = State::Completing(Timeout::default(), false);
+                return;
+            }
+
+            panicking.state = if retry_count < MAX_RETRY {
+                State::ChangingChannel(Timeout::default(), retry_count + 1)
+            } else {
+                State::Completing(Timeout::default(), true)
+            };
         }
         Lifecycle::Updated(timeout) => {
-            transition!(panicking, State::ChangingChannel(timeout, retry_count), {
-                let (press_right_at, press_enter_at) = if retry_count == 0 {
-                    (PRESS_RIGHT_AT_INITIAL, PRESS_ENTER_AT_INITIAL)
-                } else {
-                    (PRESS_RIGHT_AT_AFTER, PRESS_ENTER_AT_AFTER)
-                };
-                match timeout.current {
-                    tick if tick == press_right_at => {
-                        if resources.detector().detect_change_channel_menu_opened() {
-                            resources.input.send_key(KeyKind::Right);
-                        }
+            let (press_right_at, press_enter_at) = if retry_count == 0 {
+                (PRESS_RIGHT_AT_INITIAL, PRESS_ENTER_AT_INITIAL)
+            } else {
+                (PRESS_RIGHT_AT_AFTER, PRESS_ENTER_AT_AFTER)
+            };
+            match timeout.current {
+                tick if tick == press_right_at => {
+                    if resources.detector().detect_change_channel_menu_opened() {
+                        resources.input.send_key(KeyKind::Right);
                     }
-                    tick if tick == press_enter_at => {
-                        if resources.detector().detect_change_channel_menu_opened() {
-                            resources.input.send_key(KeyKind::Enter);
-                        }
-                    }
-                    _ => (),
                 }
-            })
+                tick if tick == press_enter_at => {
+                    if resources.detector().detect_change_channel_menu_opened() {
+                        resources.input.send_key(KeyKind::Enter);
+                    }
+                }
+                _ => (),
+            }
+            panicking.state = State::ChangingChannel(timeout, retry_count);
         }
     }
 }
@@ -177,9 +176,8 @@ fn update_going_to_town(resources: &Resources, panicking: &mut Panicking, key: K
 
     match next_timeout_lifecycle(timeout, 90) {
         Lifecycle::Started(timeout) => {
-            transition!(panicking, State::GoingToTown(timeout, retry_count), {
-                resources.input.send_key(key);
-            })
+            resources.input.send_key(key);
+            panicking.state = State::GoingToTown(timeout, retry_count);
         }
 
         Lifecycle::Ended => {
@@ -188,15 +186,14 @@ fn update_going_to_town(resources: &Resources, panicking: &mut Panicking, key: K
                 resources.input.send_key(KeyKind::Enter);
             }
 
-            transition_if!(
-                panicking,
-                State::GoingToTown(Timeout::default(), retry_count + 1),
-                State::Completing(Timeout::default(), true),
-                !has_confirm_button && retry_count < MAX_RETRY
-            );
+            panicking.state = if !has_confirm_button && retry_count < MAX_RETRY {
+                State::GoingToTown(Timeout::default(), retry_count + 1)
+            } else {
+                State::Completing(Timeout::default(), true)
+            };
         }
         Lifecycle::Updated(timeout) => {
-            transition!(panicking, State::GoingToTown(timeout, retry_count))
+            panicking.state = State::GoingToTown(timeout, retry_count);
         }
     }
 }
@@ -206,26 +203,26 @@ fn update_completing(panicking: &mut Panicking, minimap_state: Minimap) {
         panic!("panicking state is not completing")
     };
 
-    transition_if!(
-        panicking,
-        State::Completing(timeout, true),
-        matches!(panicking.to, PanicTo::Town)
-    );
+    if matches!(panicking.to, PanicTo::Town) {
+        panicking.state = State::Completing(timeout, true);
+        return;
+    }
 
     match next_timeout_lifecycle(timeout, 245) {
         Lifecycle::Ended => match minimap_state {
-            Minimap::Idle(idle) => transition_if!(
-                panicking,
-                State::ChangingChannel(Timeout::default(), 0),
-                State::Completing(timeout, true),
-                idle.has_any_other_player()
-            ),
+            Minimap::Idle(idle) => {
+                panicking.state = if idle.has_any_other_player() {
+                    State::ChangingChannel(Timeout::default(), 0)
+                } else {
+                    State::Completing(timeout, true)
+                };
+            }
             Minimap::Detecting => {
-                transition!(panicking, State::Completing(Timeout::default(), false))
+                panicking.state = State::Completing(Timeout::default(), false);
             }
         },
         Lifecycle::Started(timeout) | Lifecycle::Updated(timeout) => {
-            transition!(panicking, State::Completing(timeout, completed))
+            panicking.state = State::Completing(timeout, completed);
         }
     }
 }

@@ -1,11 +1,10 @@
 use super::{Player, timeout::Timeout};
 use crate::{
     bridge::KeyKind,
-    ecs::{Resources, transition, transition_if},
+    ecs::{Resources, transition},
     player::{
         Booster, PlayerEntity, next_action,
         timeout::{Lifecycle, next_timeout_lifecycle},
-        transition_from_action,
     },
 };
 
@@ -76,11 +75,12 @@ pub fn update_using_booster_state(resources: &Resources, player: &mut PlayerEnti
     }
 
     match next_action(&player.context) {
-        Some(_) => transition_from_action!(player, player_next_state, is_terminal),
-        None => transition!(
-            player,
-            Player::Idle // Force cancel if it is not initiated from an action
-        ),
+        Some(_) => {
+            if is_terminal {
+                player.context.clear_action_completed();
+            }
+        }
+        None => player.state = Player::Idle, // Force cancel if it is not initiated from an action
     }
 }
 
@@ -93,21 +93,23 @@ fn update_using(resources: &Resources, using: &mut UsingBooster, key: KeyKind) {
 
     match next_timeout_lifecycle(timeout, 60) {
         Lifecycle::Started(timeout) => transition!(using, State::Using(timeout)),
-        Lifecycle::Ended => transition_if!(
-            using,
-            State::Confirming(Timeout::default()),
-            State::Completing {
-                timeout: Timeout::default(),
-                completed: false,
-                failed: true
-            },
-            resources.detector().detect_admin_visible()
-        ),
-        Lifecycle::Updated(timeout) => transition!(using, State::Using(timeout), {
+        Lifecycle::Ended => {
+            using.state = if resources.detector().detect_admin_visible() {
+                State::Confirming(Timeout::default())
+            } else {
+                State::Completing {
+                    timeout: Timeout::default(),
+                    completed: false,
+                    failed: true,
+                }
+            };
+        }
+        Lifecycle::Updated(timeout) => {
             if timeout.current == PRESS_KEY_AT {
                 resources.input.send_key(key);
             }
-        }),
+            using.state = State::Using(timeout);
+        }
     }
 }
 
@@ -120,23 +122,19 @@ fn update_confirming(resources: &Resources, using: &mut UsingBooster) {
         Lifecycle::Started(timeout) => transition!(using, State::Confirming(timeout), {
             resources.input.send_key(KeyKind::Left);
         }),
-        Lifecycle::Ended => transition!(
-            using,
-            State::Completing {
+        Lifecycle::Ended => {
+            resources.input.send_key(KeyKind::Enter);
+            using.state = State::Completing {
                 timeout: Timeout::default(),
                 completed: false,
-                failed: false
-            },
-            {
-                resources.input.send_key(KeyKind::Enter);
-            }
-        ),
+                failed: false,
+            };
+        }
         Lifecycle::Updated(timeout) => {
-            transition!(using, State::Confirming(timeout), {
-                if timeout.current == 15 {
-                    resources.input.send_key(KeyKind::Left);
-                }
-            });
+            if timeout.current == 15 {
+                resources.input.send_key(KeyKind::Left);
+            }
+            using.state = State::Confirming(timeout);
         }
     }
 }
@@ -153,28 +151,22 @@ fn update_completing(resources: &Resources, using: &mut UsingBooster) {
 
     match next_timeout_lifecycle(timeout, 20) {
         Lifecycle::Started(timeout) | Lifecycle::Updated(timeout) => {
-            transition!(
-                using,
-                State::Completing {
-                    timeout,
-                    completed,
-                    failed
-                }
-            )
+            using.state = State::Completing {
+                timeout,
+                completed,
+                failed,
+            };
         }
-        Lifecycle::Ended => transition!(
-            using,
-            State::Completing {
+        Lifecycle::Ended => {
+            if resources.detector().detect_esc_settings() {
+                resources.input.send_key(KeyKind::Esc);
+            }
+            using.state = State::Completing {
                 timeout,
                 completed: true,
                 failed,
-            },
-            {
-                if resources.detector().detect_esc_settings() {
-                    resources.input.send_key(KeyKind::Esc);
-                }
-            }
-        ),
+            };
+        }
     }
 }
 

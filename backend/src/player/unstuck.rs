@@ -5,9 +5,7 @@ use crate::{
     bridge::KeyKind,
     ecs::{Resources, transition},
     minimap::Minimap,
-    player::{
-        MOVE_TIMEOUT, Player, PlayerAction, PlayerEntity, next_action, transition_from_action,
-    },
+    player::{MOVE_TIMEOUT, Player, PlayerAction, PlayerEntity, next_action},
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -77,7 +75,10 @@ pub fn update_unstucking_state(
             }
 
             match next_action(&player.context) {
-                Some(PlayerAction::Unstuck) => transition_from_action!(player, Player::Detecting),
+                Some(PlayerAction::Unstuck) => {
+                    player.context.clear_action_completed();
+                    player.state = Player::Detecting;
+                }
                 Some(_) | None => transition!(player, Player::Detecting),
             }
         }

@@ -16,12 +16,8 @@ use crate::{
 use crate::{debug::save_rune_for_training, solvers::SolvedArrow};
 
 macro_rules! transition {
-    ($entity:expr, $state:expr) => {{
-        $entity.state = $state;
-        return;
-    }};
-    ($entity:expr, $state:expr, $block:block) => {{
-        $block
+    ($entity:expr, $state:expr $(, $block:block)?) => {{
+        $( $block )?
         $entity.state = $state;
         return;
     }};
@@ -62,30 +58,6 @@ macro_rules! transition_if {
 
 pub(super) use transition_if;
 
-macro_rules! try_some_transition {
-    ($entity:expr, $state:expr, $expr:expr) => {
-        match $expr {
-            Some(val) => val,
-            None => {
-                $entity.state = $state;
-                return;
-            }
-        }
-    };
-    ($entity:expr, $state:expr, $expr:expr, $block:block) => {
-        match $expr {
-            Some(val) => val,
-            None => {
-                $block
-                $entity.state = $state;
-                return;
-            }
-        }
-    };
-}
-
-pub(super) use try_some_transition;
-
 macro_rules! try_ok_transition {
     ($entity:expr, $state:expr, $expr:expr) => {
         match $expr {
@@ -99,6 +71,21 @@ macro_rules! try_ok_transition {
 }
 
 pub(super) use try_ok_transition;
+
+macro_rules! unwrap_or_transition_and_return {
+    ($entity:expr, $state:expr, $expr:expr $(, $block:block)?) => {{
+        match $expr {
+            Some(v) => v,
+            None => {
+                $( $block )?
+                $entity.state = $state;
+                return;
+            }
+        }
+    }};
+}
+
+pub(super) use unwrap_or_transition_and_return;
 
 #[derive(Debug, Default)]
 #[cfg(debug_assertions)]

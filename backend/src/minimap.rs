@@ -12,7 +12,7 @@ use opencv::core::{MatTraitConst, Point, Rect, Vec4b};
 use crate::{
     array::Array,
     detect::{Detector, OtherPlayerKind},
-    ecs::{Resources, transition, transition_if, try_some_transition},
+    ecs::{Resources, transition, unwrap_or_transition_and_return},
     notification::NotificationKind,
     pathing::{MAX_PLATFORMS_COUNT, Platform, PlatformWithNeighbors, find_neighbors},
     player::{DOUBLE_JUMP_THRESHOLD, GRAPPLING_MAX_THRESHOLD, JUMP_THRESHOLD, Player},
@@ -252,7 +252,9 @@ fn update_idle_state(
     minimap_state: MinimapIdle,
     player_state: Player,
 ) {
-    transition_if!(matches!(player_state, Player::CashShopThenExit(_)));
+    if matches!(player_state, Player::CashShopThenExit(_)) {
+        return;
+    }
 
     let MinimapIdle {
         anchors,
@@ -267,12 +269,12 @@ fn update_idle_state(
     } = minimap_state;
     let detector = resources.detector();
 
-    let tl_pixel = try_some_transition!(
+    let tl_pixel = unwrap_or_transition_and_return!(
         minimap,
         Minimap::Detecting,
         pixel_at(&detector.mat(), anchors.tl.0)
     );
-    let br_pixel = try_some_transition!(
+    let br_pixel = unwrap_or_transition_and_return!(
         minimap,
         Minimap::Detecting,
         pixel_at(&detector.mat(), anchors.br.0)
