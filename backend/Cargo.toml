@@ -44,3 +44,5 @@ tonic-build = "*"
 [dev-dependencies]
 mockall = { version = "0.13.1", features = ["nightly"] }
 
+[lints]
+workspace = true

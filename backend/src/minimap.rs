@@ -12,7 +12,7 @@ use opencv::core::{MatTraitConst, Point, Rect, Vec4b};
 use crate::{
     array::Array,
     detect::{Detector, OtherPlayerKind},
-    ecs::{Resources, transition, transition_if, try_some_transition},
+    ecs::Resources,
     notification::NotificationKind,
     pathing::{MAX_PLATFORMS_COUNT, Platform, PlatformWithNeighbors, find_neighbors},
     player::{DOUBLE_JUMP_THRESHOLD, GRAPPLING_MAX_THRESHOLD, JUMP_THRESHOLD, Player},
@@ -252,7 +252,9 @@ fn update_idle_state(
     minimap_state: MinimapIdle,
     player_state: Player,
 ) {
-    transition_if!(matches!(player_state, Player::CashShopThenExit(_)));
+    if matches!(player_state, Player::CashShopThenExit(_)) {
+        return;
+    }
 
     let MinimapIdle {
         anchors,
@@ -267,16 +269,20 @@ fn update_idle_state(
     } = minimap_state;
     let detector = resources.detector();
 
-    let tl_pixel = try_some_transition!(
-        minimap,
-        Minimap::Detecting,
-        pixel_at(&detector.mat(), anchors.tl.0)
-    );
-    let br_pixel = try_some_transition!(
-        minimap,
-        Minimap::Detecting,
-        pixel_at(&detector.mat(), anchors.br.0)
-    );
+    let tl_pixel = match pixel_at(&detector.mat(), anchors.tl.0) {
+        Some(val) => val,
+        None => {
+            minimap.state = Minimap::Detecting;
+            return;
+        }
+    };
+    let br_pixel = match pixel_at(&detector.mat(), anchors.br.0) {
+        Some(val) => val,
+        None => {
+            minimap.state = Minimap::Detecting;
+            return;
+        }
+    };
     let tl_match = anchor_match(anchors.tl.1, tl_pixel);
     let br_match = anchor_match(anchors.br.1, br_pixel);
     if !tl_match && !br_match {
@@ -286,7 +292,8 @@ fn update_idle_state(
             (tl_pixel, br_pixel),
             (anchors.tl.1, anchors.br.1)
         );
-        transition!(minimap, Minimap::Detecting);
+        minimap.state = Minimap::Detecting;
+        return;
     }
 
     let partially_overlapping = (tl_match && !br_match) || (!tl_match && br_match);
