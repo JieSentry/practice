@@ -25,39 +25,6 @@ macro_rules! transition {
 
 pub(super) use transition;
 
-macro_rules! transition_if {
-    ($cond:expr) => {{
-        if $cond {
-            return;
-        }
-    }};
-    ($cond:expr, $block:block) => {{
-        if $cond {
-            $block
-            return;
-        }
-    }};
-    ($entity:expr, $state:expr, $cond:expr) => {{
-        if $cond {
-            $entity.state = $state;
-            return;
-        }
-    }};
-    ($entity:expr, $state:expr, $cond:expr, $block:block) => {{
-        if $cond {
-            $block
-            $entity.state = $state;
-            return;
-        }
-    }};
-    ($entity:expr, $true_state:expr, $false_state:expr, $cond:expr) => {{
-        $entity.state = if $cond { $true_state } else { $false_state };
-        return;
-    }};
-}
-
-pub(super) use transition_if;
-
 #[derive(Debug, Default)]
 #[cfg(debug_assertions)]
 pub struct Debug {
