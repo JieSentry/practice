@@ -52,7 +52,7 @@ pub fn update_using_booster_state(resources: &Resources, player: &mut PlayerEnti
         State::Using(_) => update_using(resources, &mut using, key),
         State::Confirming(_) => update_confirming(resources, &mut using),
         State::Completing { .. } => update_completing(resources, &mut using),
-    };
+    }
 
     let player_next_state = if matches!(
         using.state,

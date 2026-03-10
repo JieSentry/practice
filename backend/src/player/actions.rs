@@ -343,7 +343,7 @@ pub(super) fn update_from_auto_mob_action(
         player.context.clear_action_completed();
         player.state = Player::Idle;
         return;
-    };
+    }
 
     let direction = match x_direction {
         direction if direction > 0 => ActionKeyDirection::Right,

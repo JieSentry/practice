@@ -154,10 +154,10 @@ fn update_from_action(resources: &Resources, player: &mut PlayerEntity, minimap_
             if !context.config.rune_platforms_pathing {
                 player.state = Player::Moving(rune, false, None);
                 return;
-            };
+            }
             if !context.is_stationary {
                 return;
-            };
+            }
 
             let intermediates = find_intermediate_points(
                 &idle.platforms,

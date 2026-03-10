@@ -311,7 +311,7 @@ pub fn update_use_key_state(
                 use_key.state = State::Precondition;
             }
         }
-    };
+    }
 
     let player_next_state = if use_key.current_count >= use_key.count {
         Player::Idle
@@ -359,7 +359,7 @@ pub fn update_use_key_state(
             if !is_terminal {
                 player.state = player_next_state;
                 return;
-            };
+            }
 
             player.context.clear_unstucking(true);
             update_from_ping_pong_action(
@@ -486,7 +486,7 @@ fn update_using(resources: &Resources, context: &PlayerContext, use_key: &mut Us
                 update_holding_key(resources, use_key);
                 if use_key.key_hold_ticks > 0 {
                     return;
-                };
+                }
             }
         }
     }
@@ -534,7 +534,7 @@ fn update_changing_direction(
             if !resources.input.is_key_cleared(key) {
                 use_key.state = State::ChangingDirection(timeout.started(false));
                 return;
-            };
+            }
             resources.input.send_key(key);
             use_key.state = State::ChangingDirection(timeout);
         }

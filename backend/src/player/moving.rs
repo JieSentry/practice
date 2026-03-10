@@ -388,7 +388,7 @@ pub fn update_moving_state(
             resources.input.send_key_down(key);
             player.state = Player::Stalling(Timeout::default(), 3);
             return;
-        };
+        }
 
         player.state = Player::Moving(dest, exact, Some(intermediates));
         return;
@@ -412,7 +412,7 @@ fn abort_action_on_state_repeat(
         player.context.clear_action_completed();
         player.state = Player::Idle;
         return;
-    };
+    }
 
     player.state = player_next_state;
 }
@@ -429,7 +429,7 @@ fn update_from_action(player: &mut PlayerEntity, moving: Moving) {
             if wait_after_move_ticks > 0 {
                 player.state = Player::Stalling(Timeout::default(), wait_after_move_ticks);
                 return;
-            };
+            }
             player.state = Player::Idle;
             player.context.clear_unstucking(false);
             player.context.clear_action_completed();

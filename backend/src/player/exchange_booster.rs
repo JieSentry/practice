@@ -105,7 +105,7 @@ pub fn update_exchanging_booster_state(resources: &Resources, player: &mut Playe
         State::Exchanging(_, _) => update_exchanging(resources, &mut exchanging),
         State::Confirming(_, _) => update_confirming(resources, &mut exchanging),
         State::Completing(_, _) => update_completing(resources, &mut exchanging),
-    };
+    }
 
     let did_success = exchanging.success;
     let player_next_state = if matches!(exchanging.state, State::Completing(_, true)) {

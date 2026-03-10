@@ -76,7 +76,7 @@ pub fn update_panicking_state(
             update_going_to_town(resources, &mut panicking, key)
         }
         State::Completing(_, _) => update_completing(&mut panicking, minimap_state),
-    };
+    }
 
     let player_next_state = if matches!(panicking.state, State::Completing(_, true)) {
         Player::Idle

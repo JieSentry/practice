@@ -130,7 +130,7 @@ impl Services {
         mut world_event_rx: Receiver<WorldEvent>,
     ) -> Self {
         let capture_service = DefaultCaptureService::new();
-        let settings_service = DefaultSettingsService::new(settings.clone());
+        let settings_service = DefaultSettingsService::new(settings);
 
         let mut rotator = DefaultRotatorService::default();
         rotator.update_from_settings(&settings_service.settings());

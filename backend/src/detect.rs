@@ -2571,7 +2571,7 @@ fn detect_hexa_sol_erda(grayscale: &impl ToInputArray) -> Result<SolErda> {
 
     if detect_template(grayscale, &*TEMPLATE, Point::default(), 0.75).is_ok() {
         return Ok(SolErda::AtLeastOne);
-    };
+    }
 
     bail!("sol erda tracker menu not visible")
 }

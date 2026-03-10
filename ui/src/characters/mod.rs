@@ -782,7 +782,7 @@ fn CharactersKeyInput(
     let label = if optional {
         format!("{label} (optional)")
     } else {
-        label.to_string()
+        label
     };
 
     rsx! {

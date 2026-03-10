@@ -210,7 +210,7 @@ pub fn run_system(
 
         player.state = Player::Detecting;
         return;
-    };
+    }
 
     if player.context.reset_to_idle_next_update {
         player.context.reset_to_idle_next_update = false;

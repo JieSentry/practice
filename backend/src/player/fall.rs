@@ -110,14 +110,14 @@ pub fn update_falling_state(
                         .anchor(moving.pos),
                 );
                 return;
-            };
+            }
 
             // Check if destination is already reached before starting
             let (y_distance, y_direction) = moving.y_distance_direction_from(true, moving.pos);
             if y_direction >= 0 {
                 player.state = Player::Moving(moving.dest, moving.exact, moving.intermediates);
                 return;
-            };
+            }
 
             // Do the fall
             player.context.last_movement = Some(LastMovement::Falling);
@@ -181,11 +181,11 @@ fn update_from_action(
                 resources.input.send_key_up(KeyKind::Down);
                 player.state = Player::Moving(moving.dest, moving.exact, moving.intermediates);
                 return;
-            };
+            }
 
             if has_teleport_key && !moving.completed {
                 return;
-            };
+            }
 
             let (x_distance, x_direction) = moving.x_distance_direction_from(false, cur_pos);
             let (y_distance, _) = moving.y_distance_direction_from(false, cur_pos);

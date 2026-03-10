@@ -161,7 +161,7 @@ pub fn update_double_jumping_state(
                 player.state =
                     Player::DoubleJumping(double_jumping.moving(moving.timeout_started(false)));
                 return;
-            };
+            }
 
             player.context.last_movement = Some(LastMovement::DoubleJumping);
             player.state = Player::DoubleJumping(double_jumping.moving(moving));

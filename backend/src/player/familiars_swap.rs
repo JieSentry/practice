@@ -226,7 +226,7 @@ fn update_free_slots(resources: &Resources, swapping: &mut FamiliarsSwapping) {
             }
             swapping.state = State::FindCards(Timeout::default());
             return;
-        };
+        }
 
         // No slot is free so move to completing.
         swapping.success = true;
