@@ -99,7 +99,7 @@ pub fn update_panicking_state(
 
             update_going_to_town(resources, &mut panicking, key)
         }
-        State::Completing(_, _) => update_completing(&mut panicking, minimap_state),
+        State::Completing(_, _) => update_completing(resources, &mut panicking, minimap_state),
     }
 
     let player_next_state = if matches!(panicking.state, State::Completing(_, true)) {
@@ -134,7 +134,7 @@ fn update_changing_channel(
     minimap_state: Minimap,
     key: KeyKind,
 ) {
-    const INITIAL_DELAY: u32 = 170;
+    const INITIAL_DELAY: u32 = 150;
     const PRESS_KEY_INTERVAL: u32 = 15;
     const WAIT_UPDATE_MARGIN: u32 = 10;
 
@@ -232,7 +232,7 @@ fn update_going_to_town(resources: &Resources, panicking: &mut Panicking, key: K
     }
 }
 
-fn update_completing(panicking: &mut Panicking, minimap_state: Minimap) {
+fn update_completing(resources: &Resources, panicking: &mut Panicking, minimap_state: Minimap) {
     let State::Completing(timeout, completed) = panicking.state else {
         panic!("panicking state is not completing")
     };
@@ -245,11 +245,12 @@ fn update_completing(panicking: &mut Panicking, minimap_state: Minimap) {
     match next_timeout_lifecycle(timeout, 245) {
         Lifecycle::Ended => match minimap_state {
             Minimap::Idle(idle) => {
-                panicking.state = if idle.has_any_other_player() {
-                    State::ChangingChannel(Timeout::default(), 0)
+                if idle.has_any_other_player() {
+                    panicking.to_channel = Some(PanicToChannel::new(&resources.rng));
+                    panicking.state = State::ChangingChannel(Timeout::default(), 0);
                 } else {
-                    State::Completing(timeout, true)
-                };
+                    panicking.state = State::Completing(timeout, true);
+                }
             }
             Minimap::Detecting => {
                 panicking.state = State::Completing(Timeout::default(), false);
@@ -293,7 +294,7 @@ mod tests {
         for i in 1..=cycle_count {
             panicking.state = State::ChangingChannel(
                 Timeout {
-                    current: 169 + i * 15,
+                    current: 149 + i * 15,
                     started: true,
                     ..Default::default()
                 },
@@ -308,7 +309,7 @@ mod tests {
 
         panicking.state = State::ChangingChannel(
             Timeout {
-                current: 169 + 15 * (cycle_count + 1),
+                current: 149 + 15 * (cycle_count + 1),
                 started: true,
                 ..Default::default()
             },
@@ -378,7 +379,7 @@ mod tests {
         let mut panicking = Panicking::new(&Rng::default(), PanicTo::Channel);
         panicking.state = State::ChangingChannel(
             Timeout {
-                current: 180 + (panicking.to_channel.unwrap().cycle_count + 1) * 15,
+                current: 160 + (panicking.to_channel.unwrap().cycle_count + 1) * 15,
                 started: true,
                 ..Default::default()
             },
@@ -479,16 +480,18 @@ mod tests {
 
     #[test]
     fn update_completing_for_town_immediately_complete() {
+        let resources = Resources::new(None, None);
         let mut panicking = Panicking::new(&Rng::default(), PanicTo::Town);
         panicking.state = State::Completing(Timeout::default(), false);
 
-        update_completing(&mut panicking, Minimap::Detecting);
+        update_completing(&resources, &mut panicking, Minimap::Detecting);
 
         assert_matches!(panicking.state, State::Completing(_, true));
     }
 
     #[test]
     fn update_completing_for_channel_switch_to_idle_if_no_players() {
+        let resources = Resources::new(None, None);
         let mut panicking = Panicking::new(&Rng::default(), PanicTo::Channel);
         panicking.state = State::Completing(
             Timeout {
@@ -499,7 +502,11 @@ mod tests {
             false,
         );
 
-        update_completing(&mut panicking, Minimap::Idle(MinimapIdle::default()));
+        update_completing(
+            &resources,
+            &mut panicking,
+            Minimap::Idle(MinimapIdle::default()),
+        );
 
         assert_matches!(panicking.state, State::Completing(_, true));
     }
