@@ -72,21 +72,6 @@ macro_rules! try_ok_transition {
 
 pub(super) use try_ok_transition;
 
-macro_rules! unwrap_or_transition_and_return {
-    ($entity:expr, $state:expr, $expr:expr $(, $block:block)?) => {{
-        match $expr {
-            Some(v) => v,
-            None => {
-                $( $block )?
-                $entity.state = $state;
-                return;
-            }
-        }
-    }};
-}
-
-pub(super) use unwrap_or_transition_and_return;
-
 #[derive(Debug, Default)]
 #[cfg(debug_assertions)]
 pub struct Debug {
