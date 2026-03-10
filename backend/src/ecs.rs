@@ -58,20 +58,6 @@ macro_rules! transition_if {
 
 pub(super) use transition_if;
 
-macro_rules! try_ok_transition {
-    ($entity:expr, $state:expr, $expr:expr) => {
-        match $expr {
-            Ok(val) => val,
-            Err(_) => {
-                $entity.state = $state;
-                return;
-            }
-        }
-    };
-}
-
-pub(super) use try_ok_transition;
-
 #[derive(Debug, Default)]
 #[cfg(debug_assertions)]
 pub struct Debug {
