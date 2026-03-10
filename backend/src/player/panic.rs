@@ -9,6 +9,7 @@ use crate::{
         PlayerEntity, next_action,
         timeout::{Lifecycle, next_timeout_lifecycle},
     },
+    rng::Rng,
 };
 
 const MAX_RETRY: u32 = 3;
@@ -24,19 +25,42 @@ enum State {
 }
 
 #[derive(Debug, Clone, Copy)]
+struct PanicToChannel {
+    cycle_to_right: bool,
+    cycle_count: u32,
+    current_cycle_count: u32,
+}
+
+impl PanicToChannel {
+    fn new(rng: &Rng) -> Self {
+        Self {
+            cycle_to_right: rng.random_bool(0.5),
+            cycle_count: rng.random_range(1..=5),
+            current_cycle_count: 0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
 pub struct Panicking {
     state: State,
     pub to: PanicTo,
+    to_channel: Option<PanicToChannel>,
 }
 
 impl Panicking {
-    pub fn new(to: PanicTo) -> Self {
+    pub fn new(rng: &Rng, to: PanicTo) -> Self {
         Self {
             state: match to {
                 PanicTo::Channel => State::ChangingChannel(Timeout::default(), 0),
                 PanicTo::Town => State::GoingToTown(Timeout::default(), 0),
             },
             to,
+            to_channel: if matches!(to, PanicTo::Channel) {
+                Some(PanicToChannel::new(rng))
+            } else {
+                None
+            },
         }
     }
 }
@@ -110,29 +134,32 @@ fn update_changing_channel(
     minimap_state: Minimap,
     key: KeyKind,
 ) {
-    const PRESS_RIGHT_AT_AFTER: u32 = 15;
-    const PRESS_ENTER_AT_AFTER: u32 = 30;
-    const TIMEOUT_AFTER: u32 = 50;
-
-    const TIMEOUT_INITIAL: u32 = 220;
-    const PRESS_RIGHT_AT_INITIAL: u32 = 170;
-    const PRESS_ENTER_AT_INITIAL: u32 = 200;
+    const INITIAL_DELAY: u32 = 170;
+    const PRESS_KEY_INTERVAL: u32 = 15;
+    const WAIT_UPDATE_MARGIN: u32 = 10;
 
     let State::ChangingChannel(timeout, retry_count) = panicking.state else {
         panic!("panicking state is not changing channel")
     };
-    let max_timeout = if retry_count == 0 {
-        TIMEOUT_INITIAL
-    } else {
-        TIMEOUT_AFTER
-    };
-    match next_timeout_lifecycle(timeout, max_timeout) {
+
+    let to_channel = panicking
+        .to_channel
+        .as_mut()
+        .expect("channel panic must have PanicToChannel");
+
+    let start_delay = if retry_count == 0 { INITIAL_DELAY } else { 0 };
+    let cycle_timeout = to_channel.cycle_count * PRESS_KEY_INTERVAL;
+    let total_timeout = start_delay + cycle_timeout + PRESS_KEY_INTERVAL + WAIT_UPDATE_MARGIN;
+
+    match next_timeout_lifecycle(timeout, total_timeout) {
         Lifecycle::Started(timeout) => {
             if !resources.detector().detect_change_channel_menu_opened() {
                 resources.input.send_key(key);
             }
+
             panicking.state = State::ChangingChannel(timeout, retry_count);
         }
+
         Lifecycle::Ended => {
             if !matches!(minimap_state, Minimap::Idle(_)) {
                 panicking.state = State::Completing(Timeout::default(), false);
@@ -145,25 +172,32 @@ fn update_changing_channel(
                 State::Completing(Timeout::default(), true)
             };
         }
+
         Lifecycle::Updated(timeout) => {
-            let (press_right_at, press_enter_at) = if retry_count == 0 {
-                (PRESS_RIGHT_AT_INITIAL, PRESS_ENTER_AT_INITIAL)
-            } else {
-                (PRESS_RIGHT_AT_AFTER, PRESS_ENTER_AT_AFTER)
-            };
-            match timeout.current {
-                tick if tick == press_right_at => {
-                    if resources.detector().detect_change_channel_menu_opened() {
-                        resources.input.send_key(KeyKind::Right);
-                    }
+            if resources.detector().detect_change_channel_menu_opened() {
+                let direction_key = if to_channel.cycle_to_right {
+                    KeyKind::Right
+                } else {
+                    KeyKind::Left
+                };
+
+                let tick = timeout.current;
+                let cycle_relative_tick = tick.saturating_sub(start_delay);
+                if cycle_relative_tick > 0
+                    && cycle_relative_tick.is_multiple_of(PRESS_KEY_INTERVAL)
+                    && to_channel.current_cycle_count < to_channel.cycle_count
+                {
+                    resources.input.send_key(direction_key);
+                    to_channel.current_cycle_count += 1;
                 }
-                tick if tick == press_enter_at => {
-                    if resources.detector().detect_change_channel_menu_opened() {
-                        resources.input.send_key(KeyKind::Enter);
-                    }
+
+                let enter_relative_tick = cycle_relative_tick.saturating_sub(cycle_timeout);
+                if enter_relative_tick > 0 && enter_relative_tick.is_multiple_of(PRESS_KEY_INTERVAL)
+                {
+                    resources.input.send_key(KeyKind::Enter);
                 }
-                _ => (),
             }
+
             panicking.state = State::ChangingChannel(timeout, retry_count);
         }
     }
@@ -244,17 +278,37 @@ mod tests {
 
     #[test]
     fn update_changing_channel_and_send_key_keys() {
+        let mut panicking = Panicking::new(&Rng::default(), PanicTo::Channel);
+        let cycle_count = panicking.to_channel.unwrap().cycle_count;
+
         let mut keys = MockInput::default();
         let mut detector = MockDetector::default();
         detector
             .expect_detect_change_channel_menu_opened()
             .return_const(true);
-        keys.expect_send_key().times(2);
+        keys.expect_send_key().times(1 + cycle_count as usize);
+
         let resources = Resources::new(Some(keys), Some(detector));
-        let mut panicking = Panicking::new(PanicTo::Channel);
+
+        for i in 1..=cycle_count {
+            panicking.state = State::ChangingChannel(
+                Timeout {
+                    current: 169 + i * 15,
+                    started: true,
+                    ..Default::default()
+                },
+                0,
+            );
+
+            update_changing_channel(&resources, &mut panicking, Minimap::Detecting, KeyKind::F1);
+
+            assert_matches!(panicking.state, State::ChangingChannel(_, _));
+            assert_eq!(panicking.to_channel.unwrap().current_cycle_count, i);
+        }
+
         panicking.state = State::ChangingChannel(
             Timeout {
-                current: 169,
+                current: 169 + 15 * (cycle_count + 1),
                 started: true,
                 ..Default::default()
             },
@@ -262,33 +316,47 @@ mod tests {
         );
 
         update_changing_channel(&resources, &mut panicking, Minimap::Detecting, KeyKind::F1);
-        assert_matches!(panicking.state, State::ChangingChannel(_, _));
 
-        panicking.state = State::ChangingChannel(
-            Timeout {
-                current: 199,
-                started: true,
-                ..Default::default()
-            },
-            0,
-        );
-        update_changing_channel(&resources, &mut panicking, Minimap::Detecting, KeyKind::F1);
         assert_matches!(panicking.state, State::ChangingChannel(_, _));
+        assert_eq!(
+            panicking.to_channel.unwrap().current_cycle_count,
+            cycle_count
+        );
     }
 
     #[test]
     fn update_changing_channel_and_send_keys_retry() {
+        let mut panicking = Panicking::new(&Rng::default(), PanicTo::Channel);
+        let cycle_count = panicking.to_channel.unwrap().cycle_count;
+
         let mut keys = MockInput::default();
         let mut detector = MockDetector::default();
         detector
             .expect_detect_change_channel_menu_opened()
             .return_const(true);
-        keys.expect_send_key().times(2);
+        keys.expect_send_key().times(1 + cycle_count as usize);
+
         let resources = Resources::new(Some(keys), Some(detector));
-        let mut panicking = Panicking::new(PanicTo::Channel);
+
+        for i in 1..=cycle_count {
+            panicking.state = State::ChangingChannel(
+                Timeout {
+                    current: i * 15 - 1,
+                    started: true,
+                    ..Default::default()
+                },
+                1,
+            );
+
+            update_changing_channel(&resources, &mut panicking, Minimap::Detecting, KeyKind::F1);
+
+            assert_matches!(panicking.state, State::ChangingChannel(_, _));
+            assert_eq!(panicking.to_channel.unwrap().current_cycle_count, i);
+        }
+
         panicking.state = State::ChangingChannel(
             Timeout {
-                current: 14,
+                current: 15 * (cycle_count + 1) - 1,
                 started: true,
                 ..Default::default()
             },
@@ -296,27 +364,21 @@ mod tests {
         );
 
         update_changing_channel(&resources, &mut panicking, Minimap::Detecting, KeyKind::F1);
-        assert_matches!(panicking.state, State::ChangingChannel(_, _));
 
-        panicking.state = State::ChangingChannel(
-            Timeout {
-                current: 29,
-                started: true,
-                ..Default::default()
-            },
-            1,
-        );
-        update_changing_channel(&resources, &mut panicking, Minimap::Detecting, KeyKind::F1);
         assert_matches!(panicking.state, State::ChangingChannel(_, _));
+        assert_eq!(
+            panicking.to_channel.unwrap().current_cycle_count,
+            cycle_count
+        );
     }
 
     #[test]
     fn update_changing_channel_complete_if_minimap_not_idle() {
         let resources = Resources::new(None, None);
-        let mut panicking = Panicking::new(PanicTo::Channel);
+        let mut panicking = Panicking::new(&Rng::default(), PanicTo::Channel);
         panicking.state = State::ChangingChannel(
             Timeout {
-                current: 220,
+                current: 180 + (panicking.to_channel.unwrap().cycle_count + 1) * 15,
                 started: true,
                 ..Default::default()
             },
@@ -331,10 +393,10 @@ mod tests {
     #[test]
     fn update_changing_channel_complete_if_minimap_not_idle_retry() {
         let resources = Resources::new(None, None);
-        let mut panicking = Panicking::new(PanicTo::Channel);
+        let mut panicking = Panicking::new(&Rng::default(), PanicTo::Channel);
         panicking.state = State::ChangingChannel(
             Timeout {
-                current: 50,
+                current: 10 + (panicking.to_channel.unwrap().cycle_count + 1) * 15,
                 started: true,
                 ..Default::default()
             },
@@ -351,7 +413,7 @@ mod tests {
         let mut keys = MockInput::default();
         keys.expect_send_key().once().with(eq(KeyKind::F2));
         let resources = Resources::new(Some(keys), None);
-        let mut panicking = Panicking::new(PanicTo::Town);
+        let mut panicking = Panicking::new(&Rng::default(), PanicTo::Town);
         panicking.state = State::GoingToTown(Timeout::default(), 0);
 
         update_going_to_town(&resources, &mut panicking, KeyKind::F2);
@@ -368,7 +430,7 @@ mod tests {
             .expect_detect_popup_confirm_button()
             .returning(|| Ok(Rect::default()));
         let resources = Resources::new(Some(keys), Some(detector));
-        let mut panicking = Panicking::new(PanicTo::Town);
+        let mut panicking = Panicking::new(&Rng::default(), PanicTo::Town);
         panicking.state = State::GoingToTown(
             Timeout {
                 started: true,
@@ -390,7 +452,7 @@ mod tests {
             .expect_detect_popup_confirm_button()
             .returning(|| Err(anyhow!("button not found")));
         let resources = Resources::new(None, Some(detector));
-        let mut panicking = Panicking::new(PanicTo::Town);
+        let mut panicking = Panicking::new(&Rng::default(), PanicTo::Town);
         panicking.state = State::GoingToTown(
             Timeout {
                 started: true,
@@ -417,7 +479,7 @@ mod tests {
 
     #[test]
     fn update_completing_for_town_immediately_complete() {
-        let mut panicking = Panicking::new(PanicTo::Town);
+        let mut panicking = Panicking::new(&Rng::default(), PanicTo::Town);
         panicking.state = State::Completing(Timeout::default(), false);
 
         update_completing(&mut panicking, Minimap::Detecting);
@@ -427,7 +489,7 @@ mod tests {
 
     #[test]
     fn update_completing_for_channel_switch_to_idle_if_no_players() {
-        let mut panicking = Panicking::new(PanicTo::Channel);
+        let mut panicking = Panicking::new(&Rng::default(), PanicTo::Channel);
         panicking.state = State::Completing(
             Timeout {
                 current: 245,

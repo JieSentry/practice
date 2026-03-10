@@ -198,7 +198,7 @@ fn update_from_action(resources: &Resources, player: &mut PlayerEntity, minimap_
         }
 
         Some(PlayerAction::Panic(panic)) => {
-            player.state = Player::Panicking(Panicking::new(panic.to));
+            player.state = Player::Panicking(Panicking::new(&resources.rng, panic.to));
         }
 
         Some(PlayerAction::UseBooster(using)) => {

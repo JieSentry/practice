@@ -132,7 +132,7 @@ mod tests {
         assert!(service.character().is_none());
 
         let character = mock_character();
-        service.update_character(Some(character.clone()));
+        service.update_character(Some(character));
         let current = service.character().unwrap();
 
         assert_eq!(current, &mock_character());
