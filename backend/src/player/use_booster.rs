@@ -1,7 +1,7 @@
 use super::{Player, timeout::Timeout};
 use crate::{
     bridge::KeyKind,
-    ecs::{Resources, transition},
+    ecs::Resources,
     player::{
         Booster, PlayerEntity, next_action,
         timeout::{Lifecycle, next_timeout_lifecycle},
@@ -92,7 +92,9 @@ fn update_using(resources: &Resources, using: &mut UsingBooster, key: KeyKind) {
     };
 
     match next_timeout_lifecycle(timeout, 60) {
-        Lifecycle::Started(timeout) => transition!(using, State::Using(timeout)),
+        Lifecycle::Started(timeout) => {
+            using.state = State::Using(timeout);
+        }
         Lifecycle::Ended => {
             using.state = if resources.detector().detect_admin_visible() {
                 State::Confirming(Timeout::default())
@@ -119,9 +121,10 @@ fn update_confirming(resources: &Resources, using: &mut UsingBooster) {
     };
 
     match next_timeout_lifecycle(timeout, 30) {
-        Lifecycle::Started(timeout) => transition!(using, State::Confirming(timeout), {
+        Lifecycle::Started(timeout) => {
             resources.input.send_key(KeyKind::Left);
-        }),
+            using.state = State::Confirming(timeout);
+        }
         Lifecycle::Ended => {
             resources.input.send_key(KeyKind::Enter);
             using.state = State::Completing {

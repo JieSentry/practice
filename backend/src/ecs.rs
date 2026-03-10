@@ -15,16 +15,6 @@ use crate::{
 #[cfg(debug_assertions)]
 use crate::{debug::save_rune_for_training, solvers::SolvedArrow};
 
-macro_rules! transition {
-    ($entity:expr, $state:expr $(, $block:block)?) => {{
-        $( $block )?
-        $entity.state = $state;
-        return;
-    }};
-}
-
-pub(super) use transition;
-
 #[derive(Debug, Default)]
 #[cfg(debug_assertions)]
 pub struct Debug {
