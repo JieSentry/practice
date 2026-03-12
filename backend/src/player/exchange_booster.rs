@@ -93,7 +93,7 @@ impl ExchangingBooster {
 }
 
 /// Updates [`Player::ExchangingBooster`] contextual state.
-pub fn update_exchanging_booster_state(resources: &Resources, player: &mut PlayerEntity) {
+pub fn update_exchanging_booster_state(resources: &mut Resources, player: &mut PlayerEntity) {
     let Player::ExchangingBooster(mut exchanging) = player.state.clone() else {
         panic!("state is not exchanging booster")
     };
@@ -117,21 +117,21 @@ pub fn update_exchanging_booster_state(resources: &Resources, player: &mut Playe
 
     match next_action(&player.context) {
         Some(_) => {
-            if !is_terminal {
-                return;
+            if is_terminal {
+                player.context.clear_action_completed();
+                if did_success {
+                    player.context.clear_booster_fail_count(Booster::Hexa);
+                }
             }
 
-            player.context.clear_action_completed();
-            if did_success {
-                player.context.clear_booster_fail_count(Booster::Hexa);
-            }
+            player.state = player_next_state;
         }
 
         None => player.state = Player::Idle,
     }
 }
 
-fn update_open_hexa_menu(resources: &Resources, exchanging: &mut ExchangingBooster) {
+fn update_open_hexa_menu(resources: &mut Resources, exchanging: &mut ExchangingBooster) {
     let State::OpenHexaMenu(timeout) = exchanging.state else {
         panic!("exchanging booster state is not opening hexa menu")
     };
@@ -169,7 +169,7 @@ fn update_open_hexa_menu(resources: &Resources, exchanging: &mut ExchangingBoost
     }
 }
 
-fn update_open_exchanging_menu(resources: &Resources, exchanging: &mut ExchangingBooster) {
+fn update_open_exchanging_menu(resources: &mut Resources, exchanging: &mut ExchangingBooster) {
     let State::OpenExchangingMenu(timeout, bbox) = exchanging.state else {
         panic!("exchanging booster state is not opening exchanging menu")
     };
@@ -197,7 +197,7 @@ fn update_open_exchanging_menu(resources: &Resources, exchanging: &mut Exchangin
     }
 }
 
-fn update_open_booster_menu(resources: &Resources, exchanging: &mut ExchangingBooster) {
+fn update_open_booster_menu(resources: &mut Resources, exchanging: &mut ExchangingBooster) {
     let State::OpenBoosterMenu(timeout, bbox) = exchanging.state else {
         panic!("exchanging booster state is not opening booster menu")
     };
@@ -225,7 +225,7 @@ fn update_open_booster_menu(resources: &Resources, exchanging: &mut ExchangingBo
     }
 }
 
-fn update_exchanging(resources: &Resources, exchanging: &mut ExchangingBooster) {
+fn update_exchanging(resources: &mut Resources, exchanging: &mut ExchangingBooster) {
     const TYPE_INTERVAL: u32 = 10;
 
     let State::Exchanging(timeout, bbox) = exchanging.state else {
@@ -271,7 +271,7 @@ fn update_exchanging(resources: &Resources, exchanging: &mut ExchangingBooster) 
         }
     }
 }
-fn update_confirming(resources: &Resources, exchanging: &mut ExchangingBooster) {
+fn update_confirming(resources: &mut Resources, exchanging: &mut ExchangingBooster) {
     let State::Confirming(timeout, bbox) = exchanging.state else {
         panic!("exchanging booster state is not confirming")
     };
@@ -288,7 +288,7 @@ fn update_confirming(resources: &Resources, exchanging: &mut ExchangingBooster) 
     }
 }
 
-fn update_completing(resources: &Resources, exchanging: &mut ExchangingBooster) {
+fn update_completing(resources: &mut Resources, exchanging: &mut ExchangingBooster) {
     let State::Completing(timeout, completed) = exchanging.state else {
         panic!("exchanging booster state is not completing")
     };
@@ -357,11 +357,11 @@ mod tests {
             .with(eq(15), eq(15), eq(MouseKind::Click))
             .once();
 
-        let resources = Resources::new(Some(input), Some(detector));
+        let mut resources = Resources::new(Some(input), Some(detector));
         let mut exchanging = ExchangingBooster::new(1, false);
         exchanging.state = State::OpenHexaMenu(Timeout::default());
 
-        update_open_hexa_menu(&resources, &mut exchanging);
+        update_open_hexa_menu(&mut resources, &mut exchanging);
         assert_matches!(exchanging.state, State::OpenHexaMenu(_));
     }
 
@@ -372,7 +372,7 @@ mod tests {
             .expect_detect_hexa_erda_conversion_button()
             .once()
             .returning(|| Ok(rect(30, 40)));
-        let resources = Resources::new(None, Some(detector));
+        let mut resources = Resources::new(None, Some(detector));
 
         let mut exchanging = ExchangingBooster::new(1, false);
         exchanging.state = State::OpenHexaMenu(Timeout {
@@ -381,7 +381,7 @@ mod tests {
             ..Default::default()
         });
 
-        update_open_hexa_menu(&resources, &mut exchanging);
+        update_open_hexa_menu(&mut resources, &mut exchanging);
         assert_matches!(exchanging.state, State::OpenExchangingMenu(_, _));
     }
 
@@ -392,7 +392,7 @@ mod tests {
             .expect_detect_hexa_erda_conversion_button()
             .once()
             .returning(|| Err(anyhow!("error")));
-        let resources = Resources::new(None, Some(detector));
+        let mut resources = Resources::new(None, Some(detector));
 
         let mut exchanging = ExchangingBooster::new(1, false);
         exchanging.state = State::OpenHexaMenu(Timeout {
@@ -401,7 +401,7 @@ mod tests {
             ..Default::default()
         });
 
-        update_open_hexa_menu(&resources, &mut exchanging);
+        update_open_hexa_menu(&mut resources, &mut exchanging);
         assert_matches!(exchanging.state, State::Completing(_, false));
     }
 
@@ -412,12 +412,12 @@ mod tests {
             .expect_send_mouse()
             .with(eq(15), eq(25), eq(MouseKind::Click))
             .once();
-        let resources = Resources::new(Some(input), None);
+        let mut resources = Resources::new(Some(input), None);
 
         let mut exchanging = ExchangingBooster::new(1, false);
         exchanging.state = State::OpenExchangingMenu(Timeout::default(), rect(10, 20));
 
-        update_open_exchanging_menu(&resources, &mut exchanging);
+        update_open_exchanging_menu(&mut resources, &mut exchanging);
         assert_matches!(exchanging.state, State::OpenExchangingMenu(_, _));
     }
 
@@ -428,7 +428,7 @@ mod tests {
             .expect_detect_hexa_booster_button()
             .once()
             .returning(|| Ok(rect(40, 50)));
-        let resources = Resources::new(None, Some(detector));
+        let mut resources = Resources::new(None, Some(detector));
 
         let mut exchanging = ExchangingBooster::new(1, false);
         exchanging.state = State::OpenExchangingMenu(
@@ -440,7 +440,7 @@ mod tests {
             rect(10, 20),
         );
 
-        update_open_exchanging_menu(&resources, &mut exchanging);
+        update_open_exchanging_menu(&mut resources, &mut exchanging);
         assert_matches!(exchanging.state, State::OpenBoosterMenu(_, _));
     }
 
@@ -457,7 +457,7 @@ mod tests {
                 .in_sequence(&mut sequence);
         }
 
-        let resources = Resources::new(Some(input), None);
+        let mut resources = Resources::new(Some(input), None);
         let mut exchanging = ExchangingBooster::new(5, false);
         for i in 1..=expected_keys.len() {
             let timeout = Timeout {
@@ -466,7 +466,7 @@ mod tests {
                 ..Default::default()
             };
             exchanging.state = State::Exchanging(timeout, rect(10, 10));
-            update_exchanging(&resources, &mut exchanging);
+            update_exchanging(&mut resources, &mut exchanging);
         }
         let index = match exchanging.amount {
             ExchangeAmount::All => unreachable!(),
@@ -488,12 +488,12 @@ mod tests {
             .expect_send_mouse()
             .with(eq(35), eq(15), eq(MouseKind::Click))
             .once();
-        let resources = Resources::new(Some(input), None);
+        let mut resources = Resources::new(Some(input), None);
 
         let mut exchanging = ExchangingBooster::new(1, true); // all = true → no amount
         exchanging.state = State::Exchanging(Timeout::default(), rect(30, 10));
 
-        update_exchanging(&resources, &mut exchanging);
+        update_exchanging(&mut resources, &mut exchanging);
         assert_matches!(exchanging.state, State::Exchanging(_, _));
     }
 
@@ -504,7 +504,7 @@ mod tests {
             .expect_detect_hexa_convert_button()
             .once()
             .returning(|| Ok(rect(100, 200)));
-        let resources = Resources::new(None, Some(detector));
+        let mut resources = Resources::new(None, Some(detector));
 
         let mut exchanging = ExchangingBooster::new(1, false);
         exchanging.state = State::Exchanging(
@@ -516,7 +516,7 @@ mod tests {
             rect(10, 10),
         );
 
-        update_exchanging(&resources, &mut exchanging);
+        update_exchanging(&mut resources, &mut exchanging);
         assert_matches!(exchanging.state, State::Confirming(_, _));
     }
 
@@ -527,18 +527,18 @@ mod tests {
             .expect_send_mouse()
             .with(eq(15), eq(25), eq(MouseKind::Click))
             .once();
-        let resources = Resources::new(Some(input), None);
+        let mut resources = Resources::new(Some(input), None);
 
         let mut exchanging = ExchangingBooster::new(1, false);
         exchanging.state = State::Confirming(Timeout::default(), rect(10, 20));
 
-        update_confirming(&resources, &mut exchanging);
+        update_confirming(&mut resources, &mut exchanging);
         assert_matches!(exchanging.state, State::Confirming(_, _));
     }
 
     #[test]
     fn update_confirming_ends_and_completes() {
-        let resources = Resources::new(None, None);
+        let mut resources = Resources::new(None, None);
         let mut exchanging = ExchangingBooster::new(1, false);
         exchanging.state = State::Confirming(
             Timeout {
@@ -549,7 +549,7 @@ mod tests {
             rect(10, 20),
         );
 
-        update_confirming(&resources, &mut exchanging);
+        update_confirming(&mut resources, &mut exchanging);
         assert_matches!(exchanging.state, State::Completing(_, false));
     }
 
@@ -560,7 +560,7 @@ mod tests {
         let mut input = MockInput::default();
         input.expect_send_key().with(eq(KeyKind::Esc)).once();
 
-        let resources = Resources::new(Some(input), Some(detector));
+        let mut resources = Resources::new(Some(input), Some(detector));
 
         let mut exchanging = ExchangingBooster::new(1, false);
         exchanging.state = State::Completing(
@@ -572,7 +572,7 @@ mod tests {
             false,
         );
 
-        update_completing(&resources, &mut exchanging);
+        update_completing(&mut resources, &mut exchanging);
         assert_matches!(exchanging.state, State::Completing(_, true));
     }
 
@@ -580,7 +580,7 @@ mod tests {
     fn update_completing_updates_without_esc() {
         let detector = MockDetector::default();
         let input = MockInput::default();
-        let resources = Resources::new(Some(input), Some(detector));
+        let mut resources = Resources::new(Some(input), Some(detector));
 
         let mut exchanging = ExchangingBooster::new(1, false);
         exchanging.state = State::Completing(
@@ -592,7 +592,7 @@ mod tests {
             false,
         );
 
-        update_completing(&resources, &mut exchanging);
+        update_completing(&mut resources, &mut exchanging);
         assert_matches!(exchanging.state, State::Completing(_, false));
     }
 }

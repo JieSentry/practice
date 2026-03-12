@@ -65,7 +65,7 @@ impl IndexMut<SkillKind> for SkillEntities {
     }
 }
 
-pub fn run_system(resources: &Resources, skill: &mut SkillEntity, player_state: Player) {
+pub fn run_system(resources: &mut Resources, skill: &mut SkillEntity, player_state: Player) {
     if matches!(player_state, Player::CashShopThenExit(_)) {
         return;
     }
@@ -79,7 +79,7 @@ pub fn run_system(resources: &Resources, skill: &mut SkillEntity, player_state: 
 }
 
 fn update_idle_state(
-    resources: &Resources,
+    resources: &mut Resources,
     skill: &mut SkillEntity,
     anchor_point: Point,
     anchor_pixel: Vec4b,
@@ -102,7 +102,7 @@ fn update_idle_state(
 }
 
 #[inline]
-fn update_detection_state(resources: &Resources, skill: &mut SkillEntity) {
+fn update_detection_state(resources: &mut Resources, skill: &mut SkillEntity) {
     let kind = skill.context.kind;
     let task = &mut skill.context.task;
     let update = update_detection_task(resources, 1000, task, move |detector| {
@@ -179,7 +179,7 @@ mod tests {
         (detector, rect)
     }
 
-    async fn run_system_until_task_completed(resources: &Resources, skill: &mut SkillEntity) {
+    async fn run_system_until_task_completed(resources: &mut Resources, skill: &mut SkillEntity) {
         while !skill
             .context
             .task
@@ -194,13 +194,13 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn run_system_detecting_to_idle() {
         let (detector, rect) = create_mock_detector(255, false);
-        let resources = Resources::new(None, Some(detector));
+        let mut resources = Resources::new(None, Some(detector));
         let mut skill = SkillEntity {
             state: Skill::Detecting,
             context: SkillContext::new(SkillKind::ErdaShower),
         };
 
-        run_system_until_task_completed(&resources, &mut skill).await;
+        run_system_until_task_completed(&mut resources, &mut skill).await;
 
         match skill.state {
             Skill::Idle(point, pixel) => {
@@ -214,13 +214,13 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn run_system_detecting_to_detecting() {
         let (detector, _) = create_mock_detector(255, true);
-        let resources = Resources::new(None, Some(detector));
+        let mut resources = Resources::new(None, Some(detector));
         let mut skill = SkillEntity {
             state: Skill::Detecting,
             context: SkillContext::new(SkillKind::ErdaShower),
         };
 
-        run_system_until_task_completed(&resources, &mut skill).await;
+        run_system_until_task_completed(&mut resources, &mut skill).await;
 
         assert_matches!(skill.state, Skill::Detecting);
     }
@@ -228,13 +228,13 @@ mod tests {
     #[test]
     fn run_system_idle_to_detecting() {
         let (detector, rect) = create_mock_detector(200, true);
-        let resources = Resources::new(None, Some(detector));
+        let mut resources = Resources::new(None, Some(detector));
         let mut skill = SkillEntity {
             state: Skill::Idle((rect.tl() + rect.br()) / 2, Vec4b::all(255)),
             context: SkillContext::new(SkillKind::ErdaShower),
         };
 
-        run_system(&resources, &mut skill, Player::Idle);
+        run_system(&mut resources, &mut skill, Player::Idle);
 
         assert_matches!(skill.state, Skill::Detecting);
     }

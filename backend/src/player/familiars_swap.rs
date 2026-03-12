@@ -104,7 +104,7 @@ impl FamiliarsSwapping {
 ///
 /// Note: This state does not use any [`Task`], so all detections are blocking. But this should be
 /// acceptable for this state.
-pub fn update_familiars_swapping_state(resources: &Resources, player: &mut PlayerEntity) {
+pub fn update_familiars_swapping_state(resources: &mut Resources, player: &mut PlayerEntity) {
     let Player::FamiliarsSwapping(mut swapping) = player.state else {
         panic!("state is not familiars swapping")
     };
@@ -156,7 +156,7 @@ pub fn update_familiars_swapping_state(resources: &Resources, player: &mut Playe
     }
 }
 
-fn update_open_menu(resources: &Resources, swapping: &mut FamiliarsSwapping, key: KeyKind) {
+fn update_open_menu(resources: &mut Resources, swapping: &mut FamiliarsSwapping, key: KeyKind) {
     let State::OpenMenu(timeout) = swapping.state else {
         panic!("familiars swapping state is not opening menu");
     };
@@ -189,7 +189,7 @@ fn update_open_menu(resources: &Resources, swapping: &mut FamiliarsSwapping, key
     }
 }
 
-fn update_find_slots(resources: &Resources, swapping: &mut FamiliarsSwapping) {
+fn update_find_slots(resources: &mut Resources, swapping: &mut FamiliarsSwapping) {
     // Detect familiar slots and whether each slot is free
     if swapping.slots.is_empty() {
         let vec = resources.detector().detect_familiar_slots();
@@ -213,9 +213,9 @@ fn update_find_slots(resources: &Resources, swapping: &mut FamiliarsSwapping) {
     swapping.state = State::FreeSlots(FAMILIAR_SLOTS - 1, false);
 }
 
-fn update_free_slots(resources: &Resources, swapping: &mut FamiliarsSwapping) {
+fn update_free_slots(resources: &mut Resources, swapping: &mut FamiliarsSwapping) {
     #[inline]
-    fn find_cards_or_complete(resources: &Resources, swapping: &mut FamiliarsSwapping) {
+    fn find_cards_or_complete(resources: &mut Resources, swapping: &mut FamiliarsSwapping) {
         if swapping.slots.iter().any(|slot| slot.is_free) {
             if let Ok(bbox) = resources.detector().detect_familiar_level_button() {
                 let (x, y) = bbox_click_point(bbox);
@@ -265,7 +265,7 @@ fn update_free_slots(resources: &Resources, swapping: &mut FamiliarsSwapping) {
     }
 }
 
-fn update_free_slot(resources: &Resources, swapping: &mut FamiliarsSwapping) {
+fn update_free_slot(resources: &mut Resources, swapping: &mut FamiliarsSwapping) {
     const FAMILIAR_FREE_SLOTS_TIMEOUT: u32 = 10;
     const FAMILIAR_CHECK_FREE_TICK: u32 = FAMILIAR_FREE_SLOTS_TIMEOUT;
     const FAMILIAR_CHECK_LVL_5_TICK: u32 = 5;
@@ -351,7 +351,7 @@ fn update_free_slot(resources: &Resources, swapping: &mut FamiliarsSwapping) {
     }
 }
 
-fn update_find_cards(resources: &Resources, swapping: &mut FamiliarsSwapping) {
+fn update_find_cards(resources: &mut Resources, swapping: &mut FamiliarsSwapping) {
     let State::FindCards(timeout) = swapping.state else {
         panic!("familiars swapping state is not finding cards");
     };
@@ -389,7 +389,7 @@ fn update_find_cards(resources: &Resources, swapping: &mut FamiliarsSwapping) {
     }
 }
 
-fn update_swapping(resources: &Resources, swapping: &mut FamiliarsSwapping) {
+fn update_swapping(resources: &mut Resources, swapping: &mut FamiliarsSwapping) {
     /// Checks only for the first fixed number of familiar cards.
     const MAX_CHECK_COUNT: usize = 10;
     const SWAPPING_TIMEOUT: u32 = 10;
@@ -459,7 +459,7 @@ fn update_swapping(resources: &Resources, swapping: &mut FamiliarsSwapping) {
 }
 
 #[inline]
-fn update_scrolling(resources: &Resources, swapping: &mut FamiliarsSwapping) {
+fn update_scrolling(resources: &mut Resources, swapping: &mut FamiliarsSwapping) {
     const MAX_RETRY: u32 = 3;
 
     /// Timeout for scrolling familiar cards list.
@@ -525,7 +525,7 @@ fn update_scrolling(resources: &Resources, swapping: &mut FamiliarsSwapping) {
 }
 
 #[inline]
-fn update_saving(resources: &Resources, swapping: &mut FamiliarsSwapping) {
+fn update_saving(resources: &mut Resources, swapping: &mut FamiliarsSwapping) {
     let State::Saving(timeout) = swapping.state else {
         panic!("familiars swapping state is not saving")
     };
@@ -554,7 +554,7 @@ fn update_saving(resources: &Resources, swapping: &mut FamiliarsSwapping) {
 
 #[inline]
 fn update_completing(
-    resources: &Resources,
+    resources: &mut Resources,
     swapping: &mut FamiliarsSwapping,
     timeout: Timeout,
     completed: bool,
@@ -590,7 +590,7 @@ mod tests {
 
     #[test]
     fn update_free_slots_advance_index_if_already_free() {
-        let resources = Resources::new(None, None);
+        let mut resources = Resources::new(None, None);
         let mut swapping = FamiliarsSwapping::new(SwappableFamiliars::All, Array::new());
         let bbox = Default::default();
         swapping.slots.push(FamiliarSlot {
@@ -603,7 +603,7 @@ mod tests {
         }); // Index 1 already free
         swapping.state = State::FreeSlots(1, false);
 
-        update_free_slots(&resources, &mut swapping);
+        update_free_slots(&mut resources, &mut swapping);
 
         assert_matches!(swapping.state, State::FreeSlots(0, false));
     }
@@ -624,7 +624,7 @@ mod tests {
                 function(|action| matches!(action, MouseKind::Click)),
             )
             .once();
-        let resources = Resources::new(Some(keys), Some(detector));
+        let mut resources = Resources::new(Some(keys), Some(detector));
 
         let mut swapping = FamiliarsSwapping::new(SwappableFamiliars::All, Array::new());
         let bbox_default = Default::default();
@@ -634,14 +634,14 @@ mod tests {
         });
         swapping.state = State::FreeSlots(0, false);
 
-        update_free_slots(&resources, &mut swapping);
+        update_free_slots(&mut resources, &mut swapping);
 
         assert_matches!(swapping.state, State::FindCards(_));
     }
 
     #[test]
     fn update_free_slots_can_free() {
-        let resources = Resources::new(None, None);
+        let mut resources = Resources::new(None, None);
         let mut swapping = FamiliarsSwapping::new(SwappableFamiliars::All, Array::new());
         let bbox = Default::default();
         swapping.slots.push(FamiliarSlot {
@@ -655,14 +655,14 @@ mod tests {
         });
         swapping.state = State::FreeSlots(1, false);
 
-        update_free_slots(&resources, &mut swapping);
+        update_free_slots(&mut resources, &mut swapping);
 
         assert_matches!(swapping.state, State::FreeSlot(_, 1));
     }
 
     #[test]
     fn update_free_slots_cannot_free() {
-        let resources = Resources::new(None, None);
+        let mut resources = Resources::new(None, None);
         let mut swapping = FamiliarsSwapping::new(SwappableFamiliars::Last, Array::new());
         let bbox = Default::default();
         swapping.slots.push(FamiliarSlot {
@@ -676,7 +676,7 @@ mod tests {
         });
         swapping.state = State::FreeSlots(1, false);
 
-        update_free_slots(&resources, &mut swapping);
+        update_free_slots(&mut resources, &mut swapping);
 
         // Completing because there is no free slot to swap
         assert_matches!(swapping.state, State::Completing(_, _));
@@ -692,7 +692,7 @@ mod tests {
             .expect_detect_familiar_hover_level()
             .once()
             .returning(|| Ok(FamiliarLevel::Level5));
-        let resources = Resources::new(Some(keys), Some(detector));
+        let mut resources = Resources::new(Some(keys), Some(detector));
 
         let mut swapping = FamiliarsSwapping::new(SwappableFamiliars::All, Array::new());
         let bbox = Default::default();
@@ -709,7 +709,7 @@ mod tests {
             0,
         );
 
-        update_free_slot(&resources, &mut swapping);
+        update_free_slot(&mut resources, &mut swapping);
 
         // Should still be in FreeSlot (updated)
         assert_matches!(swapping.state, State::FreeSlot(_, 0));
@@ -722,7 +722,7 @@ mod tests {
             .expect_detect_familiar_slot_is_free()
             .once()
             .returning(|_| true);
-        let resources = Resources::new(None, Some(detector));
+        let mut resources = Resources::new(None, Some(detector));
 
         let mut swapping = FamiliarsSwapping::new(SwappableFamiliars::All, Array::new());
         let bbox = Default::default();
@@ -739,7 +739,7 @@ mod tests {
             0,
         );
 
-        update_free_slot(&resources, &mut swapping);
+        update_free_slot(&mut resources, &mut swapping);
 
         // After setting the free flag the code resets timeout.current = FAMILIAR_FREE_SLOTS_TIMEOUT (10)
         assert!(swapping.slots[0].is_free);
@@ -759,7 +759,7 @@ mod tests {
             .expect_detect_familiar_hover_level()
             .once()
             .returning(|| Ok(FamiliarLevel::Level5));
-        let resources = Resources::new(Some(keys), Some(detector));
+        let mut resources = Resources::new(Some(keys), Some(detector));
 
         let mut swapping = FamiliarsSwapping::new(SwappableFamiliars::All, Array::new());
         let bbox = Default::default();
@@ -773,7 +773,7 @@ mod tests {
             0,
         );
 
-        update_swapping(&resources, &mut swapping);
+        update_swapping(&mut resources, &mut swapping);
 
         // No explicit state assertion here — function should have processed the Level5 branch and remain swapping
         assert_matches!(swapping.state, State::Swapping(_, 0));
@@ -789,7 +789,7 @@ mod tests {
             .expect_detect_familiar_hover_level()
             .once()
             .returning(|| Ok(FamiliarLevel::LevelOther));
-        let resources = Resources::new(Some(keys), Some(detector));
+        let mut resources = Resources::new(Some(keys), Some(detector));
 
         let mut swapping = FamiliarsSwapping::new(SwappableFamiliars::All, Array::new());
         let bbox = Default::default();
@@ -803,7 +803,7 @@ mod tests {
             0,
         );
 
-        update_swapping(&resources, &mut swapping);
+        update_swapping(&mut resources, &mut swapping);
 
         assert_matches!(swapping.state, State::Swapping(_, 0));
     }
@@ -815,7 +815,7 @@ mod tests {
             .expect_detect_familiar_slot_is_free()
             .times(FAMILIAR_SLOTS)
             .returning(|_| true);
-        let resources = Resources::new(None, Some(detector));
+        let mut resources = Resources::new(None, Some(detector));
 
         let mut swapping = FamiliarsSwapping::new(SwappableFamiliars::All, Array::new());
         let bbox = Default::default();
@@ -836,7 +836,7 @@ mod tests {
             0,
         );
 
-        update_swapping(&resources, &mut swapping);
+        update_swapping(&mut resources, &mut swapping);
 
         assert_matches!(swapping.state, State::Swapping(_, 1));
     }
@@ -848,7 +848,7 @@ mod tests {
             .expect_detect_familiar_slot_is_free()
             .times(FAMILIAR_SLOTS)
             .returning(|_| true);
-        let resources = Resources::new(None, Some(detector));
+        let mut resources = Resources::new(None, Some(detector));
 
         let mut swapping = FamiliarsSwapping::new(SwappableFamiliars::All, Array::new());
         let bbox = Default::default();
@@ -868,7 +868,7 @@ mod tests {
             0,
         );
 
-        update_swapping(&resources, &mut swapping);
+        update_swapping(&mut resources, &mut swapping);
 
         assert_matches!(swapping.state, State::Completing(_, false));
     }
@@ -882,12 +882,12 @@ mod tests {
             .expect_detect_familiar_save_button()
             .once()
             .returning(|| Ok(Default::default()));
-        let resources = Resources::new(Some(keys), Some(detector));
+        let mut resources = Resources::new(Some(keys), Some(detector));
 
         let mut swapping = FamiliarsSwapping::new(SwappableFamiliars::All, Array::new());
         swapping.state = State::Saving(Timeout::default());
 
-        update_saving(&resources, &mut swapping);
+        update_saving(&mut resources, &mut swapping);
 
         assert_matches!(swapping.state, State::Saving(_));
     }

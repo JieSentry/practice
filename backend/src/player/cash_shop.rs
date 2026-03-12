@@ -30,7 +30,7 @@ impl CashShop {
 }
 
 pub fn update_cash_shop_state(
-    resources: &Resources,
+    resources: &mut Resources,
     player: &mut PlayerEntity,
     mut cash_shop: CashShop,
     failed_to_detect_player: bool,
@@ -69,7 +69,7 @@ fn update_exitted(cash_shop: &mut CashShop, failed_to_detect_player: bool) {
     };
 }
 
-fn update_entering(resources: &Resources, cash_shop: &mut CashShop, key: KeyKind) {
+fn update_entering(resources: &mut Resources, cash_shop: &mut CashShop, key: KeyKind) {
     resources.input.send_key(key);
     cash_shop.state = if resources.detector().detect_player_in_cash_shop() {
         State::Entered(Timeout::default())
@@ -88,7 +88,7 @@ fn update_entered(cash_shop: &mut CashShop, timeout: Timeout) {
     }
 }
 
-fn update_exitting(resources: &Resources, cash_shop: &mut CashShop) {
+fn update_exitting(resources: &mut Resources, cash_shop: &mut CashShop) {
     resources.input.send_key(KeyKind::Esc);
     resources.input.send_key(KeyKind::Enter);
     cash_shop.state = if resources.detector().detect_player_in_cash_shop() {

@@ -1,14 +1,17 @@
 use std::{
-    cell::RefCell,
     mem::{self, size_of},
-    sync::LazyLock,
+    sync::{Arc, LazyLock, Mutex},
     thread,
     time::Duration,
 };
 
 use bit_vec::BitVec;
 use futures::{StreamExt, future, stream::BoxStream};
-use tokio::sync::broadcast::{self, Sender};
+use tokio::{
+    spawn,
+    sync::broadcast::{self, Sender},
+    time,
+};
 use tokio_stream::wrappers::BroadcastStream;
 use windows::{
     Win32::{
@@ -117,7 +120,8 @@ enum InputKeyStroke {
 pub struct WindowsInput {
     handle: HandleCell,
     input_kind: InputKind,
-    key_down: RefCell<BitVec>,
+    key_down: Arc<Mutex<BitVec>>,
+    key_sending: Arc<Mutex<BitVec>>,
 }
 
 impl WindowsInput {
@@ -125,7 +129,8 @@ impl WindowsInput {
         Self {
             handle: HandleCell::new(handle),
             input_kind: kind,
-            key_down: RefCell::new(BitVec::from_elem(256, false)),
+            key_down: Arc::new(Mutex::new(BitVec::from_elem(256, false))),
+            key_sending: Arc::new(Mutex::new(BitVec::from_elem(256, false))),
         }
     }
 
@@ -183,17 +188,41 @@ impl WindowsInput {
         Ok(state)
     }
 
-    pub fn send_key(&self, kind: KeyKind) -> Result<()> {
-        self.send_key_down(kind, false)?;
-        self.send_key_up(kind)?;
+    pub fn is_all_keys_cleared(&self) -> bool {
+        !self.key_down.lock().unwrap().any()
+    }
+
+    pub fn send_key(&mut self, kind: KeyKind, down_ms: u64) -> Result<()> {
+        if self.is_key_sending(kind) {
+            return Err(Error::KeyNotSent);
+        }
+
+        let mut clone = self.clone();
+        clone.send_input(kind, InputKeyStroke::Down)?;
+        clone.set_key_sending(kind, true);
+        spawn(async move {
+            time::sleep(Duration::from_millis(down_ms)).await;
+
+            let _ = clone.send_input(kind, InputKeyStroke::Up);
+            clone.set_key_sending(kind, false);
+        });
+
         Ok(())
     }
 
-    pub fn send_key_up(&self, kind: KeyKind) -> Result<()> {
+    pub fn send_key_up(&mut self, kind: KeyKind) -> Result<()> {
+        if self.is_key_sending(kind) {
+            return Err(Error::KeyNotSent);
+        }
+
         self.send_input(kind, InputKeyStroke::Up)
     }
 
-    pub fn send_key_down(&self, kind: KeyKind, repeatable: bool) -> Result<()> {
+    pub fn send_key_down(&mut self, kind: KeyKind, repeatable: bool) -> Result<()> {
+        if self.is_key_sending(kind) {
+            return Err(Error::KeyNotSent);
+        }
+
         let stroke = if repeatable {
             InputKeyStroke::DownRepeatable
         } else {
@@ -204,7 +233,7 @@ impl WindowsInput {
     }
 
     #[inline]
-    fn send_input(&self, kind: KeyKind, stroke: InputKeyStroke) -> Result<()> {
+    fn send_input(&mut self, kind: KeyKind, stroke: InputKeyStroke) -> Result<()> {
         let handle = self.get_handle()?;
         let is_down = matches!(
             stroke,
@@ -216,10 +245,8 @@ impl WindowsInput {
 
         let key = kind.into();
         let (scan_code, is_extended) = to_scan_code(key);
-        let mut key_down = self.key_down.borrow_mut();
-        // SAFETY: VIRTUAL_KEY is from range 0..254 (inclusive) and BitVec
-        // was initialized with 256 elements
-        let was_key_down = unsafe { key_down.get_unchecked(key.0 as usize) };
+        let mut key_down = self.key_down.lock().unwrap();
+        let was_key_down = key_down.get(key.0 as usize).unwrap_or_default();
         match (is_down, was_key_down) {
             (true, true) => {
                 if !matches!(stroke, InputKeyStroke::DownRepeatable) {
@@ -237,6 +264,36 @@ impl WindowsInput {
     #[inline]
     fn get_handle(&self) -> Result<HWND> {
         self.handle.as_inner().ok_or(Error::WindowNotFound)
+    }
+
+    fn is_key_sending(&self, kind: KeyKind) -> bool {
+        self.key_sending
+            .lock()
+            .unwrap()
+            .get(kind.id() as usize)
+            .unwrap_or_default()
+    }
+
+    fn set_key_sending(&mut self, kind: KeyKind, sending: bool) {
+        self.key_sending
+            .lock()
+            .unwrap()
+            .set(kind.id() as usize, sending)
+    }
+
+    fn clone(&self) -> Self {
+        Self {
+            handle: self.handle.clone(),
+            input_kind: self.input_kind,
+            key_down: self.key_down.clone(),
+            key_sending: self.key_sending.clone(),
+        }
+    }
+}
+
+impl KeyKind {
+    fn id(&self) -> u16 {
+        VIRTUAL_KEY::from(*self).0
     }
 }
 

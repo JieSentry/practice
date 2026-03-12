@@ -52,7 +52,7 @@ impl Drop for SolvingVioletta {
 ///
 /// Note: This state does not use any [`Task`], so all detections are blocking. But this should be
 /// acceptable for this state.
-pub fn update_solving_violetta_state(resources: &Resources, player: &mut PlayerEntity) {
+pub fn update_solving_violetta_state(resources: &mut Resources, player: &mut PlayerEntity) {
     let Player::SolvingVioletta(mut solving_violetta) = player.state.clone() else {
         panic!("state is not solving violetta");
     };
@@ -82,7 +82,7 @@ pub fn update_solving_violetta_state(resources: &Resources, player: &mut PlayerE
     }
 }
 
-fn update_waiting(resources: &Resources, solving_violetta: &mut SolvingVioletta) {
+fn update_waiting(resources: &mut Resources, solving_violetta: &mut SolvingVioletta) {
     const CHECK_INTERVAL: u64 = 30;
 
     let State::Waiting = solving_violetta.state else {
@@ -115,7 +115,7 @@ fn update_waiting(resources: &Resources, solving_violetta: &mut SolvingVioletta)
     solving_violetta.state = State::Solving(Timeout::default());
 }
 
-fn update_solving(resources: &Resources, solving_violetta: &mut SolvingVioletta) {
+fn update_solving(resources: &mut Resources, solving_violetta: &mut SolvingVioletta) {
     let State::Solving(timeout) = solving_violetta.state else {
         panic!("solving violetta state is not solving")
     };

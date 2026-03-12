@@ -52,7 +52,7 @@ impl Grappling {
 ///
 /// This state will use the Rope Lift skill.
 pub fn update_grappling_state(
-    resources: &Resources,
+    resources: &mut Resources,
     player: &mut PlayerEntity,
     minimap_state: Minimap,
 ) {
@@ -213,9 +213,9 @@ mod tests {
 
         let mut keys = MockInput::new();
         keys.expect_send_key().once().with(eq(KeyKind::F));
-        let resources = Resources::new(Some(keys), None);
+        let mut resources = Resources::new(Some(keys), None);
 
-        update_grappling_state(&resources, &mut player, Minimap::Detecting);
+        update_grappling_state(&mut resources, &mut player, Minimap::Detecting);
 
         assert_matches!(
             player.state,
@@ -240,9 +240,9 @@ mod tests {
 
         let mut keys = MockInput::new();
         keys.expect_send_key().once().with(eq(KeyKind::F));
-        let resources = Resources::new(Some(keys), None);
+        let mut resources = Resources::new(Some(keys), None);
 
-        update_grappling_state(&resources, &mut player, Minimap::Detecting);
+        update_grappling_state(&mut resources, &mut player, Minimap::Detecting);
         assert_matches!(
             player.state,
             Player::Grappling(Grappling {
@@ -257,7 +257,7 @@ mod tests {
 
     #[test]
     fn update_grappling_state_sets_did_y_changed() {
-        let resources = Resources::new(None, None);
+        let mut resources = Resources::new(None, None);
         let mut moving = mock_moving(POS);
         moving.timeout.started = true;
         moving.dest = Point {
@@ -268,7 +268,7 @@ mod tests {
         let mut player = mock_player_entity_with_grapple(moving.pos);
         player.state = Player::Grappling(grappling);
 
-        update_grappling_state(&resources, &mut player, Minimap::Detecting);
+        update_grappling_state(&mut resources, &mut player, Minimap::Detecting);
         assert_matches!(
             player.state,
             Player::Grappling(Grappling {
@@ -278,7 +278,7 @@ mod tests {
         );
 
         player.context.last_known_pos = Some(Point { x: 100, y: 150 });
-        update_grappling_state(&resources, &mut player, Minimap::Detecting);
+        update_grappling_state(&mut resources, &mut player, Minimap::Detecting);
         assert_matches!(
             player.state,
             Player::Grappling(Grappling {

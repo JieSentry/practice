@@ -53,7 +53,7 @@ impl Default for DebugService {
 }
 
 impl DebugService {
-    pub fn poll(&mut self, resources: &Resources) {
+    pub fn poll(&mut self, resources: &mut Resources) {
         if let Some(writer) = self.writer.as_mut()
             && let Some(detector) = resources.detector.as_ref()
         {
@@ -72,11 +72,11 @@ impl DebugService {
         self.state.subscribe()
     }
 
-    pub fn set_auto_save_rune(&self, resources: &Resources, auto_save: bool) {
+    pub fn set_auto_save_rune(&self, resources: &mut Resources, auto_save: bool) {
         resources.debug.set_auto_save_rune(auto_save);
     }
 
-    pub fn record_video(&mut self, resources: &Resources, start: bool) {
+    pub fn record_video(&mut self, resources: &mut Resources, start: bool) {
         if !start {
             self.writer = None;
             return;

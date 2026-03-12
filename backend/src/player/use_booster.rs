@@ -39,7 +39,7 @@ impl UsingBooster {
 }
 
 /// Updates [`Player::UsingBooster`] contextual state.
-pub fn update_using_booster_state(resources: &Resources, player: &mut PlayerEntity) {
+pub fn update_using_booster_state(resources: &mut Resources, player: &mut PlayerEntity) {
     let Player::UsingBooster(mut using) = player.state else {
         panic!("state is not using booster")
     };
@@ -79,12 +79,14 @@ pub fn update_using_booster_state(resources: &Resources, player: &mut PlayerEnti
             if is_terminal {
                 player.context.clear_action_completed();
             }
+
+            player.state = player_next_state;
         }
         None => player.state = Player::Idle, // Force cancel if it is not initiated from an action
     }
 }
 
-fn update_using(resources: &Resources, using: &mut UsingBooster, key: KeyKind) {
+fn update_using(resources: &mut Resources, using: &mut UsingBooster, key: KeyKind) {
     const PRESS_KEY_AT: u32 = 30;
 
     let State::Using(timeout) = using.state else {
@@ -115,7 +117,7 @@ fn update_using(resources: &Resources, using: &mut UsingBooster, key: KeyKind) {
     }
 }
 
-fn update_confirming(resources: &Resources, using: &mut UsingBooster) {
+fn update_confirming(resources: &mut Resources, using: &mut UsingBooster) {
     let State::Confirming(timeout) = using.state else {
         panic!("using booster state is not confirming")
     };
@@ -142,7 +144,7 @@ fn update_confirming(resources: &Resources, using: &mut UsingBooster) {
     }
 }
 
-fn update_completing(resources: &Resources, using: &mut UsingBooster) {
+fn update_completing(resources: &mut Resources, using: &mut UsingBooster) {
     let State::Completing {
         timeout,
         completed,
@@ -192,7 +194,7 @@ mod tests {
         let mut keys = MockInput::default();
         keys.expect_send_key().with(eq(KeyKind::F1)).once(); // Will press booster key at tick 30
 
-        let resources = Resources::new(Some(keys), None);
+        let mut resources = Resources::new(Some(keys), None);
         let mut using = UsingBooster::new(Booster::Generic);
         using.state = State::Using(Timeout {
             current: 29, // one before PRESS_KEY_AT
@@ -200,7 +202,7 @@ mod tests {
             ..Default::default()
         });
 
-        update_using(&resources, &mut using, KeyKind::F1);
+        update_using(&mut resources, &mut using, KeyKind::F1);
 
         assert_matches!(using.state, State::Using(_));
     }
@@ -212,7 +214,7 @@ mod tests {
             .expect_detect_admin_visible()
             .once()
             .returning(|| true);
-        let resources = Resources::new(None, Some(detector));
+        let mut resources = Resources::new(None, Some(detector));
 
         let mut using = UsingBooster::new(Booster::Generic);
         using.state = State::Using(Timeout {
@@ -221,7 +223,7 @@ mod tests {
             ..Default::default()
         });
 
-        update_using(&resources, &mut using, KeyKind::F1);
+        update_using(&mut resources, &mut using, KeyKind::F1);
 
         assert_matches!(using.state, State::Confirming(_));
     }
@@ -233,7 +235,7 @@ mod tests {
             .expect_detect_admin_visible()
             .once()
             .returning(|| false);
-        let resources = Resources::new(None, Some(detector));
+        let mut resources = Resources::new(None, Some(detector));
 
         let mut using = UsingBooster::new(Booster::Generic);
         using.state = State::Using(Timeout {
@@ -242,7 +244,7 @@ mod tests {
             ..Default::default()
         });
 
-        update_using(&resources, &mut using, KeyKind::F1);
+        update_using(&mut resources, &mut using, KeyKind::F1);
 
         assert_matches!(
             using.state,
@@ -258,12 +260,12 @@ mod tests {
     fn update_confirming_starts_and_presses_left() {
         let mut keys = MockInput::default();
         keys.expect_send_key().with(eq(KeyKind::Left)).once();
-        let resources = Resources::new(Some(keys), None);
+        let mut resources = Resources::new(Some(keys), None);
 
         let mut using = UsingBooster::new(Booster::Generic);
         using.state = State::Confirming(Timeout::default());
 
-        update_confirming(&resources, &mut using);
+        update_confirming(&mut resources, &mut using);
         assert_matches!(using.state, State::Confirming(_));
     }
 
@@ -271,7 +273,7 @@ mod tests {
     fn update_confirming_updates_and_presses_left_at_tick_15() {
         let mut keys = MockInput::default();
         keys.expect_send_key().with(eq(KeyKind::Left)).once();
-        let resources = Resources::new(Some(keys), None);
+        let mut resources = Resources::new(Some(keys), None);
 
         let mut using = UsingBooster::new(Booster::Generic);
         using.state = State::Confirming(Timeout {
@@ -280,7 +282,7 @@ mod tests {
             ..Default::default()
         });
 
-        update_confirming(&resources, &mut using);
+        update_confirming(&mut resources, &mut using);
         assert_matches!(using.state, State::Confirming(_));
     }
 
@@ -288,7 +290,7 @@ mod tests {
     fn update_confirming_ends_and_presses_enter() {
         let mut keys = MockInput::default();
         keys.expect_send_key().with(eq(KeyKind::Enter)).once();
-        let resources = Resources::new(Some(keys), None);
+        let mut resources = Resources::new(Some(keys), None);
 
         let mut using = UsingBooster::new(Booster::Generic);
         using.state = State::Confirming(Timeout {
@@ -297,7 +299,7 @@ mod tests {
             ..Default::default()
         });
 
-        update_confirming(&resources, &mut using);
+        update_confirming(&mut resources, &mut using);
 
         assert_matches!(
             using.state,
@@ -318,7 +320,7 @@ mod tests {
             .returning(|| true);
         let mut keys = MockInput::default();
         keys.expect_send_key().with(eq(KeyKind::Esc)).once();
-        let resources = Resources::new(Some(keys), Some(detector));
+        let mut resources = Resources::new(Some(keys), Some(detector));
 
         let mut using = UsingBooster::new(Booster::Generic);
         using.state = State::Completing {
@@ -331,7 +333,7 @@ mod tests {
             failed: false,
         };
 
-        update_completing(&resources, &mut using);
+        update_completing(&mut resources, &mut using);
 
         assert_matches!(
             using.state,
@@ -346,7 +348,7 @@ mod tests {
     fn update_completing_updates_without_pressing_esc() {
         let detector = MockDetector::default(); // no call expected
         let keys = MockInput::default();
-        let resources = Resources::new(Some(keys), Some(detector));
+        let mut resources = Resources::new(Some(keys), Some(detector));
 
         let mut using = UsingBooster::new(Booster::Generic);
         using.state = State::Completing {
@@ -359,7 +361,7 @@ mod tests {
             failed: false,
         };
 
-        update_completing(&resources, &mut using);
+        update_completing(&mut resources, &mut using);
         assert_matches!(
             using.state,
             State::Completing {

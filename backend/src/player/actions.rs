@@ -289,7 +289,7 @@ pub(super) fn next_action(context: &PlayerContext) -> Option<PlayerAction> {
 
 #[inline]
 pub(super) fn update_from_ping_pong_action(
-    resources: &Resources,
+    resources: &mut Resources,
     player: &mut PlayerEntity,
     minimap_state: Minimap,
     ping_pong: PingPong,
@@ -329,7 +329,7 @@ pub(super) fn update_from_ping_pong_action(
 /// This is common logics shared with other contextual states when there is auto mob action.
 #[inline]
 pub(super) fn update_from_auto_mob_action(
-    resources: &Resources,
+    resources: &mut Resources,
     player: &mut PlayerEntity,
     minimap_state: Minimap,
     mob: AutoMob,
@@ -372,7 +372,7 @@ pub(super) fn update_from_auto_mob_action(
     }
 }
 
-fn release_arrow_keys(resources: &Resources) {
+fn release_arrow_keys(resources: &mut Resources) {
     resources.input.send_key_up(KeyKind::Down);
     resources.input.send_key_up(KeyKind::Up);
     resources.input.send_key_up(KeyKind::Left);

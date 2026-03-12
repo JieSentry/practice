@@ -79,6 +79,10 @@ impl InputService {
         state
     }
 
+    pub fn is_all_keys_cleared(&self) -> bool {
+        !self.key_down.any()
+    }
+
     pub fn send_mouse(&mut self, width: i32, height: i32, x: i32, y: i32, action: MouseAction) {
         self.with_client(|client| {
             block_future(async {
@@ -97,6 +101,7 @@ impl InputService {
     }
 
     pub fn send_key(&mut self, key: Key, down_ms: f32) {
+        self.key_down.set(i32::from(key) as usize, true);
         self.with_client(|client| {
             block_future(async {
                 client
@@ -108,7 +113,6 @@ impl InputService {
             })?;
             Ok(())
         });
-
         self.key_down.set(i32::from(key) as usize, false);
     }
 

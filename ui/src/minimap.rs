@@ -334,10 +334,15 @@ pub fn MinimapScreen() -> Element {
     let state = use_signal::<Option<MinimapState>>(|| None);
     // Handles async operations for map-related
     let coroutine = use_coroutine(move |mut rx: UnboundedReceiver<MinimapUpdate>| async move {
+        let mut set_map_preset = move |new_map: Option<Map>, new_preset: Option<String>| {
+            map.set(new_map);
+            map_preset.set(new_preset);
+        };
+
         while let Some(message) = rx.next().await {
             match message {
                 MinimapUpdate::Set => {
-                    update_map(map_preset(), map()).await;
+                    update_map(map(), map_preset()).await;
                 }
                 MinimapUpdate::Create(name) => {
                     let Some(new_map) = create_map(name).await else {
@@ -347,19 +352,20 @@ pub fn MinimapScreen() -> Element {
                         continue;
                     };
 
-                    map.set(Some(new_map));
-                    map_preset.set(None);
-                    update_map(None, map()).await;
+                    set_map_preset(Some(new_map), None);
+                    update_map(map(), None).await;
                 }
-                MinimapUpdate::Import(map) => {
-                    upsert_map(map).await;
+                MinimapUpdate::Import(imported_map) => {
+                    let imported_map = upsert_map(imported_map).await;
+                    set_map_preset(imported_map, None);
+                    update_map(map(), None).await;
                 }
                 MinimapUpdate::Delete => {
                     if let Some(current_map) = map()
                         && delete_map(current_map).await
                     {
-                        map.set(None);
-                        map_preset.set(None);
+                        set_map_preset(None, None);
+                        update_map(None, None).await;
                     }
                 }
             }

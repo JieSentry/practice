@@ -8,7 +8,7 @@ use crate::{ecs::Resources, player::PlayerEntity};
 
 const TIMEOUT: u32 = MOVE_TIMEOUT + 3;
 
-pub fn update_jumping_state(resources: &Resources, player: &mut PlayerEntity, moving: Moving) {
+pub fn update_jumping_state(resources: &mut Resources, player: &mut PlayerEntity, moving: Moving) {
     match next_moving_lifecycle_with_axis(
         moving,
         player.context.last_known_pos.expect("in positional state"),

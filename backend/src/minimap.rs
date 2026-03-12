@@ -199,14 +199,14 @@ pub enum Minimap {
 }
 
 #[inline]
-pub fn run_system(resources: &Resources, minimap: &mut MinimapEntity, player_state: Player) {
+pub fn run_system(resources: &mut Resources, minimap: &mut MinimapEntity, player_state: Player) {
     match minimap.state {
         Minimap::Detecting => update_detecting_state(resources, minimap),
         Minimap::Idle(idle) => update_idle_state(resources, minimap, idle, player_state),
     }
 }
 
-fn update_detecting_state(resources: &Resources, minimap: &mut MinimapEntity) {
+fn update_detecting_state(resources: &mut Resources, minimap: &mut MinimapEntity) {
     let Update::Ok((anchors, bbox)) = update_detection_task(
         resources,
         2000,
@@ -247,7 +247,7 @@ fn update_detecting_state(resources: &Resources, minimap: &mut MinimapEntity) {
 }
 
 fn update_idle_state(
-    resources: &Resources,
+    resources: &mut Resources,
     minimap: &mut MinimapEntity,
     minimap_state: MinimapIdle,
     player_state: Player,
@@ -375,7 +375,7 @@ fn anchor_match(anchor: Vec4b, pixel: Vec4b) -> bool {
 
 #[inline]
 fn update_rune_task(
-    resources: &Resources,
+    resources: &mut Resources,
     task: &mut Option<Task<Result<Point>>>,
     minimap_bbox: Rect,
     player_state: Player,
@@ -403,7 +403,7 @@ fn update_rune_task(
 
 #[inline]
 fn update_other_player_task(
-    resources: &Resources,
+    resources: &mut Resources,
     task: &mut Option<Task<Result<()>>>,
     minimap: Rect,
     threshold: Threshold<()>,
@@ -431,7 +431,7 @@ fn update_other_player_task(
 
 #[inline]
 fn update_portals_task(
-    resources: &Resources,
+    resources: &mut Resources,
     task: &mut Option<Task<Result<Vec<Rect>>>>,
     invalidate_map: &mut HashMap<HashedRect, u32>,
     portals: Array<Rect, MAX_PORTALS_COUNT>,
@@ -514,7 +514,7 @@ fn compute_platforms(platforms: &[Platform]) -> Array<PlatformWithNeighbors, 24>
 
 #[inline]
 fn update_threshold_detection<T, F>(
-    resources: &Resources,
+    resources: &mut Resources,
     repeat_delay_millis: u64,
     mut threshold: Threshold<T>,
     threshold_task: &mut Option<Task<Result<T>>>,
@@ -648,7 +648,7 @@ mod tests {
     }
 
     async fn run_system_until_task_completed(
-        resources: &Resources,
+        resources: &mut Resources,
         minimap: &mut MinimapEntity,
         task_type: TaskType,
     ) {
@@ -675,9 +675,9 @@ mod tests {
             context: MinimapContext::default(),
         };
         let (detector, bbox, anchors, _) = create_mock_detector();
-        let resources = Resources::new(None, Some(detector));
+        let mut resources = Resources::new(None, Some(detector));
 
-        run_system_until_task_completed(&resources, &mut minimap, TaskType::Minimap).await;
+        run_system_until_task_completed(&mut resources, &mut minimap, TaskType::Minimap).await;
 
         match minimap.state {
             Minimap::Idle(idle) => {
@@ -719,9 +719,9 @@ mod tests {
             state: Minimap::Idle(idle),
             context: MinimapContext::default(),
         };
-        let resources = Resources::new(None, Some(detector));
+        let mut resources = Resources::new(None, Some(detector));
 
-        run_system_until_task_completed(&resources, &mut minimap, TaskType::Rune).await;
+        run_system_until_task_completed(&mut resources, &mut minimap, TaskType::Rune).await;
 
         match minimap.state {
             Minimap::Idle(idle) => {
@@ -738,14 +738,14 @@ mod tests {
         threshold.fail_count = 1;
         let mut task = None;
         let detector = MockDetector::new();
-        let resources = Resources::new(None, Some(detector));
+        let mut resources = Resources::new(None, Some(detector));
 
         while task
             .as_ref()
             .is_none_or(|task: &Task<Result<Point>>| !task.completed())
         {
             threshold =
-                update_threshold_detection(&resources, 0, threshold, &mut task, |_detector| {
+                update_threshold_detection(&mut resources, 0, threshold, &mut task, |_detector| {
                     Ok(Point::new(5, 5))
                 });
             time::advance(Duration::from_millis(1000)).await;
@@ -763,14 +763,14 @@ mod tests {
 
         let mut task = None;
         let detector = MockDetector::new();
-        let resources = Resources::new(None, Some(detector));
+        let mut resources = Resources::new(None, Some(detector));
 
         while task
             .as_ref()
             .is_none_or(|task: &Task<Result<Point>>| !task.completed())
         {
             threshold =
-                update_threshold_detection(&resources, 0, threshold, &mut task, |_detector| {
+                update_threshold_detection(&mut resources, 0, threshold, &mut task, |_detector| {
                     Err(anyhow!("fail"))
                 });
             time::advance(Duration::from_millis(1000)).await;
@@ -788,14 +788,14 @@ mod tests {
 
         let mut task = None;
         let detector = MockDetector::new();
-        let resources = Resources::new(None, Some(detector));
+        let mut resources = Resources::new(None, Some(detector));
 
         while task
             .as_ref()
             .is_none_or(|task: &Task<Result<Point>>| !task.completed())
         {
             threshold =
-                update_threshold_detection(&resources, 0, threshold, &mut task, |_detector| {
+                update_threshold_detection(&mut resources, 0, threshold, &mut task, |_detector| {
                     Err(anyhow!("fail again"))
                 });
             time::advance(Duration::from_millis(1000)).await;

@@ -120,7 +120,7 @@ impl DoubleJumping {
 /// from [`Player::Idle`] and [`Player::UseKey`] with [`PlayerState::last_known_direction`] matches
 /// the [`PlayerAction::Key`] direction.
 pub fn update_double_jumping_state(
-    resources: &Resources,
+    resources: &mut Resources,
     player: &mut PlayerEntity,
     minimap_state: Minimap,
 ) {
@@ -267,7 +267,7 @@ fn next_updated_state(
 /// [`ActionKeyWith::DoubleJump`]. For auto mob, the same handling logics is reused. For the other,
 /// it will try to transition to [`Player::UseKey`] when the player is close enough.
 fn update_from_action(
-    resources: &Resources,
+    resources: &mut Resources,
     player: &mut PlayerEntity,
     minimap_state: Minimap,
     moving: Moving,
@@ -337,7 +337,7 @@ fn update_from_action(
 ///   - Transition to [`Player::UseKey`] otherwise
 #[inline]
 fn update_from_ping_pong_action(
-    resources: &Resources,
+    resources: &mut Resources,
     player: &mut PlayerEntity,
     ping_pong: PingPong,
     cur_pos: Point,
@@ -468,9 +468,9 @@ mod tests {
             false,
         )));
         player.context.last_known_pos = Some(pos);
-        let resources = Resources::new(None, None);
+        let mut resources = Resources::new(None, None);
 
-        update_double_jumping_state(&resources, &mut player, Minimap::Detecting);
+        update_double_jumping_state(&mut resources, &mut player, Minimap::Detecting);
 
         assert_matches!(player.state, Player::DoubleJumping(_));
         assert_eq!(
@@ -507,9 +507,9 @@ mod tests {
         keys.expect_send_key()
             .withf(|k| matches!(k, KeyKind::Space))
             .once();
-        let resources = Resources::new(Some(keys), None);
+        let mut resources = Resources::new(Some(keys), None);
 
-        update_double_jumping_state(&resources, &mut player, Minimap::Detecting);
+        update_double_jumping_state(&mut resources, &mut player, Minimap::Detecting);
 
         assert_matches!(player.state, Player::DoubleJumping(_));
     }
@@ -528,9 +528,9 @@ mod tests {
         keys.expect_send_key().with(eq(KeyKind::Space)).once();
         keys.expect_send_key_down().never();
         keys.expect_send_key_up().never();
-        let resources = Resources::new(Some(keys), None);
+        let mut resources = Resources::new(Some(keys), None);
 
-        update_double_jumping_state(&resources, &mut player, Minimap::Detecting);
+        update_double_jumping_state(&mut resources, &mut player, Minimap::Detecting);
 
         assert_matches!(player.state, Player::DoubleJumping(_));
     }
@@ -545,9 +545,9 @@ mod tests {
         )));
         player.context.last_known_pos = Some(pos);
         player.context.velocity = (1.5, 0.5); // too fast
-        let resources = Resources::new(None, None);
+        let mut resources = Resources::new(None, None);
 
-        update_double_jumping_state(&resources, &mut player, Minimap::Detecting);
+        update_double_jumping_state(&mut resources, &mut player, Minimap::Detecting);
 
         assert_matches!(player.state, Player::DoubleJumping(DoubleJumping { moving, .. })
             if !moving.timeout.started);
@@ -575,9 +575,9 @@ mod tests {
         keys.expect_send_key_down().with(eq(KeyKind::Right)).once();
         keys.expect_send_key_up().with(eq(KeyKind::Left)).once();
         keys.expect_send_key().with(eq(KeyKind::Shift)).once();
-        let resources = Resources::new(Some(keys), None);
+        let mut resources = Resources::new(Some(keys), None);
 
-        update_double_jumping_state(&resources, &mut player, Minimap::Detecting);
+        update_double_jumping_state(&mut resources, &mut player, Minimap::Detecting);
     }
 
     #[test]
@@ -597,9 +597,9 @@ mod tests {
         player
             .context
             .set_normal_action(None, PlayerAction::PingPong(ping_pong));
-        let resources = Resources::new(None, None);
+        let mut resources = Resources::new(None, None);
 
-        update_from_ping_pong_action(&resources, &mut player, ping_pong, cur_pos, true);
+        update_from_ping_pong_action(&mut resources, &mut player, ping_pong, cur_pos, true);
 
         assert_matches!(player.state, Player::Idle);
     }
@@ -622,10 +622,10 @@ mod tests {
             .context
             .set_normal_action(None, PlayerAction::PingPong(ping_pong));
         player.context.config.grappling_key = Some(KeyKind::A);
-        let resources = Resources::new(None, None);
+        let mut resources = Resources::new(None, None);
 
         update_from_ping_pong_action(
-            &resources,
+            &mut resources,
             &mut player,
             ping_pong,
             cur_pos,
@@ -655,9 +655,9 @@ mod tests {
             .set_normal_action(None, PlayerAction::PingPong(ping_pong));
         let mut keys = MockInput::new();
         keys.expect_send_key_up();
-        let resources = Resources::new(Some(keys), None);
+        let mut resources = Resources::new(Some(keys), None);
 
-        update_from_ping_pong_action(&resources, &mut player, ping_pong, cur_pos, true);
+        update_from_ping_pong_action(&mut resources, &mut player, ping_pong, cur_pos, true);
 
         assert_matches!(player.state, Player::UpJumping(_) | Player::Grappling(_));
     }
@@ -682,9 +682,9 @@ mod tests {
             .set_normal_action(None, PlayerAction::PingPong(ping_pong));
         let mut keys = MockInput::new();
         keys.expect_send_key_up();
-        let resources = Resources::new(Some(keys), None);
+        let mut resources = Resources::new(Some(keys), None);
 
-        update_from_ping_pong_action(&resources, &mut player, ping_pong, cur_pos, true);
+        update_from_ping_pong_action(&mut resources, &mut player, ping_pong, cur_pos, true);
 
         assert_matches!(player.state, Player::Falling { .. });
     }

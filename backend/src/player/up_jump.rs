@@ -78,7 +78,7 @@ pub struct UpJumping {
 }
 
 impl UpJumping {
-    pub fn new(moving: Moving, resources: &Resources, player_context: &PlayerContext) -> Self {
+    pub fn new(moving: Moving, resources: &mut Resources, player_context: &PlayerContext) -> Self {
         let (y_distance, _) = moving.y_distance_direction_from(true, moving.pos);
         let spam_delay = if !player_context.config.up_jump_specific_key_should_jump
             && y_distance <= SOFT_UP_JUMP_THRESHOLD
@@ -118,7 +118,7 @@ impl UpJumping {
 /// a portal, this action is aborted. The up jump action is made to be adapted for various classes
 /// that has different up jump key combination.
 pub fn update_up_jumping_state(
-    resources: &Resources,
+    resources: &mut Resources,
     player: &mut PlayerEntity,
     minimap_state: Minimap,
 ) {
@@ -162,21 +162,22 @@ pub fn update_up_jumping_state(
                 return;
             }
 
+            let (y_distance, _) = moving.y_distance_direction_from(true, moving.pos);
+            if let UpJumpingKind::Mage(mage) = &mut up_jumping.kind {
+                mage.state = if is_flight {
+                    MageState::Flying
+                } else if y_distance >= UP_JUMP_AND_TELEPORT_THRESHOLD {
+                    MageState::UpJumping
+                } else {
+                    MageState::Teleporting
+                };
+            }
+
             player.context.last_movement = Some(LastMovement::UpJumping);
             player.state = Player::UpJumping(up_jumping.moving(moving));
-            match &mut up_jumping.kind {
-                UpJumpingKind::Mage(mage) => {
-                    let (y_distance, _) = moving.y_distance_direction_from(true, moving.pos);
-                    let teleport_after_up_jump =
-                        !is_flight && y_distance >= UP_JUMP_AND_TELEPORT_THRESHOLD;
-                    mage.state = if is_flight {
-                        MageState::Flying
-                    } else if teleport_after_up_jump {
-                        MageState::UpJumping
-                    } else {
-                        MageState::Teleporting
-                    };
 
+            match up_jumping.kind {
+                UpJumpingKind::Mage(mage) => {
                     resources.input.send_key_down(KeyKind::Up);
                     let can_jump =
                         y_distance >= mage.teleport_with_jump_threshold && up_jump_key.is_none();
@@ -229,7 +230,7 @@ pub fn update_up_jumping_state(
 }
 
 fn update_from_action(
-    resources: &Resources,
+    resources: &mut Resources,
     player: &mut PlayerEntity,
     minimap_state: Minimap,
     up_jumping: UpJumping,
@@ -300,7 +301,7 @@ fn update_from_action(
 }
 
 fn update_up_jump(
-    resources: &Resources,
+    resources: &mut Resources,
     context: &PlayerContext,
     moving: &mut Moving,
     up_jumping: &mut UpJumping,
@@ -366,7 +367,7 @@ fn update_up_jump(
 }
 
 fn update_mage_up_jump(
-    resources: &Resources,
+    resources: &mut Resources,
     context: &PlayerContext,
     moving: &mut Moving,
     mage: &mut Mage,
@@ -410,7 +411,7 @@ fn update_mage_up_jump(
 }
 
 #[inline]
-fn update_flying(resources: &Resources, moving: &mut Moving, y_direction: i32, key: KeyKind) {
+fn update_flying(resources: &mut Resources, moving: &mut Moving, y_direction: i32, key: KeyKind) {
     if y_direction > 0 {
         resources
             .input
@@ -479,9 +480,9 @@ mod tests {
         keys.expect_send_key()
             .withf(|k| *k == KeyKind::Space)
             .once();
-        let resources = Resources::new(Some(keys), None);
+        let mut resources = Resources::new(Some(keys), None);
 
-        update_up_jumping_state(&resources, &mut player, Minimap::Detecting);
+        update_up_jumping_state(&mut resources, &mut player, Minimap::Detecting);
 
         assert_matches!(player.state, Player::UpJumping(_));
     }
@@ -499,9 +500,9 @@ mod tests {
         keys.expect_send_key()
             .withf(|k| *k == KeyKind::Space)
             .once();
-        let resources = Resources::new(Some(keys), None);
+        let mut resources = Resources::new(Some(keys), None);
 
-        update_up_jumping_state(&resources, &mut player, Minimap::Detecting);
+        update_up_jumping_state(&mut resources, &mut player, Minimap::Detecting);
 
         assert_matches!(player.state, Player::UpJumping(_));
     }
@@ -520,9 +521,9 @@ mod tests {
         keys.expect_send_key_down()
             .withf(|k| *k == KeyKind::Up)
             .once();
-        let resources = Resources::new(Some(keys), None);
+        let mut resources = Resources::new(Some(keys), None);
 
-        update_up_jumping_state(&resources, &mut player, Minimap::Detecting);
+        update_up_jumping_state(&mut resources, &mut player, Minimap::Detecting);
 
         assert_matches!(player.state, Player::UpJumping(_));
     }
@@ -547,9 +548,9 @@ mod tests {
         keys.expect_send_key()
             .withf(|k| *k == KeyKind::Space)
             .once();
-        let resources = Resources::new(Some(keys), None);
+        let mut resources = Resources::new(Some(keys), None);
 
-        update_up_jumping_state(&resources, &mut player, Minimap::Detecting);
+        update_up_jumping_state(&mut resources, &mut player, Minimap::Detecting);
 
         assert_matches!(player.state, Player::UpJumping(_));
     }
@@ -565,9 +566,9 @@ mod tests {
             auto_mob_wait_completion: false,
         });
         player.context.velocity = (0.0, 2.0); // Y velocity above threshold
-        let resources = Resources::new(None, None);
+        let mut resources = Resources::new(None, None);
 
-        update_up_jumping_state(&resources, &mut player, Minimap::Detecting);
+        update_up_jumping_state(&mut resources, &mut player, Minimap::Detecting);
 
         assert_matches!(
             player.state,
@@ -596,9 +597,9 @@ mod tests {
         keys.expect_send_key().never();
         keys.expect_send_key_down().never();
         keys.expect_send_key_up().never();
-        let resources = Resources::new(Some(keys), None);
+        let mut resources = Resources::new(Some(keys), None);
 
-        update_up_jumping_state(&resources, &mut player, Minimap::Detecting);
+        update_up_jumping_state(&mut resources, &mut player, Minimap::Detecting);
 
         assert_matches!(player.state, Player::UpJumping(_));
     }
@@ -619,9 +620,9 @@ mod tests {
         keys.expect_send_key()
             .withf(|k| *k == KeyKind::Space)
             .once();
-        let resources = Resources::new(Some(keys), None);
+        let mut resources = Resources::new(Some(keys), None);
 
-        update_up_jumping_state(&resources, &mut player, Minimap::Detecting);
+        update_up_jumping_state(&mut resources, &mut player, Minimap::Detecting);
 
         assert_matches!(player.state, Player::UpJumping(_));
     }
@@ -640,9 +641,9 @@ mod tests {
         player.context.config.up_jump_key = Some(KeyKind::C);
         let mut keys = MockInput::new();
         keys.expect_send_key().withf(|k| *k == KeyKind::C).once();
-        let resources = Resources::new(Some(keys), None);
+        let mut resources = Resources::new(Some(keys), None);
 
-        update_up_jumping_state(&resources, &mut player, Minimap::Detecting);
+        update_up_jumping_state(&mut resources, &mut player, Minimap::Detecting);
 
         assert_matches!(player.state, Player::UpJumping(_));
     }
@@ -667,9 +668,9 @@ mod tests {
         keys.expect_send_key()
             .withf(|k| *k == KeyKind::Space)
             .once();
-        let resources = Resources::new(Some(keys), None);
+        let mut resources = Resources::new(Some(keys), None);
 
-        update_up_jumping_state(&resources, &mut player, Minimap::Detecting);
+        update_up_jumping_state(&mut resources, &mut player, Minimap::Detecting);
 
         assert_matches!(player.state, Player::UpJumping(_));
     }
@@ -689,9 +690,9 @@ mod tests {
         keys.expect_send_key_up()
             .withf(|k| *k == KeyKind::Up)
             .once();
-        let resources = Resources::new(Some(keys), None);
+        let mut resources = Resources::new(Some(keys), None);
 
-        update_up_jumping_state(&resources, &mut player, Minimap::Detecting);
+        update_up_jumping_state(&mut resources, &mut player, Minimap::Detecting);
 
         assert_matches!(player.state, Player::UpJumping(_));
     }

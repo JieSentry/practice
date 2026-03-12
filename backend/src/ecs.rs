@@ -1,5 +1,3 @@
-#[cfg(debug_assertions)]
-use std::cell::RefCell;
 #[cfg(test)]
 use std::rc::Rc;
 use std::sync::Arc;
@@ -18,42 +16,42 @@ use crate::{debug::save_rune_for_training, solvers::SolvedArrow};
 #[derive(Debug, Default)]
 #[cfg(debug_assertions)]
 pub struct Debug {
-    auto_save: RefCell<bool>,
-    last_rune_detector: RefCell<Option<Arc<dyn Detector>>>,
-    last_rune_result: RefCell<Option<[SolvedArrow; 4]>>,
+    auto_save: bool,
+    last_rune_detector: Option<Arc<dyn Detector>>,
+    last_rune_result: Option<[SolvedArrow; 4]>,
 }
 
 #[cfg(debug_assertions)]
 impl Debug {
     pub fn auto_save_rune(&self) -> bool {
-        *self.auto_save.borrow()
+        self.auto_save
     }
 
-    pub fn set_auto_save_rune(&self, auto_save: bool) {
-        *self.auto_save.borrow_mut() = auto_save;
+    pub fn set_auto_save_rune(&mut self, auto_save: bool) {
+        self.auto_save = auto_save
     }
 
     pub fn save_last_rune_result(&self) {
-        if !*self.auto_save.borrow() {
+        if !self.auto_save {
             return;
         }
-        if let Some((detector, result)) = self
-            .last_rune_detector
-            .borrow()
-            .as_ref()
-            .zip(*self.last_rune_result.borrow())
+
+        if let Some((detector, result)) =
+            self.last_rune_detector.as_ref().zip(self.last_rune_result)
         {
             save_rune_for_training(&detector.mat(), result);
         }
     }
 
-    pub fn set_last_rune_result(&self, detector: Arc<dyn Detector>, result: [SolvedArrow; 4]) {
-        *self.last_rune_detector.borrow_mut() = Some(detector);
-        *self.last_rune_result.borrow_mut() = Some(result);
+    pub fn set_last_rune_result(&mut self, detector: Arc<dyn Detector>, result: [SolvedArrow; 4]) {
+        self.last_rune_detector = Some(detector);
+        self.last_rune_result = Some(result);
     }
 }
 
 /// A struct containing shared resources.
+///
+/// TODO: Reduce field visibilities.
 #[derive(Debug)]
 pub struct Resources {
     /// A resource to hold debugging information.
@@ -78,6 +76,8 @@ pub struct Resources {
 impl Resources {
     #[cfg(test)]
     pub fn new(input: Option<MockInput>, detector: Option<MockDetector>) -> Self {
+        use std::cell::RefCell;
+
         use crate::operation::{OperationConfiguration, OperationState};
 
         Self {

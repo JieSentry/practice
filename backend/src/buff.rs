@@ -205,7 +205,7 @@ pub enum Buff {
 }
 
 #[inline]
-pub fn run_system(resources: &Resources, buff: &mut BuffEntity, player_state: Player) {
+pub fn run_system(resources: &mut Resources, buff: &mut BuffEntity, player_state: Player) {
     if !buff.context.enabled {
         buff.state = Buff::No;
         return;
@@ -280,7 +280,7 @@ mod tests {
         detector
     }
 
-    async fn run_system_until_task_completed(resources: &Resources, buff: &mut BuffEntity) {
+    async fn run_system_until_task_completed(resources: &mut Resources, buff: &mut BuffEntity) {
         while !buff
             .context
             .task
@@ -296,13 +296,13 @@ mod tests {
     async fn run_system_no_to_yes() {
         for kind in BuffKind::iter() {
             let detector = detector_with_kind(kind, true);
-            let resources = Resources::new(None, Some(detector));
+            let mut resources = Resources::new(None, Some(detector));
             let mut buff = BuffEntity {
                 state: Buff::No,
                 context: BuffContext::new(kind),
             };
 
-            run_system_until_task_completed(&resources, &mut buff).await;
+            run_system_until_task_completed(&mut resources, &mut buff).await;
 
             assert_matches!(buff.state, Buff::Yes);
             assert_eq!(buff.context.fail_count, 0);
@@ -313,7 +313,7 @@ mod tests {
     async fn run_system_yes_to_no() {
         for kind in BuffKind::iter() {
             let detector = detector_with_kind(kind, false);
-            let resources = Resources::new(None, Some(detector));
+            let mut resources = Resources::new(None, Some(detector));
             let mut buff = BuffEntity {
                 state: Buff::Yes,
                 context: BuffContext::new(kind),
@@ -321,19 +321,19 @@ mod tests {
             buff.context.max_fail_count = 2;
 
             // First failure: Yes -> Volatile
-            run_system_until_task_completed(&resources, &mut buff).await;
+            run_system_until_task_completed(&mut resources, &mut buff).await;
             assert_matches!(buff.state, Buff::Volatile);
             assert_eq!(buff.context.fail_count, 0);
 
             // Second failure: Volatile -> still Volatile
             buff.context.task = None;
-            run_system_until_task_completed(&resources, &mut buff).await;
+            run_system_until_task_completed(&mut resources, &mut buff).await;
             assert_matches!(buff.state, Buff::Volatile);
             assert_eq!(buff.context.fail_count, 1);
 
             // Third failure: Volatile -> No (fail_count reached max)
             buff.context.task = None;
-            run_system_until_task_completed(&resources, &mut buff).await;
+            run_system_until_task_completed(&mut resources, &mut buff).await;
             assert_matches!(buff.state, Buff::No);
             assert_eq!(buff.context.fail_count, 2);
         }
@@ -343,7 +343,7 @@ mod tests {
     async fn run_system_volatile_to_yes() {
         for kind in BuffKind::iter() {
             let detector = detector_with_kind(kind, true);
-            let resources = Resources::new(None, Some(detector));
+            let mut resources = Resources::new(None, Some(detector));
             let mut buff = BuffEntity {
                 state: Buff::Volatile,
                 context: BuffContext::new(kind),
@@ -351,7 +351,7 @@ mod tests {
             buff.context.max_fail_count = 3;
             buff.context.fail_count = 2;
 
-            run_system_until_task_completed(&resources, &mut buff).await;
+            run_system_until_task_completed(&mut resources, &mut buff).await;
 
             assert_matches!(buff.state, Buff::Yes);
             assert_eq!(buff.context.fail_count, 0);
@@ -362,7 +362,7 @@ mod tests {
     async fn run_system_volatile_stay_before_threshold() {
         for kind in BuffKind::iter() {
             let detector = detector_with_kind(kind, false);
-            let resources = Resources::new(None, Some(detector));
+            let mut resources = Resources::new(None, Some(detector));
             let mut buff = BuffEntity {
                 state: Buff::Volatile,
                 context: BuffContext::new(kind),
@@ -370,7 +370,7 @@ mod tests {
             buff.context.max_fail_count = 3;
             buff.context.fail_count = 1;
 
-            run_system_until_task_completed(&resources, &mut buff).await;
+            run_system_until_task_completed(&mut resources, &mut buff).await;
 
             assert_matches!(buff.state, Buff::Volatile);
             assert_eq!(buff.context.fail_count, 2);
