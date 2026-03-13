@@ -8,7 +8,7 @@ use super::{
 };
 use crate::{
     ActionKeyDirection, ActionKeyWith,
-    bridge::KeyKind,
+    bridge::{InputKeyOptions, KeyKind},
     ecs::Resources,
     minimap::Minimap,
     player::{
@@ -48,13 +48,16 @@ impl Adjusting {
         Adjusting { moving, ..self }
     }
 
-    fn update_adjusting(&mut self, resources: &mut Resources, keys: Option<(KeyKind, KeyKind)>) {
+    fn update_adjusting(&mut self, resources: &mut Resources, key: Option<KeyKind>) {
         self.adjust_timeout =
             match next_timeout_lifecycle(self.adjust_timeout, ADJUSTING_SHORT_TIMEOUT) {
                 Lifecycle::Started(timeout) => {
-                    if let Some((up_key, down_key)) = keys {
-                        resources.input.send_key_up(up_key);
-                        resources.input.send_key(down_key);
+                    resources.input.send_key_up(KeyKind::Left);
+                    resources.input.send_key_up(KeyKind::Right);
+                    if let Some(key) = key {
+                        resources
+                            .input
+                            .send_key_with_options(key, InputKeyOptions::default().down_ms(80));
                     }
                     timeout
                 }
@@ -130,8 +133,8 @@ pub fn update_adjusting_state(
                         resources.input.send_key_down(down_key);
                         context.last_known_direction = dir;
                     }
-                    (false, true, Some((down_key, up_key, dir))) => {
-                        adjusting.update_adjusting(resources, Some((up_key, down_key)));
+                    (false, true, Some((down_key, _, dir))) => {
+                        adjusting.update_adjusting(resources, Some(down_key));
                         context.last_known_direction = dir;
                     }
                     _ => {

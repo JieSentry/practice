@@ -96,15 +96,33 @@ impl InputReceiver for DefaultInputReceiver {
 #[derive(Debug, Default)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct InputKeyDownOptions {
-    /// Whether the down stroke can be repeated even if the key is already down.
-    ///
-    /// Currently supports only [`InputMethod::Default`].
     repeatable: bool,
 }
 
 impl InputKeyDownOptions {
-    pub fn repeatable(mut self) -> InputKeyDownOptions {
+    /// Marks the down stroke as repeatable and allows it to be sent again even if the key
+    /// is already down.
+    ///
+    /// Currently supports only [`InputMethod::Default`].
+    pub fn repeatable(mut self) -> Self {
         self.repeatable = true;
+        self
+    }
+}
+
+/// Options for key input.
+#[derive(Debug, Default)]
+#[cfg_attr(test, derive(PartialEq))]
+pub struct InputKeyOptions {
+    down_ms: Option<u64>,
+}
+
+impl InputKeyOptions {
+    /// Specifies the duration of down stroke.
+    ///
+    /// By default, the duration is randomized.
+    pub fn down_ms(mut self, ms: u64) -> Self {
+        self.down_ms = Some(ms);
         self
     }
 }
@@ -168,13 +186,13 @@ impl InputMethodInner {
         }
     }
 
-    fn send_key(&mut self, kind: KeyKind, down_ms: f32) {
+    fn send_key(&mut self, kind: KeyKind, down_ms: u64) {
         match self {
             InputMethodInner::Rpc(service) => {
-                service.send_key(kind.into(), down_ms);
+                service.send_key(kind.into(), down_ms as f32);
             }
             InputMethodInner::Default(input) => {
-                let _ = input.send_key(kind.into(), down_ms as u64);
+                let _ = input.send_key(kind.into(), down_ms);
             }
         }
     }
@@ -226,15 +244,18 @@ pub trait Input: Send + Debug {
     /// `(0, 0)` is top-left and `(width, height)` is bottom-right.
     fn send_mouse(&mut self, x: i32, y: i32, kind: MouseKind);
 
-    /// Presses a single key `kind`.
-    fn send_key(&mut self, kind: KeyKind);
+    /// Presses a single key `kind` using default options.
+    fn send_key(&mut self, kind: KeyKind) {
+        self.send_key_with_options(kind, InputKeyOptions::default());
+    }
+
+    /// Same as [`Self::send_key`] but with the provided `options`.
+    fn send_key_with_options(&mut self, kind: KeyKind, options: InputKeyOptions);
 
     /// Releases a held key `kind`.
     fn send_key_up(&mut self, kind: KeyKind);
 
-    /// Holds down key `kind`.
-    ///
-    /// This key stroke is sent with the default options.
+    /// Holds down key `kind` using default options.
     fn send_key_down(&mut self, kind: KeyKind) {
         self.send_key_down_with_options(kind, InputKeyDownOptions::default());
     }
@@ -290,9 +311,9 @@ impl DefaultInput {
         }
     }
 
-    fn random_key_delay(&mut self) -> f32 {
+    fn random_key_delay(&mut self) -> u64 {
         let (mean, std) = self.delay_mean_std_pair;
-        self.delay_rng.random_key_delay(mean, std, 80.0, 120.0)
+        self.delay_rng.random_key_delay(mean, std, 80.0, 120.0) as u64
     }
 }
 
@@ -349,8 +370,8 @@ impl Input for DefaultInput {
         }
     }
 
-    fn send_key(&mut self, kind: KeyKind) {
-        let delay = self.random_key_delay();
+    fn send_key_with_options(&mut self, kind: KeyKind, options: InputKeyOptions) {
+        let delay = options.down_ms.unwrap_or_else(|| self.random_key_delay());
         self.method_inner.send_key(kind, delay);
     }
 

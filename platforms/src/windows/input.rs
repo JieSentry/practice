@@ -200,29 +200,28 @@ impl WindowsInput {
         let mut clone = self.clone();
         clone.send_input(kind, InputKeyStroke::Down)?;
         clone.set_key_sending(kind, true);
-        spawn(async move {
-            time::sleep(Duration::from_millis(down_ms)).await;
 
+        let mut send_up = move || {
             let _ = clone.send_input(kind, InputKeyStroke::Up);
             clone.set_key_sending(kind, false);
-        });
+        };
+        if down_ms > 0 {
+            spawn(async move {
+                time::sleep(Duration::from_millis(down_ms)).await;
+                send_up()
+            });
+        } else {
+            send_up()
+        }
 
         Ok(())
     }
 
     pub fn send_key_up(&mut self, kind: KeyKind) -> Result<()> {
-        if self.is_key_sending(kind) {
-            return Err(Error::KeyNotSent);
-        }
-
         self.send_input(kind, InputKeyStroke::Up)
     }
 
     pub fn send_key_down(&mut self, kind: KeyKind, repeatable: bool) -> Result<()> {
-        if self.is_key_sending(kind) {
-            return Err(Error::KeyNotSent);
-        }
-
         let stroke = if repeatable {
             InputKeyStroke::DownRepeatable
         } else {
