@@ -150,7 +150,7 @@ fn update_solving(resources: &mut Resources, solving_shape: &mut SolvingShape) {
 
 fn start_solving_task(region: Rect) -> Solving {
     let (cursor_tx, cursor_rx) = mpsc::channel(1);
-    let (detector_tx, mut detector_rx) = mpsc::channel::<Arc<dyn Detector>>(2);
+    let (detector_tx, mut detector_rx) = mpsc::channel::<Arc<dyn Detector>>(3);
 
     let task = Task::spawn_blocking(move || {
         let mut solver = TransparentShapeSolver::default();
