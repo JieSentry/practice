@@ -356,7 +356,13 @@ mod tests {
     fn update_adjusting_state_updated_short_adjustment_started() {
         let mut keys = MockInput::default();
         keys.expect_send_key_up().with(eq(KeyKind::Left)).once();
-        keys.expect_send_key().with(eq(KeyKind::Right)).once();
+        keys.expect_send_key_up().with(eq(KeyKind::Right)).once();
+        keys.expect_send_key_with_options()
+            .with(
+                eq(KeyKind::Right),
+                eq(InputKeyOptions::default().down_ms(80)),
+            )
+            .once();
 
         let mut resources = Resources::new(Some(keys), None);
 
