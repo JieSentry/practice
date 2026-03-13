@@ -46,7 +46,7 @@ impl Default for SolvingRune {
 ///
 /// Note: This state does not use any [`Task`], so all detections are blocking. But this should be
 /// acceptable for this state.
-pub fn update_solving_rune_state(resources: &Resources, player: &mut PlayerEntity) {
+pub fn update_solving_rune_state(resources: &mut Resources, player: &mut PlayerEntity) {
     let Player::SolvingRune(mut solving_rune) = player.state.clone() else {
         panic!("state is not solving rune");
     };
@@ -87,7 +87,7 @@ pub fn update_solving_rune_state(resources: &Resources, player: &mut PlayerEntit
 }
 
 fn update_precondition(
-    resources: &Resources,
+    resources: &mut Resources,
     player_context: &PlayerContext,
     solving_rune: &mut SolvingRune,
 ) {
@@ -98,7 +98,7 @@ fn update_precondition(
     match next_timeout_lifecycle(timeout, 15) {
         Lifecycle::Ended => {
             solving_rune.state =
-                if player_context.is_stationary && resources.input.all_keys_cleared() {
+                if player_context.is_stationary && resources.input.is_all_keys_cleared() {
                     State::Calibrating(Timeout::default())
                 } else {
                     State::Precondition(timeout)
@@ -111,7 +111,7 @@ fn update_precondition(
 }
 
 fn update_calibrating(
-    resources: &Resources,
+    resources: &mut Resources,
     solving_rune: &mut SolvingRune,
     interact_key: KeyKind,
 ) {
@@ -150,7 +150,7 @@ fn update_calibrating(
     }
 }
 
-fn update_solving(resources: &Resources, solving_rune: &mut SolvingRune) {
+fn update_solving(resources: &mut Resources, solving_rune: &mut SolvingRune) {
     let State::Solving(timeout) = solving_rune.state else {
         panic!("solving rune state is not solving")
     };
@@ -185,7 +185,7 @@ fn update_solving(resources: &Resources, solving_rune: &mut SolvingRune) {
     }
 }
 
-fn update_press_keys(resources: &Resources, solving_rune: &mut SolvingRune) {
+fn update_press_keys(resources: &mut Resources, solving_rune: &mut SolvingRune) {
     const PRESS_KEY_INTERVAL: u32 = 8;
 
     let State::PressKeys(timeout, keys, key_index) = solving_rune.state else {

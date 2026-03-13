@@ -32,20 +32,20 @@ pub fn update_stalling_state(player: &mut PlayerEntity, timeout: Timeout, max_ti
             position: Position { y, .. },
             ..
         })) => {
-            if !is_terminal {
-                return;
-            }
+            if is_terminal {
+                if player.context.auto_mob_reachable_y_require_update(y) {
+                    if !player.context.is_stationary {
+                        player.state = Player::Stalling(Timeout::default(), max_timeout);
+                        return;
+                    }
 
-            if player.context.auto_mob_reachable_y_require_update(y) {
-                if !player.context.is_stationary {
-                    player.state = Player::Stalling(Timeout::default(), max_timeout);
-                    return;
+                    player.context.auto_mob_track_reachable_y(y);
                 }
 
-                player.context.auto_mob_track_reachable_y(y);
+                player.context.clear_action_completed();
             }
 
-            player.context.clear_action_completed();
+            player.state = next_state;
         }
         Some(
             action @ (PlayerAction::PingPong(_) | PlayerAction::Key(_) | PlayerAction::Move(_)),
@@ -55,10 +55,12 @@ pub fn update_stalling_state(player: &mut PlayerEntity, timeout: Timeout, max_ti
                     player.context.clear_unstucking(false);
                 }
                 player.context.clear_action_completed();
-                player.state = next_state;
             }
+
+            player.state = next_state;
         }
         Some(PlayerAction::SolveRune) | None => player.state = next_state,
+
         Some(_) => unreachable!(),
     }
 }

@@ -52,7 +52,7 @@ impl Drop for SolvingShape {
 ///
 /// Note: This state does not use any [`Task`], so all detections are blocking. But this should be
 /// acceptable for this state.
-pub fn update_solving_shape_state(resources: &Resources, player: &mut PlayerEntity) {
+pub fn update_solving_shape_state(resources: &mut Resources, player: &mut PlayerEntity) {
     let Player::SolvingShape(mut solving_shape) = player.state.clone() else {
         panic!("state is not solving shape");
     };
@@ -82,7 +82,7 @@ pub fn update_solving_shape_state(resources: &Resources, player: &mut PlayerEnti
     }
 }
 
-fn update_waiting(resources: &Resources, solving_shape: &mut SolvingShape) {
+fn update_waiting(resources: &mut Resources, solving_shape: &mut SolvingShape) {
     const CHECK_INTERVAL: u64 = 30;
 
     let State::Waiting = solving_shape.state else {
@@ -112,7 +112,7 @@ fn update_waiting(resources: &Resources, solving_shape: &mut SolvingShape) {
     solving_shape.state = State::Solving(Timeout::default());
 }
 
-fn update_solving(resources: &Resources, solving_shape: &mut SolvingShape) {
+fn update_solving(resources: &mut Resources, solving_shape: &mut SolvingShape) {
     let State::Solving(timeout) = solving_shape.state else {
         panic!("solving shape state is not solving")
     };

@@ -1,8 +1,4 @@
-use std::{
-    cell::RefCell,
-    collections::{HashMap, HashSet, hash_map::Entry},
-    fmt::Debug,
-};
+use std::fmt::Debug;
 
 use anyhow::{Result, anyhow};
 use futures::StreamExt;
@@ -25,7 +21,6 @@ use crate::{
     grpc::{InputService, input::Coordinate as RpcCoordinate},
     models::{CaptureMode, InputMethod as DatabaseInputMethod, Settings},
     rng::Rng,
-    run::MS_PER_TICK_F32,
 };
 
 mod convert;
@@ -149,16 +144,66 @@ impl From<&Settings> for InputMethod {
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant)]
 enum InputMethodInner {
-    Rpc(RefCell<InputService>),
+    Rpc(InputService),
     Default(PlatformInput),
 }
 
-/// States of input delay tracking.
-#[derive(Debug)]
-enum InputDelay {
-    Untracked,
-    Tracked,
-    AlreadyTracked,
+impl InputMethodInner {
+    fn key_state(&mut self, kind: KeyKind) -> Result<KeyState> {
+        match self {
+            InputMethodInner::Rpc(service) => service
+                .key_state(kind.into())
+                .map(KeyState::from)
+                .ok_or(anyhow!("service not connected")),
+            InputMethodInner::Default(input) => Ok(input.key_state(kind.into())?.into()),
+        }
+    }
+
+    fn is_all_keys_cleared(&self) -> bool {
+        match self {
+            InputMethodInner::Rpc(service) => service.is_all_keys_cleared(),
+            InputMethodInner::Default(input) => {
+                input.is_all_keys_cleared().expect("supported platform")
+            }
+        }
+    }
+
+    fn send_key(&mut self, kind: KeyKind, down_ms: f32) {
+        match self {
+            InputMethodInner::Rpc(service) => {
+                service.send_key(kind.into(), down_ms);
+            }
+            InputMethodInner::Default(input) => {
+                let _ = input.send_key(kind.into(), down_ms as u64);
+            }
+        }
+    }
+
+    fn send_key_down(&mut self, kind: KeyKind, repeatable: bool) {
+        match self {
+            InputMethodInner::Rpc(service) => {
+                // NOTE: For unknown reason, hardware custom input (e.g. KMBox, Arduino) seems to
+                // only require sending down stroke once and it will continue correctly.
+                // But `SendInput` requires repeatedly sending the stroke to simulate flying for
+                // some classes.
+                service.send_key_down(kind.into());
+            }
+            InputMethodInner::Default(input) => {
+                let _ = input.send_key_down(kind.into(), repeatable);
+            }
+        }
+    }
+
+    fn send_key_up(&mut self, kind: KeyKind) {
+        match self {
+            InputMethodInner::Rpc(service) => {
+                service.send_key_up(kind.into());
+            }
+            InputMethodInner::Default(input) => {
+                let _ = input.send_key_up(kind.into());
+            }
+        }
+    }
 }
 
 /// A trait for sending inputs.
@@ -179,29 +224,29 @@ pub trait Input: Send + Debug {
     /// Sends mouse `kind` to `(x, y)` relative to the client coordinate (e.g. capture area).
     ///
     /// `(0, 0)` is top-left and `(width, height)` is bottom-right.
-    fn send_mouse(&self, x: i32, y: i32, kind: MouseKind);
+    fn send_mouse(&mut self, x: i32, y: i32, kind: MouseKind);
 
     /// Presses a single key `kind`.
-    fn send_key(&self, kind: KeyKind);
+    fn send_key(&mut self, kind: KeyKind);
 
     /// Releases a held key `kind`.
-    fn send_key_up(&self, kind: KeyKind);
+    fn send_key_up(&mut self, kind: KeyKind);
 
     /// Holds down key `kind`.
     ///
     /// This key stroke is sent with the default options.
-    fn send_key_down(&self, kind: KeyKind) {
+    fn send_key_down(&mut self, kind: KeyKind) {
         self.send_key_down_with_options(kind, InputKeyDownOptions::default());
     }
 
     /// Same as [`Self::send_key_down`] but with the provided `options`.
-    fn send_key_down_with_options(&self, kind: KeyKind, options: InputKeyDownOptions);
+    fn send_key_down_with_options(&mut self, kind: KeyKind, options: InputKeyDownOptions);
 
     /// Whether the key `kind` is cleared.
-    fn is_key_cleared(&self, kind: KeyKind) -> bool;
+    fn is_key_cleared(&mut self, kind: KeyKind) -> bool;
 
     /// Whether all keys are cleared.
-    fn all_keys_cleared(&self) -> bool;
+    fn is_all_keys_cleared(&self) -> bool;
 
     #[cfg(debug_assertions)]
     fn clone(&self) -> Box<dyn Input>;
@@ -215,7 +260,6 @@ pub struct DefaultInput {
     method_inner: InputMethodInner,
     delay_rng: Rng,
     delay_mean_std_pair: (f32, f32),
-    delay_map: RefCell<HashMap<KeyKind, (u32, bool)>>,
 }
 
 impl DefaultInput {
@@ -226,94 +270,7 @@ impl DefaultInput {
             method_inner: input_method_inner_from(window, method, rng.rng_seed()),
             delay_rng: rng,
             delay_mean_std_pair: (BASE_MEAN_MS_DELAY, BASE_STD_MS_DELAY),
-            delay_map: RefCell::new(HashMap::new()),
         }
-    }
-
-    #[inline]
-    fn key_state(&self, kind: KeyKind) -> Result<KeyState> {
-        match &self.method_inner {
-            InputMethodInner::Rpc(service) => service
-                .borrow_mut()
-                .key_state(kind.into())
-                .map(KeyState::from)
-                .ok_or(anyhow!("service not connected")),
-            InputMethodInner::Default(input) => Ok(input.key_state(kind.into())?.into()),
-        }
-    }
-
-    #[inline]
-    fn send_key_inner(&self, kind: KeyKind) -> Result<()> {
-        match &self.method_inner {
-            InputMethodInner::Rpc(service) => {
-                service
-                    .borrow_mut()
-                    .send_key(kind.into(), self.random_input_delay_tick_count().0);
-            }
-            InputMethodInner::Default(input) => match self.track_input_delay(kind) {
-                InputDelay::Untracked => input.send_key(kind.into())?,
-                InputDelay::Tracked => input.send_key_down(kind.into(), false)?,
-                InputDelay::AlreadyTracked => (),
-            },
-        }
-
-        Ok(())
-    }
-
-    #[inline]
-    fn send_key_up_inner(&self, kind: KeyKind, forced: bool) -> Result<()> {
-        match &self.method_inner {
-            InputMethodInner::Rpc(service) => {
-                service.borrow_mut().send_key_up(kind.into());
-            }
-            InputMethodInner::Default(input) => {
-                if forced || !self.has_input_delay(kind) {
-                    input.send_key_up(kind.into())?;
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    #[inline]
-    fn send_key_down_inner(&self, kind: KeyKind, repeatable: bool) -> Result<()> {
-        match &self.method_inner {
-            // NOTE: For unknown reason, hardware custom input (e.g. KMBox, Arduino) seems to only
-            // require sending down stroke once and it will continue correctly. But `SendInput`
-            // requires repeatedly sending the stroke to simulate flying for some classes.
-            InputMethodInner::Rpc(service) => {
-                service.borrow_mut().send_key_down(kind.into());
-            }
-            InputMethodInner::Default(input) => {
-                if !self.has_input_delay(kind) {
-                    input.send_key_down(kind.into(), repeatable)?;
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    #[inline]
-    fn has_input_delay(&self, kind: KeyKind) -> bool {
-        self.delay_map.borrow().contains_key(&kind)
-    }
-
-    fn track_input_delay(&self, kind: KeyKind) -> InputDelay {
-        let mut map = self.delay_map.borrow_mut();
-        let entry = map.entry(kind);
-        if matches!(entry, Entry::Occupied(_)) {
-            return InputDelay::AlreadyTracked;
-        }
-
-        let (_, delay_tick_count) = self.random_input_delay_tick_count();
-        if delay_tick_count == 0 {
-            return InputDelay::Untracked;
-        }
-
-        let _ = entry.insert_entry((delay_tick_count, false));
-        InputDelay::Tracked
     }
 
     #[inline]
@@ -331,37 +288,11 @@ impl DefaultInput {
                 MEAN_STD_VOLATILITY,
             )
         }
-
-        let mut map = self.delay_map.borrow_mut();
-        if map.is_empty() {
-            return;
-        }
-
-        let mut keys_to_remove = HashSet::new();
-        for (kind, (delay, did_send_up)) in map.iter_mut() {
-            *delay = delay.saturating_sub(1);
-
-            if *delay == 0 {
-                if !*did_send_up {
-                    *did_send_up = true;
-                    let _ = self.send_key_up_inner(*kind, true);
-                }
-
-                if matches!(self.key_state(*kind), Ok(KeyState::Released)) {
-                    keys_to_remove.insert(*kind);
-                }
-            }
-        }
-
-        if !keys_to_remove.is_empty() {
-            map.retain(|kind, _| !keys_to_remove.contains(kind));
-        }
     }
 
-    fn random_input_delay_tick_count(&self) -> (f32, u32) {
+    fn random_key_delay(&mut self) -> f32 {
         let (mean, std) = self.delay_mean_std_pair;
-        self.delay_rng
-            .random_delay_tick_count(mean, std, MS_PER_TICK_F32, 80.0, 120.0)
+        self.delay_rng.random_key_delay(mean, std, 80.0, 120.0)
     }
 }
 
@@ -383,16 +314,15 @@ impl Input for DefaultInput {
 
     fn state(&self) -> String {
         match &self.method_inner {
-            InputMethodInner::Rpc(service) => format!("RPC({})", service.borrow().state()),
+            InputMethodInner::Rpc(service) => format!("RPC({})", service.state()),
             InputMethodInner::Default(_) => "SendInput".to_string(),
         }
     }
 
-    fn send_mouse(&self, x: i32, y: i32, kind: MouseKind) {
-        match &self.method_inner {
+    fn send_mouse(&mut self, x: i32, y: i32, kind: MouseKind) {
+        match &mut self.method_inner {
             InputMethodInner::Rpc(service) => {
-                let mut borrow = service.borrow_mut();
-                let relative = match borrow.mouse_coordinate() {
+                let relative = match service.mouse_coordinate() {
                     RpcCoordinate::Screen => CoordinateRelative::Monitor,
                     RpcCoordinate::Relative => CoordinateRelative::Window,
                 };
@@ -400,7 +330,7 @@ impl Input for DefaultInput {
                     return;
                 };
 
-                borrow.send_mouse(
+                service.send_mouse(
                     coordinates.width,
                     coordinates.height,
                     coordinates.x,
@@ -419,25 +349,28 @@ impl Input for DefaultInput {
         }
     }
 
-    fn send_key(&self, kind: KeyKind) {
-        let _ = self.send_key_inner(kind);
+    fn send_key(&mut self, kind: KeyKind) {
+        let delay = self.random_key_delay();
+        self.method_inner.send_key(kind, delay);
     }
 
-    fn send_key_up(&self, kind: KeyKind) {
-        let _ = self.send_key_up_inner(kind, false);
+    fn send_key_up(&mut self, kind: KeyKind) {
+        self.method_inner.send_key_up(kind);
     }
 
-    fn send_key_down_with_options(&self, kind: KeyKind, options: InputKeyDownOptions) {
-        let _ = self.send_key_down_inner(kind, options.repeatable);
+    fn send_key_down_with_options(&mut self, kind: KeyKind, options: InputKeyDownOptions) {
+        self.method_inner.send_key_down(kind, options.repeatable);
     }
 
-    fn is_key_cleared(&self, kind: KeyKind) -> bool {
-        !self.delay_map.borrow().contains_key(&kind)
+    fn is_key_cleared(&mut self, kind: KeyKind) -> bool {
+        self.method_inner
+            .key_state(kind)
+            .is_ok_and(|state| matches!(state, KeyState::Released))
     }
 
     #[inline]
-    fn all_keys_cleared(&self) -> bool {
-        self.delay_map.borrow().is_empty()
+    fn is_all_keys_cleared(&self) -> bool {
+        self.method_inner.is_all_keys_cleared()
     }
 
     #[cfg(debug_assertions)]
@@ -520,7 +453,7 @@ fn input_method_inner_from(window: Window, method: InputMethod, seed: &[u8]) -> 
                 );
             }
 
-            InputMethodInner::Rpc(RefCell::new(result.unwrap()))
+            InputMethodInner::Rpc(result.unwrap())
         }
         InputMethod::ForegroundDefault => InputMethodInner::Default(
             PlatformInput::new(window, PlatformInputKind::Foreground).expect("supported platform"),
@@ -528,77 +461,5 @@ fn input_method_inner_from(window: Window, method: InputMethod, seed: &[u8]) -> 
         InputMethod::FocusedDefault => InputMethodInner::Default(
             PlatformInput::new(window, PlatformInputKind::Focused).expect("supported platform"),
         ),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::assert_matches::assert_matches;
-
-    use super::*;
-
-    const SEED: [u8; 32] = [
-        64, 241, 206, 219, 49, 21, 218, 145, 254, 152, 68, 176, 242, 238, 152, 14, 176, 241, 153,
-        64, 44, 192, 172, 191, 191, 157, 107, 206, 193, 55, 115, 68,
-    ];
-
-    fn test_key_sender() -> DefaultInput {
-        DefaultInput::new(
-            Window::new("Handle"),
-            InputMethod::FocusedDefault,
-            Rng::new(SEED, 1337),
-        )
-    }
-
-    #[test]
-    fn track_input_delay_tracked() {
-        let sender = test_key_sender();
-
-        // Force rng to generate delay > 0
-        let result = sender.track_input_delay(KeyKind::Ctrl);
-        assert_matches!(result, InputDelay::Tracked);
-        assert!(sender.has_input_delay(KeyKind::Ctrl));
-    }
-
-    #[test]
-    fn track_input_delay_already_tracked() {
-        let sender = test_key_sender();
-        sender
-            .delay_map
-            .borrow_mut()
-            .insert(KeyKind::Ctrl, (3, false));
-
-        let result = sender.track_input_delay(KeyKind::Ctrl);
-        assert_matches!(result, InputDelay::AlreadyTracked);
-    }
-
-    #[test]
-    fn update_input_delay_decrement_and_release_key() {
-        let mut sender = test_key_sender();
-        let count = 50;
-        sender
-            .delay_map
-            .borrow_mut()
-            .insert(KeyKind::Ctrl, (count, false));
-
-        for _ in 0..count {
-            sender.update(0);
-        }
-        // After `count` updates, key should be released and removed
-        assert!(!sender.has_input_delay(KeyKind::Ctrl));
-    }
-
-    #[test]
-    fn update_input_delay_refresh_mean_std_pair_every_interval() {
-        let mut sender = test_key_sender();
-        let original_pair = sender.delay_mean_std_pair;
-
-        // Simulate tick before the interval: should NOT update
-        sender.update(199);
-        assert_eq!(sender.delay_mean_std_pair, original_pair);
-
-        // Simulate tick AT the interval: should update
-        sender.update(200);
-        assert_ne!(sender.delay_mean_std_pair, original_pair);
     }
 }

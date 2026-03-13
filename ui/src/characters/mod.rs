@@ -76,10 +76,13 @@ pub fn CharactersScreen() -> Element {
     // Handles async operations for character-related
     let coroutine = use_coroutine(
         move |mut rx: UnboundedReceiver<CharactersUpdate>| async move {
+            let mut set_character_and_restart = move |new_character: Option<Character>| {
+                character.set(new_character);
+                characters.restart();
+            };
             let mut save_character = async move |new_character: Character| {
                 if let Some(new_character) = upsert_character(new_character).await {
-                    character.set(Some(new_character));
-                    characters.restart();
+                    set_character_and_restart(Some(new_character));
                 }
             };
 
@@ -90,6 +93,7 @@ pub fn CharactersScreen() -> Element {
                     }
                     CharactersUpdate::Update(new_character) => {
                         save_character(new_character).await;
+                        update_character(character()).await;
                     }
                     CharactersUpdate::Create(name) => {
                         save_character(Character {
@@ -103,8 +107,8 @@ pub fn CharactersScreen() -> Element {
                         if let Some(current_character) = character()
                             && delete_character(current_character).await
                         {
-                            characters.restart();
-                            character.set(None);
+                            set_character_and_restart(None);
+                            update_character(character()).await;
                         }
                     }
                 }

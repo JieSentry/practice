@@ -256,7 +256,7 @@ impl Moving {
 /// In auto mob or intermediate destination, most of the movement thresholds are relaxed for
 /// more fluid movement.
 pub fn update_moving_state(
-    resources: &Resources,
+    resources: &mut Resources,
     player: &mut PlayerEntity,
     minimap_state: Minimap,
 ) {
@@ -545,89 +545,89 @@ mod tests {
 
     #[test]
     fn update_moving_to_double_jump() {
-        let resources = Resources::new(None, None);
+        let mut resources = Resources::new(None, None);
         let dest = Point::new(100, 0); // Large x-distance triggers double jump
         let mut player = setup_player(Point::new(0, 0), Player::Moving(dest, false, None));
 
-        update_moving_state(&resources, &mut player, Minimap::Detecting);
+        update_moving_state(&mut resources, &mut player, Minimap::Detecting);
 
         assert_matches!(player.state, Player::DoubleJumping(_));
     }
 
     #[test]
     fn update_moving_to_adjusting() {
-        let resources = Resources::new(None, None);
+        let mut resources = Resources::new(None, None);
         let dest = Point::new(20, 0); // Less than double jump x-distance
         let mut player = setup_player(Point::new(0, 0), Player::Moving(dest, false, None));
 
-        update_moving_state(&resources, &mut player, Minimap::Detecting);
+        update_moving_state(&mut resources, &mut player, Minimap::Detecting);
 
         assert_matches!(player.state, Player::Adjusting(_));
     }
 
     #[test]
     fn update_moving_to_grappling() {
-        let resources = Resources::new(None, None);
+        let mut resources = Resources::new(None, None);
         let mut player = setup_player(
             Point::new(0, 0),
             Player::Moving(Point::new(0, GRAPPLING_THRESHOLD + 10), true, None),
         );
         player.context.config.grappling_key = Some(KeyKind::A);
 
-        update_moving_state(&resources, &mut player, Minimap::Detecting);
+        update_moving_state(&mut resources, &mut player, Minimap::Detecting);
 
         assert_matches!(player.state, Player::Grappling(_));
     }
 
     #[test]
     fn update_moving_to_upjump() {
-        let resources = Resources::new(None, None);
+        let mut resources = Resources::new(None, None);
         let dest = Point::new(0, 20); // y-distance below grappling
         let mut player = setup_player(Point::new(0, 0), Player::Moving(dest, true, None));
 
-        update_moving_state(&resources, &mut player, Minimap::Detecting);
+        update_moving_state(&mut resources, &mut player, Minimap::Detecting);
 
         assert_matches!(player.state, Player::UpJumping(_));
     }
 
     #[test]
     fn update_moving_to_jumping() {
-        let resources = Resources::new(None, None);
+        let mut resources = Resources::new(None, None);
         let cur_pos = Point::new(100, 100);
         let dest = Point::new(100, 106);
         let mut player = setup_player(cur_pos, Player::Moving(dest, false, None));
 
-        update_moving_state(&resources, &mut player, Minimap::Detecting);
+        update_moving_state(&mut resources, &mut player, Minimap::Detecting);
 
         assert_matches!(player.state, Player::Jumping(_));
     }
 
     #[test]
     fn update_moving_to_falling() {
-        let resources = Resources::new(None, None);
+        let mut resources = Resources::new(None, None);
         let cur_pos = Point::new(100, 100);
         let dest = Point::new(100, 50);
         let mut player = setup_player(cur_pos, Player::Moving(dest, false, None));
 
-        update_moving_state(&resources, &mut player, Minimap::Detecting);
+        update_moving_state(&mut resources, &mut player, Minimap::Detecting);
 
         assert_matches!(player.state, Player::Falling(_));
     }
 
     #[test]
     fn update_moving_to_idle_when_destination_reached() {
-        let resources = Resources::new(None, None);
+        let mut resources = Resources::new(None, None);
         let pos = Point::new(100, 200);
         let mut player = setup_player(pos, Player::Moving(pos, true, None));
 
-        update_moving_state(&resources, &mut player, Minimap::Detecting);
+        update_moving_state(&mut resources, &mut player, Minimap::Detecting);
 
         assert_matches!(player.state, Player::Idle);
     }
 
     #[test]
     fn update_moving_with_intermediate_points_triggers_next_move() {
-        let resources = Resources::new(None, None);
+        let mut resources = Resources::new(None, None);
         let pos = Point::new(50, 0);
         let intermediates = MovingIntermediates {
             current: 1,
@@ -638,7 +638,7 @@ mod tests {
         };
         let mut player = setup_player(pos, Player::Moving(pos, true, Some(intermediates)));
 
-        update_moving_state(&resources, &mut player, Minimap::Detecting);
+        update_moving_state(&mut resources, &mut player, Minimap::Detecting);
 
         assert_matches!(player.state, Player::Moving(Point { x: 100, y: 0 }, _, _));
     }

@@ -79,7 +79,7 @@ impl Falling {
 /// is already moving. Or if the player is already at destination or lower, it will returns
 /// to [`Player::Moving`].
 pub fn update_falling_state(
-    resources: &Resources,
+    resources: &mut Resources,
     player: &mut PlayerEntity,
     minimap_state: Minimap,
 ) {
@@ -172,7 +172,7 @@ pub fn update_falling_state(
 
 #[inline]
 fn update_from_action(
-    resources: &Resources,
+    resources: &mut Resources,
     player: &mut PlayerEntity,
     minimap_state: Minimap,
     moving: Moving,
@@ -282,9 +282,9 @@ mod tests {
 
         let mut keys = MockInput::new();
         keys.expect_send_key_down().once().with(eq(KeyKind::Down));
-        let resources = Resources::new(Some(keys), None);
+        let mut resources = Resources::new(Some(keys), None);
 
-        update_falling_state(&resources, &mut player, Minimap::Detecting);
+        update_falling_state(&mut resources, &mut player, Minimap::Detecting);
 
         assert_matches!(
             player.state,
@@ -312,9 +312,9 @@ mod tests {
 
         let mut keys = MockInput::new();
         keys.expect_send_key().once().with(eq(KeyKind::Space));
-        let resources = Resources::new(Some(keys), None);
+        let mut resources = Resources::new(Some(keys), None);
 
-        update_falling_state(&resources, &mut player, Minimap::Detecting);
+        update_falling_state(&mut resources, &mut player, Minimap::Detecting);
     }
 
     #[test]
@@ -331,9 +331,9 @@ mod tests {
         let mut keys = MockInput::new();
         keys.expect_send_key_down().never();
         keys.expect_send_key().never();
-        let resources = Resources::new(Some(keys), None);
+        let mut resources = Resources::new(Some(keys), None);
 
-        update_falling_state(&resources, &mut player, Minimap::Detecting);
+        update_falling_state(&mut resources, &mut player, Minimap::Detecting);
 
         assert_matches!(
             player.state,
@@ -363,9 +363,9 @@ mod tests {
 
         let mut keys = MockInput::new();
         keys.expect_send_key_up().once().with(eq(KeyKind::Down));
-        let resources = Resources::new(Some(keys), None);
+        let mut resources = Resources::new(Some(keys), None);
 
-        update_falling_state(&resources, &mut player, Minimap::Detecting);
+        update_falling_state(&mut resources, &mut player, Minimap::Detecting);
 
         assert_matches!(player.state, Player::Moving(_, _, _));
     }
@@ -383,9 +383,9 @@ mod tests {
 
         let mut keys = MockInput::new();
         keys.expect_send_key_up().once().with(eq(KeyKind::Down));
-        let resources = Resources::new(Some(keys), None);
+        let mut resources = Resources::new(Some(keys), None);
 
-        update_falling_state(&resources, &mut player, Minimap::Detecting);
+        update_falling_state(&mut resources, &mut player, Minimap::Detecting);
 
         assert_matches!(player.state, Player::Falling { .. });
     }
@@ -403,9 +403,9 @@ mod tests {
             timeout_on_complete: true,
         });
 
-        let resources = Resources::new(None, None);
+        let mut resources = Resources::new(None, None);
 
-        update_falling_state(&resources, &mut player, Minimap::Detecting);
+        update_falling_state(&mut resources, &mut player, Minimap::Detecting);
 
         assert_matches!(
             player.state,
@@ -436,9 +436,9 @@ mod tests {
             timeout_on_complete: false,
         });
 
-        let resources = Resources::new(None, None);
+        let mut resources = Resources::new(None, None);
 
-        update_falling_state(&resources, &mut player, Minimap::Detecting);
+        update_falling_state(&mut resources, &mut player, Minimap::Detecting);
 
         assert_matches!(
             player.state,

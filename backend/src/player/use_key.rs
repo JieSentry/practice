@@ -209,7 +209,7 @@ impl UseKey {
 ///
 /// There are multiple stages to using a key as described by [`State`].
 pub fn update_use_key_state(
-    resources: &Resources,
+    resources: &mut Resources,
     player: &mut PlayerEntity,
     minimap_state: Minimap,
 ) {
@@ -265,7 +265,7 @@ pub fn update_use_key_state(
                 };
                 let update_callback = if should_buffer_holding {
                     Some(BufferedStallingCallback::new(
-                        move |resources: &Resources| {
+                        move |resources: &mut Resources| {
                             resources.input.send_key_down_with_options(
                                 use_key.key,
                                 InputKeyDownOptions::default().repeatable(),
@@ -277,7 +277,7 @@ pub fn update_use_key_state(
                 };
                 let end_callback = if should_buffer_holding {
                     Some(BufferedStallingCallback::new(
-                        move |resources: &Resources| {
+                        move |resources: &mut Resources| {
                             resources.input.send_key_up(use_key.key);
                         },
                     ))
@@ -388,7 +388,11 @@ pub fn update_use_key_state(
     }
 }
 
-fn update_precondition(resources: &Resources, context: &mut PlayerContext, use_key: &mut UseKey) {
+fn update_precondition(
+    resources: &mut Resources,
+    context: &mut PlayerContext,
+    use_key: &mut UseKey,
+) {
     if context.stalling_buffered.stalling() {
         context.clear_stalling_buffer_states_if_possible(resources);
         return;
@@ -433,7 +437,7 @@ fn ensure_use_with(context: &PlayerContext, with: ActionKeyWith) -> bool {
     }
 }
 
-fn update_using(resources: &Resources, context: &PlayerContext, use_key: &mut UseKey) {
+fn update_using(resources: &mut Resources, context: &PlayerContext, use_key: &mut UseKey) {
     let State::Using(using) = use_key.state else {
         panic!("use key state is not using");
     };
@@ -516,7 +520,7 @@ fn update_ensuring_use_with(context: &PlayerContext, use_key: &mut UseKey) {
 }
 
 fn update_changing_direction(
-    resources: &Resources,
+    resources: &mut Resources,
     context: &mut PlayerContext,
     use_key: &mut UseKey,
 ) {
@@ -549,7 +553,7 @@ fn update_changing_direction(
 }
 
 #[inline]
-fn update_holding_key(resources: &Resources, use_key: &mut UseKey) {
+fn update_holding_key(resources: &mut Resources, use_key: &mut UseKey) {
     let State::Using(using) = use_key.state else {
         panic!("use key state is not using");
     };
@@ -596,7 +600,11 @@ fn update_holding_key(resources: &Resources, use_key: &mut UseKey) {
 }
 
 #[inline]
-fn update_linking_key(resources: &Resources, use_key: &mut UseKey, link_key_timing_millis: u64) {
+fn update_linking_key(
+    resources: &mut Resources,
+    use_key: &mut UseKey,
+    link_key_timing_millis: u64,
+) {
     let State::Using(using) = use_key.state else {
         panic!("use key state is not using");
     };
@@ -691,7 +699,7 @@ mod tests {
 
     #[test]
     fn update_use_key_state_ensuring_use_with_stationary() {
-        let resources = Resources::new(None, None);
+        let mut resources = Resources::new(None, None);
         let mut player = make_player(UseKey {
             key: KeyKind::A,
             key_hold_ticks: 0,
@@ -710,7 +718,7 @@ mod tests {
         });
 
         // Start EnsuringUseWith
-        update_use_key_state(&resources, &mut player, Minimap::Detecting);
+        update_use_key_state(&mut resources, &mut player, Minimap::Detecting);
         assert_matches!(
             player.state,
             Player::UseKey(UseKey {
@@ -721,7 +729,7 @@ mod tests {
 
         // Complete EnsuringUseWith when stationary
         player.context.is_stationary = true;
-        update_use_key_state(&resources, &mut player, Minimap::Detecting);
+        update_use_key_state(&mut resources, &mut player, Minimap::Detecting);
         assert_matches!(
             player.state,
             Player::UseKey(UseKey {
@@ -733,7 +741,7 @@ mod tests {
 
     #[test]
     fn update_use_key_state_ensuring_use_with_double_jump() {
-        let resources = Resources::new(None, None);
+        let mut resources = Resources::new(None, None);
         let mut player = make_player(UseKey {
             key: KeyKind::A,
             key_hold_ticks: 0,
@@ -753,7 +761,7 @@ mod tests {
         player.context.last_known_pos = Some(Point::default());
 
         // Start EnsuringUseWith
-        update_use_key_state(&resources, &mut player, Minimap::Detecting);
+        update_use_key_state(&mut resources, &mut player, Minimap::Detecting);
         assert_matches!(
             player.state,
             Player::UseKey(UseKey {
@@ -763,7 +771,7 @@ mod tests {
         );
 
         // Transitions to double jump
-        update_use_key_state(&resources, &mut player, Minimap::Detecting);
+        update_use_key_state(&mut resources, &mut player, Minimap::Detecting);
         assert_matches!(
             player.state,
             Player::DoubleJumping(DoubleJumping { forced: true, .. })
@@ -779,7 +787,7 @@ mod tests {
         keys.expect_send_key()
             .withf(|k| matches!(k, KeyKind::Left))
             .once();
-        let resources = Resources::new(Some(keys), None);
+        let mut resources = Resources::new(Some(keys), None);
         let mut use_key = UseKey {
             key: KeyKind::A,
             key_hold_ticks: 0,
@@ -799,7 +807,7 @@ mod tests {
         let mut player = make_player(use_key);
 
         // Transition into ChangingDirection
-        update_use_key_state(&resources, &mut player, Minimap::Detecting);
+        update_use_key_state(&mut resources, &mut player, Minimap::Detecting);
         assert_matches!(
             player.state,
             Player::UseKey(UseKey {
@@ -809,7 +817,7 @@ mod tests {
         );
 
         // Sends down on started
-        update_use_key_state(&resources, &mut player, Minimap::Detecting);
+        update_use_key_state(&mut resources, &mut player, Minimap::Detecting);
         assert_matches!(
             player.state,
             Player::UseKey(UseKey {
@@ -825,7 +833,7 @@ mod tests {
             current: 3,
         });
         player = make_player(use_key);
-        update_use_key_state(&resources, &mut player, Minimap::Detecting);
+        update_use_key_state(&mut resources, &mut player, Minimap::Detecting);
         assert_matches!(
             player.context.last_known_direction,
             ActionKeyDirection::Left
@@ -845,7 +853,7 @@ mod tests {
         keys.expect_send_key()
             .times(3)
             .withf(|k| matches!(k, KeyKind::A));
-        let resources = Resources::new(Some(keys), None);
+        let mut resources = Resources::new(Some(keys), None);
         let use_key = UseKey {
             key: KeyKind::A,
             key_hold_ticks: 0,
@@ -865,7 +873,7 @@ mod tests {
         let mut player = make_player(use_key);
 
         for i in 0..3 {
-            update_use_key_state(&resources, &mut player, Minimap::Detecting);
+            update_use_key_state(&mut resources, &mut player, Minimap::Detecting);
             assert_matches!(
                 player.state,
                 Player::UseKey(UseKey {
@@ -874,7 +882,7 @@ mod tests {
                 })
             );
 
-            update_use_key_state(&resources, &mut player, Minimap::Detecting);
+            update_use_key_state(&mut resources, &mut player, Minimap::Detecting);
             assert_matches!(
                 player.state,
                 Player::UseKey(UseKey {
@@ -883,7 +891,7 @@ mod tests {
                 })
             );
 
-            update_use_key_state(&resources, &mut player, Minimap::Detecting);
+            update_use_key_state(&mut resources, &mut player, Minimap::Detecting);
             if i == 2 {
                 assert_matches!(player.state, Player::Idle);
             } else {
@@ -900,7 +908,7 @@ mod tests {
 
     #[test]
     fn update_use_key_state_waits_before() {
-        let resources = Resources::new(None, None);
+        let mut resources = Resources::new(None, None);
         let use_key = UseKey {
             key: KeyKind::A,
             key_hold_ticks: 0,
@@ -919,7 +927,7 @@ mod tests {
         };
         let mut player = make_player(use_key);
 
-        update_use_key_state(&resources, &mut player, Minimap::Detecting);
+        update_use_key_state(&mut resources, &mut player, Minimap::Detecting);
 
         assert_matches!(player.state, Player::Stalling(_, 5));
         assert_matches!(
@@ -938,7 +946,7 @@ mod tests {
         keys.expect_send_key()
             .withf(|k| matches!(k, KeyKind::A))
             .once();
-        let resources = Resources::new(Some(keys), None);
+        let mut resources = Resources::new(Some(keys), None);
         let use_key = UseKey {
             key: KeyKind::A,
             key_hold_ticks: 0,
@@ -957,7 +965,7 @@ mod tests {
         };
         let mut player = make_player(use_key);
 
-        update_use_key_state(&resources, &mut player, Minimap::Detecting);
+        update_use_key_state(&mut resources, &mut player, Minimap::Detecting);
 
         assert_matches!(player.state, Player::Stalling(_, 7));
         assert_matches!(
@@ -986,7 +994,7 @@ mod tests {
             .withf(|k| matches!(k, KeyKind::Alt))
             .once()
             .in_sequence(&mut sequence);
-        let resources = Resources::new(Some(keys), None);
+        let mut resources = Resources::new(Some(keys), None);
         let mut use_key = UseKey {
             key: KeyKind::A,
             key_hold_ticks: 0,
@@ -1006,7 +1014,7 @@ mod tests {
         let mut player = make_player(use_key);
 
         // Hold Alt
-        update_use_key_state(&resources, &mut player, Minimap::Detecting);
+        update_use_key_state(&mut resources, &mut player, Minimap::Detecting);
         assert_matches!(
             player.state,
             Player::UseKey(UseKey {
@@ -1028,7 +1036,7 @@ mod tests {
             ..Default::default()
         });
         player = make_player(use_key);
-        update_use_key_state(&resources, &mut player, Minimap::Detecting);
+        update_use_key_state(&mut resources, &mut player, Minimap::Detecting);
         assert_matches!(
             player.state,
             Player::UseKey(UseKey {
@@ -1050,7 +1058,7 @@ mod tests {
             ..Default::default()
         });
         player = make_player(use_key);
-        update_use_key_state(&resources, &mut player, Minimap::Detecting);
+        update_use_key_state(&mut resources, &mut player, Minimap::Detecting);
         assert_matches!(
             player.state,
             Player::UseKey(UseKey {
@@ -1075,7 +1083,7 @@ mod tests {
             .withf(|k| matches!(k, KeyKind::A))
             .once()
             .in_sequence(&mut sequence);
-        let resources = Resources::new(Some(keys), None);
+        let mut resources = Resources::new(Some(keys), None);
 
         let mut use_key = UseKey {
             key: KeyKind::A,
@@ -1096,7 +1104,7 @@ mod tests {
         let mut player = make_player(use_key);
 
         // Press Alt
-        update_use_key_state(&resources, &mut player, Minimap::Detecting);
+        update_use_key_state(&mut resources, &mut player, Minimap::Detecting);
         assert_matches!(
             player.state,
             Player::UseKey(UseKey {
@@ -1115,7 +1123,7 @@ mod tests {
             ..Default::default()
         });
         player = make_player(use_key);
-        update_use_key_state(&resources, &mut player, Minimap::Detecting);
+        update_use_key_state(&mut resources, &mut player, Minimap::Detecting);
     }
 
     #[test]
@@ -1130,7 +1138,7 @@ mod tests {
             .withf(|k| matches!(k, KeyKind::Alt))
             .once()
             .in_sequence(&mut sequence);
-        let resources = Resources::new(Some(keys), None);
+        let mut resources = Resources::new(Some(keys), None);
 
         let mut use_key = UseKey {
             key: KeyKind::A,
@@ -1151,7 +1159,7 @@ mod tests {
         let mut player = make_player(use_key);
 
         // Press A
-        update_use_key_state(&resources, &mut player, Minimap::Detecting);
+        update_use_key_state(&mut resources, &mut player, Minimap::Detecting);
         assert_matches!(
             player.state,
             Player::UseKey(UseKey {
@@ -1175,7 +1183,7 @@ mod tests {
             ..Default::default()
         });
         player = make_player(use_key);
-        update_use_key_state(&resources, &mut player, Minimap::Detecting);
+        update_use_key_state(&mut resources, &mut player, Minimap::Detecting);
     }
 
     #[test]
@@ -1190,7 +1198,7 @@ mod tests {
             .withf(|k| matches!(k, KeyKind::A))
             .once()
             .in_sequence(&mut sequence);
-        let resources = Resources::new(Some(keys), None);
+        let mut resources = Resources::new(Some(keys), None);
 
         let use_key = UseKey {
             key: KeyKind::A,
@@ -1211,7 +1219,7 @@ mod tests {
         let mut player = make_player(use_key);
 
         // Press Alt then A
-        update_use_key_state(&resources, &mut player, Minimap::Detecting);
+        update_use_key_state(&mut resources, &mut player, Minimap::Detecting);
         assert_matches!(
             player.state,
             Player::UseKey(UseKey {
@@ -1237,7 +1245,7 @@ mod tests {
             .times(1)
             .in_sequence(&mut sequence);
 
-        let resources = Resources::new(Some(keys), None);
+        let mut resources = Resources::new(Some(keys), None);
         let use_key = UseKey {
             key: KeyKind::A,
             key_hold_ticks: 3,
@@ -1258,9 +1266,9 @@ mod tests {
         let mut player = make_player(use_key);
 
         for _ in 0..4 {
-            update_use_key_state(&resources, &mut player, Minimap::Detecting);
+            update_use_key_state(&mut resources, &mut player, Minimap::Detecting);
         }
-        update_use_key_state(&resources, &mut player, Minimap::Detecting);
+        update_use_key_state(&mut resources, &mut player, Minimap::Detecting);
     }
 
     #[test]
@@ -1276,7 +1284,7 @@ mod tests {
             .times(1)
             .in_sequence(&mut sequence);
 
-        let resources = Resources::new(Some(keys), None);
+        let mut resources = Resources::new(Some(keys), None);
         let use_key = UseKey {
             key: KeyKind::A,
             key_hold_ticks: 2,
@@ -1296,7 +1304,7 @@ mod tests {
 
         let mut player = make_player(use_key);
 
-        update_use_key_state(&resources, &mut player, Minimap::Detecting);
+        update_use_key_state(&mut resources, &mut player, Minimap::Detecting);
         assert_matches!(
             player.state,
             Player::UseKey(UseKey {
@@ -1308,7 +1316,7 @@ mod tests {
             })
         );
 
-        update_use_key_state(&resources, &mut player, Minimap::Detecting);
+        update_use_key_state(&mut resources, &mut player, Minimap::Detecting);
         assert_matches!(
             player.context.stalling_buffered,
             BufferedStalling::Interruptible(_, 6)
@@ -1354,7 +1362,7 @@ mod tests {
             .times(1)
             .in_sequence(&mut sequence);
 
-        let resources = Resources::new(Some(keys), None);
+        let mut resources = Resources::new(Some(keys), None);
         let use_key = UseKey {
             key: KeyKind::A,
             count: 2,
@@ -1377,10 +1385,10 @@ mod tests {
 
         let mut player = make_player(use_key);
 
-        update_use_key_state(&resources, &mut player, Minimap::Detecting); // hold
-        update_use_key_state(&resources, &mut player, Minimap::Detecting); // hold 
-        update_use_key_state(&resources, &mut player, Minimap::Detecting); // release
-        update_use_key_state(&resources, &mut player, Minimap::Detecting); // postcondition
+        update_use_key_state(&mut resources, &mut player, Minimap::Detecting); // hold
+        update_use_key_state(&mut resources, &mut player, Minimap::Detecting); // hold 
+        update_use_key_state(&mut resources, &mut player, Minimap::Detecting); // release
+        update_use_key_state(&mut resources, &mut player, Minimap::Detecting); // postcondition
         assert!(!player.context.stalling_buffered.stalling());
         assert!(
             player
@@ -1407,8 +1415,8 @@ mod tests {
             state: State::Using(Using::default()),
             ..use_key
         });
-        update_use_key_state(&resources, &mut player, Minimap::Detecting); // hold
-        update_use_key_state(&resources, &mut player, Minimap::Detecting); // buffer
+        update_use_key_state(&mut resources, &mut player, Minimap::Detecting); // hold
+        update_use_key_state(&mut resources, &mut player, Minimap::Detecting); // buffer
         assert_matches!(
             player.context.stalling_buffered,
             BufferedStalling::Uninterruptible(_, _)

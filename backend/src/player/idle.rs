@@ -26,7 +26,11 @@ use crate::{
 ///
 /// This state does not do much on its own except when auto mobbing. It acts as entry
 /// to other state when there is an action and helps clearing keys.
-pub fn update_idle_state(resources: &Resources, player: &mut PlayerEntity, minimap_state: Minimap) {
+pub fn update_idle_state(
+    resources: &mut Resources,
+    player: &mut PlayerEntity,
+    minimap_state: Minimap,
+) {
     player.context.last_destinations = None;
     player.context.last_movement = None;
     player.context.stalling_timeout_state = None;
@@ -39,7 +43,11 @@ pub fn update_idle_state(resources: &Resources, player: &mut PlayerEntity, minim
     update_from_action(resources, player, minimap_state);
 }
 
-fn update_from_action(resources: &Resources, player: &mut PlayerEntity, minimap_state: Minimap) {
+fn update_from_action(
+    resources: &mut Resources,
+    player: &mut PlayerEntity,
+    minimap_state: Minimap,
+) {
     let context = &mut player.context;
     let action = next_action(context);
 
@@ -83,7 +91,7 @@ fn update_from_action(resources: &Resources, player: &mut PlayerEntity, minimap_
         }
 
         Some(PlayerAction::Move(Move { position, .. })) => {
-            let x = get_x_destination(&resources.rng, position);
+            let x = get_x_destination(&mut resources.rng, position);
             let point = Point::new(x, position.y);
 
             debug!(target: "backend/player", "handling move: {point:?}");
@@ -94,7 +102,7 @@ fn update_from_action(resources: &Resources, player: &mut PlayerEntity, minimap_
             position: Some(position),
             ..
         })) => {
-            let x = get_x_destination(&resources.rng, position);
+            let x = get_x_destination(&mut resources.rng, position);
             let point = Point::new(x, position.y);
 
             debug!(target: "backend/player", "handling move: {point:?}");
@@ -198,7 +206,7 @@ fn update_from_action(resources: &Resources, player: &mut PlayerEntity, minimap_
         }
 
         Some(PlayerAction::Panic(panic)) => {
-            player.state = Player::Panicking(Panicking::new(&resources.rng, panic.to));
+            player.state = Player::Panicking(Panicking::new(&mut resources.rng, panic.to));
         }
 
         Some(PlayerAction::UseBooster(using)) => {
@@ -228,7 +236,7 @@ fn update_from_action(resources: &Resources, player: &mut PlayerEntity, minimap_
     }
 }
 
-fn get_x_destination(rng: &Rng, position: Position) -> i32 {
+fn get_x_destination(rng: &mut Rng, position: Position) -> i32 {
     let x_min = position.x.saturating_sub(position.x_random_range).max(0);
     let x_max = position.x.saturating_add(position.x_random_range + 1);
     rng.random_range(x_min..x_max)

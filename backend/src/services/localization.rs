@@ -23,7 +23,7 @@ pub trait LocalizationService: Debug {
     fn update_localization(&mut self, localization: Localization);
 
     /// Saves the currently captured image to the `datasets` folder.
-    fn save_capture_image(&self, resources: &Resources, is_grayscale: bool);
+    fn save_capture_image(&self, resources: &mut Resources, is_grayscale: bool);
 }
 
 #[derive(Debug)]
@@ -66,7 +66,7 @@ impl LocalizationService for DefaultLocalizationService {
         *self.localization.borrow_mut() = Arc::new(localization);
     }
 
-    fn save_capture_image(&self, resources: &Resources, is_grayscale: bool) {
+    fn save_capture_image(&self, resources: &mut Resources, is_grayscale: bool) {
         if let Some(detector) = resources.detector.as_ref() {
             if is_grayscale {
                 utils::save_image_to_default(detector.grayscale(), DatasetDir::Root);

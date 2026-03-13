@@ -40,7 +40,7 @@ enum ActionsUpdate {
     Create(String),
     Delete,
     Update(Vec<Action>),
-    UpdateMinimap(Map),
+    UpdateMap(Map),
 }
 
 #[derive(PartialEq, Copy, Clone)]
@@ -86,7 +86,7 @@ pub fn ActionsScreen() -> Element {
         while let Some(message) = rx.next().await {
             match message {
                 ActionsUpdate::Set => {
-                    update_map(map_preset(), map()).await;
+                    update_map(map(), map_preset()).await;
                 }
                 ActionsUpdate::Create(preset) => {
                     let Some(mut current_map) = map() else {
@@ -102,7 +102,7 @@ pub fn ActionsScreen() -> Element {
                     if let Some(current_map) = upsert_map(current_map).await {
                         map_preset.set(Some(preset));
                         map.set(Some(current_map));
-                        update_map(map_preset(), map()).await;
+                        update_map(map(), map_preset()).await;
                     }
                 }
                 ActionsUpdate::Delete => {
@@ -119,7 +119,7 @@ pub fn ActionsScreen() -> Element {
                     if let Some(current_map) = upsert_map(current_map).await {
                         map_preset.set(current_map.actions.keys().next().cloned());
                         map.set(Some(current_map));
-                        update_map(map_preset(), map()).await;
+                        update_map(map(), map_preset()).await;
                     }
                 }
                 ActionsUpdate::Update(actions) => {
@@ -133,11 +133,13 @@ pub fn ActionsScreen() -> Element {
                     current_map.actions.insert(preset, actions);
                     if let Some(current_map) = upsert_map(current_map).await {
                         map.set(Some(current_map));
+                        update_map(map(), map_preset()).await;
                     }
                 }
-                ActionsUpdate::UpdateMinimap(new_map) => {
+                ActionsUpdate::UpdateMap(new_map) => {
                     if let Some(new_map) = upsert_map(new_map).await {
                         map.set(Some(new_map));
+                        update_map(map(), map_preset()).await;
                     }
                 }
             }
@@ -145,7 +147,7 @@ pub fn ActionsScreen() -> Element {
     });
 
     let save_map = use_callback(move |map: Map| {
-        coroutine.send(ActionsUpdate::UpdateMinimap(map));
+        coroutine.send(ActionsUpdate::UpdateMap(map));
     });
     let select_preset = use_callback(move |index: usize| {
         let selected = map_presets.peek().get(index).cloned().unwrap();

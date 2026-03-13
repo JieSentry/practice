@@ -57,7 +57,7 @@ const Y_IGNORE_THRESHOLD: i32 = 18;
 /// the [`PlayerState::unstuck_consecutive_counter`] by one. If the threshold is reached, this
 /// state will just jump in random direction.
 pub fn update_unstucking_state(
-    resources: &Resources,
+    resources: &mut Resources,
     player: &mut PlayerEntity,
     minimap_state: Minimap,
 ) {

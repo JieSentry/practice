@@ -46,7 +46,7 @@ pub fn SectionPlatforms(disabled: bool) -> Element {
         let mut map = map();
 
         map.platforms.push(platform);
-        coroutine.send(ActionsUpdate::UpdateMinimap(map));
+        coroutine.send(ActionsUpdate::UpdateMap(map));
     };
 
     let edit_platform = move |new_platform: Platform, index: usize| {
@@ -56,14 +56,14 @@ pub fn SectionPlatforms(disabled: bool) -> Element {
         };
 
         *platform = new_platform;
-        coroutine.send(ActionsUpdate::UpdateMinimap(map));
+        coroutine.send(ActionsUpdate::UpdateMap(map));
     };
 
     let delete_platform = move |index| {
         let mut map = map();
 
         map.platforms.remove(index);
-        coroutine.send(ActionsUpdate::UpdateMinimap(map));
+        coroutine.send(ActionsUpdate::UpdateMap(map));
     };
 
     let mut popup_content = use_signal(|| PopupContent::None);
