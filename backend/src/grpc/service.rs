@@ -11,7 +11,7 @@ use tokio::{
     task::{JoinHandle, block_in_place},
 };
 use tonic::{
-    Request, Status,
+    Code, Request, Status,
     transport::{Channel, Endpoint},
 };
 
@@ -101,7 +101,6 @@ impl InputService {
     }
 
     pub fn send_key(&mut self, key: Key, down_ms: f32) {
-        self.key_down.set(i32::from(key) as usize, true);
         self.with_client(|client| {
             block_future(async {
                 client
@@ -171,7 +170,9 @@ impl InputService {
 
         if let Err(status) = f(client) {
             info!(target: "backend/rpc", "rpc call failed: {status}");
-            self.state = State::Disconnected;
+            if status.code() == Code::Unavailable {
+                self.state = State::Disconnected;
+            }
         }
     }
 
