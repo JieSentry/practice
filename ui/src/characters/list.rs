@@ -197,12 +197,15 @@ fn Item(action: ActionConfiguration) -> Element {
 
     let ActionConfiguration {
         key,
+        key_hold_millis,
+        key_hold_buffered_to_wait_after,
         link_key,
         count,
         condition,
         with,
         wait_before_millis,
         wait_after_millis,
+        wait_after_buffered,
         ..
     } = action;
 
@@ -211,6 +214,18 @@ fn Item(action: ActionConfiguration) -> Element {
     } else {
         "mt-2"
     };
+
+    let key_hold_buffered = if key_hold_buffered_to_wait_after {
+        "⁺".to_string()
+    } else {
+        "".to_string()
+    };
+    let key_hold = if key_hold_millis > 0 {
+        " ⤓".to_string()
+    } else {
+        "".to_string()
+    };
+    let key = format!("{key}{key_hold}{key_hold_buffered}");
     let link_key = match link_key {
         LinkKeyBinding::Before(key) => format!("{key} ↝ "),
         LinkKeyBinding::After(key) => format!("{key} ↜ "),
@@ -218,27 +233,40 @@ fn Item(action: ActionConfiguration) -> Element {
         LinkKeyBinding::Along(key) => format!("{key} ↷ "),
         LinkKeyBinding::None => "".to_string(),
     };
+
     let millis = if let ActionConfigurationCondition::EveryMillis(millis) = condition {
         format!("⟳ {:.2}s / ", millis as f32 / 1000.0)
     } else {
         "".to_string()
     };
+
     let wait_before_secs = if wait_before_millis > 0 {
         Some(format!("⏱︎ {:.2}s", wait_before_millis as f32 / 1000.0))
     } else {
         None
     };
+
+    let wait_after_buffered = if !matches!(wait_after_buffered, WaitAfterBuffered::None) {
+        "⁺".to_string()
+    } else {
+        "".to_string()
+    };
     let wait_after_secs = if wait_after_millis > 0 {
-        Some(format!("⏱︎ {:.2}s", wait_after_millis as f32 / 1000.0))
+        Some(format!(
+            "{:.2}s{wait_after_buffered}",
+            wait_after_millis as f32 / 1000.0
+        ))
     } else {
         None
     };
+
     let wait_secs = match (wait_before_secs, wait_after_secs) {
-        (Some(before), None) => format!("{before} - ⏱︎ 0.00s / "),
+        (Some(before), None) => format!("{before} - 0.00s / "),
         (None, None) => "".to_string(),
         (None, Some(after)) => format!("⏱︎ 0.00s - {after} / "),
         (Some(before), Some(after)) => format!("{before} - {after} / "),
     };
+
     let with = match with {
         ActionKeyWith::Any => "Any",
         ActionKeyWith::Stationary => "Stationary",

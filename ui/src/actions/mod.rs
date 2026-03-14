@@ -216,6 +216,8 @@ fn SectionLegends() -> Element {
             p { "⇆ - Any direction" }
             p { "← - Left direction" }
             p { "→ - Right direction" }
+            p { "⁺ - Buffered wait after" }
+            p { "A ⤓ - Key A is held down" }
             p { "A ~ B - Random range between A and B" }
             p { "A ↝ B - Use A key then B key" }
             p { "A ↜ B - Use B key then A key" }

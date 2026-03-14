@@ -1,6 +1,6 @@
 use backend::{
     Action, ActionCondition, ActionKey, ActionKeyDirection, ActionKeyWith, ActionMove,
-    LinkKeyBinding, Position,
+    LinkKeyBinding, Position, WaitAfterBuffered,
 };
 use dioxus::prelude::*;
 
@@ -182,6 +182,8 @@ fn MoveItem(action: ActionMove) -> Element {
 fn KeyItem(action: ActionKey) -> Element {
     let ActionKey {
         key,
+        key_hold_millis,
+        key_hold_buffered_to_wait_after,
         link_key,
         count,
         position,
@@ -191,6 +193,7 @@ fn KeyItem(action: ActionKey) -> Element {
         queue_to_front,
         wait_before_use_millis,
         wait_after_use_millis,
+        wait_after_buffered,
         ..
     } = action;
 
@@ -227,6 +230,18 @@ fn KeyItem(action: ActionKey) -> Element {
         "mt-2"
     };
 
+    let key_hold_buffered = if key_hold_buffered_to_wait_after {
+        "⁺".to_string()
+    } else {
+        "".to_string()
+    };
+    let key_hold = if key_hold_millis > 0 {
+        " ⤓".to_string()
+    } else {
+        "".to_string()
+    };
+    let key = format!("{key}{key_hold}{key_hold_buffered}");
+
     let link_key = match link_key {
         LinkKeyBinding::Before(key) => format!("{key} ↝ "),
         LinkKeyBinding::After(key) => format!("{key} ↜ "),
@@ -247,14 +262,22 @@ fn KeyItem(action: ActionKey) -> Element {
         None
     };
 
+    let wait_after_buffered = if !matches!(wait_after_buffered, WaitAfterBuffered::None) {
+        "⁺".to_string()
+    } else {
+        "".to_string()
+    };
     let wait_after_secs = if wait_after_use_millis > 0 {
-        Some(format!("⏱︎ {:.2}s", wait_after_use_millis as f32 / 1000.0))
+        Some(format!(
+            "{:.2}s{wait_after_buffered}",
+            wait_after_use_millis as f32 / 1000.0
+        ))
     } else {
         None
     };
 
     let wait_secs = match (wait_before_secs, wait_after_secs) {
-        (Some(before), None) => format!("{before} - ⏱︎ 0.00s / "),
+        (Some(before), None) => format!("{before} - 0.00s / "),
         (None, None) => "".to_string(),
         (None, Some(after)) => format!("⏱︎ 0.00s - {after} / "),
         (Some(before), Some(after)) => format!("{before} - {after} / "),

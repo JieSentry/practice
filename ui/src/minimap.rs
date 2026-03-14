@@ -410,10 +410,10 @@ pub fn MinimapScreen() -> Element {
     });
 
     rsx! {
-        div { class: "relative flex flex-col flex-none w-xs xl:w-md z-0",
+        div { class: "relative flex flex-col flex-none w-xs z-0",
             div {
-                class: "absolute inset-0 bg-no-repeat bg-center w-[130%] -z-1",
-                style: "background-image: url({BACKGROUND}); background-size: 100%; background-position: -10px 120px;",
+                class: "absolute inset-0 bg-no-repeat w-[200%] -z-1",
+                style: "background-image: url({BACKGROUND}); background-size: 800px; background-position: -165px 160px;",
             }
             Canvas {
                 state,
@@ -578,7 +578,7 @@ fn Canvas(
     });
 
     rsx! {
-        div { class: "relative h-31 xl:h-38 rounded-2xl bg-secondary-surface",
+        div { class: "relative h-31 rounded-2xl bg-secondary-surface",
             canvas {
                 class: "absolute inset-0 rounded-2xl w-full h-full",
                 id: "canvas-map",
