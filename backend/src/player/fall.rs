@@ -24,12 +24,6 @@ pub const FALLING_THRESHOLD: i32 = 4;
 /// a [`PlayerAction::Key`] with [`ActionKeyWith::Any`].
 const FALLING_TO_USE_KEY_THRESHOLD: i32 = 5;
 
-/// Tick to stop helding down [`KeyKind::Down`] at.
-const JUMP_KEY_TICK: u32 = 1;
-
-/// Tick to stop helding down [`KeyKind::Down`] at.
-const STOP_DOWN_KEY_TICK: u32 = 3;
-
 /// Maximum number of ticks before timing out.
 const TIMEOUT: u32 = MOVE_TIMEOUT + 3;
 
@@ -124,36 +118,30 @@ pub fn update_falling_state(
 
             player.context.last_movement = Some(LastMovement::Falling);
             player.state = Player::Falling(falling.moving(moving));
-            resources.input.send_key_down(KeyKind::Down);
+
+            // Do the fall
+            resources.input.send_key(KeyKind::Down);
+            let y_distance = moving.y_distance_direction_from(true, moving.pos).0;
+            let teleport_fall_threshold = if player.context.config.has_extended_teleport_range {
+                EXTENDED_TELEPORT_FALL_THRESHOLD
+            } else {
+                TELEPORT_FALL_THRESHOLD
+            };
+            let can_teleport = !player.context.config.disable_teleport_on_fall
+                && player.context.config.teleport_key.is_some()
+                && y_distance < teleport_fall_threshold;
+            if can_teleport {
+                resources
+                    .input
+                    .send_key(player.context.config.teleport_key.unwrap());
+            } else {
+                resources.input.send_key(player.context.config.jump_key);
+            }
         }
         MovingLifecycle::Ended(moving) => {
-            resources.input.send_key_up(KeyKind::Down);
             player.state = Player::Moving(moving.dest, moving.exact, moving.intermediates);
         }
         MovingLifecycle::Updated(mut moving) => {
-            if moving.timeout.total == JUMP_KEY_TICK {
-                let y_distance = moving.y_distance_direction_from(true, moving.pos).0;
-                let teleport_fall_threshold = if player.context.config.has_extended_teleport_range {
-                    EXTENDED_TELEPORT_FALL_THRESHOLD
-                } else {
-                    TELEPORT_FALL_THRESHOLD
-                };
-                let can_teleport = !player.context.config.disable_teleport_on_fall
-                    && player.context.config.teleport_key.is_some()
-                    && y_distance < teleport_fall_threshold;
-                if can_teleport {
-                    resources
-                        .input
-                        .send_key(player.context.config.teleport_key.unwrap());
-                } else {
-                    resources.input.send_key(player.context.config.jump_key);
-                }
-            }
-
-            if moving.timeout.total == STOP_DOWN_KEY_TICK {
-                resources.input.send_key_up(KeyKind::Down);
-            }
-
             if !moving.completed {
                 let y_changed = moving.pos.y - falling.anchor.y;
                 if y_changed < 0 {
@@ -234,7 +222,7 @@ fn update_from_action(
 mod tests {
     use std::assert_matches::assert_matches;
 
-    use mockall::predicate::eq;
+    use mockall::{Sequence, predicate::eq};
     use opencv::core::Point;
 
     use super::*;
@@ -271,7 +259,7 @@ mod tests {
     }
 
     #[test]
-    fn update_falling_state_started_presses_down() {
+    fn update_falling_state_started() {
         let moving = mock_moving(POS, Point::new(POS.x, POS.y - 5)); // ensures falling
         let mut player = mock_player_entity_with_jump(POS);
         player.state = Player::Falling(Falling {
@@ -280,8 +268,16 @@ mod tests {
             timeout_on_complete: false,
         });
 
+        let mut seq = Sequence::new();
         let mut keys = MockInput::new();
-        keys.expect_send_key_down().once().with(eq(KeyKind::Down));
+        keys.expect_send_key()
+            .once()
+            .with(eq(KeyKind::Down))
+            .in_sequence(&mut seq);
+        keys.expect_send_key()
+            .once()
+            .with(eq(KeyKind::Space))
+            .in_sequence(&mut seq);
         let mut resources = Resources::new(Some(keys), None);
 
         update_falling_state(&mut resources, &mut player, Minimap::Detecting);
@@ -297,24 +293,6 @@ mod tests {
             })
         );
         assert_eq!(player.context.last_movement, Some(LastMovement::Falling));
-    }
-
-    #[test]
-    fn update_falling_state_updates_presses_space() {
-        let mut moving = mock_moving(POS, Point::new(POS.x, POS.y - 5)); // ensures falling
-        moving.timeout.started = true;
-        let mut player = mock_player_entity_with_jump(POS);
-        player.state = Player::Falling(Falling {
-            moving,
-            anchor: Point::default(),
-            timeout_on_complete: false,
-        });
-
-        let mut keys = MockInput::new();
-        keys.expect_send_key().once().with(eq(KeyKind::Space));
-        let mut resources = Resources::new(Some(keys), None);
-
-        update_falling_state(&mut resources, &mut player, Minimap::Detecting);
     }
 
     #[test]
@@ -347,47 +325,6 @@ mod tests {
             })
         );
         assert_eq!(player.context.last_movement, None);
-    }
-
-    #[test]
-    fn update_falling_state_ended_releases_down_key() {
-        let moving = mock_moving(POS, POS)
-            .timeout_current(TIMEOUT)
-            .timeout_started(true);
-        let mut player = mock_player_entity_with_jump(POS);
-        player.state = Player::Falling(Falling {
-            moving,
-            anchor: Point::default(),
-            timeout_on_complete: false,
-        });
-
-        let mut keys = MockInput::new();
-        keys.expect_send_key_up().once().with(eq(KeyKind::Down));
-        let mut resources = Resources::new(Some(keys), None);
-
-        update_falling_state(&mut resources, &mut player, Minimap::Detecting);
-
-        assert_matches!(player.state, Player::Moving(_, _, _));
-    }
-
-    #[test]
-    fn update_falling_updates_releases_down_after_stop_tick() {
-        let mut moving = mock_moving(POS, Point::new(POS.x, POS.y - 5)).timeout_started(true);
-        moving.timeout.total = STOP_DOWN_KEY_TICK - 1;
-        let mut player = mock_player_entity_with_jump(POS);
-        player.state = Player::Falling(Falling {
-            moving,
-            anchor: Point::default(),
-            timeout_on_complete: false,
-        });
-
-        let mut keys = MockInput::new();
-        keys.expect_send_key_up().once().with(eq(KeyKind::Down));
-        let mut resources = Resources::new(Some(keys), None);
-
-        update_falling_state(&mut resources, &mut player, Minimap::Detecting);
-
-        assert_matches!(player.state, Player::Falling { .. });
     }
 
     #[test]
