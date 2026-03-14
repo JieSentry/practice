@@ -1,4 +1,9 @@
-use std::{cell::RefCell, rc::Rc, sync::Arc};
+use std::{
+    cell::RefCell,
+    fmt::{self, Display},
+    rc::Rc,
+    sync::Arc,
+};
 
 use anyhow::Result;
 use log::debug;
@@ -38,6 +43,16 @@ pub struct SolvingShape {
     state: State,
     solving: Option<Rc<RefCell<Solving>>>,
     lie_detector_task: Rc<RefCell<Option<Task<Result<bool>>>>>,
+}
+
+impl Display for SolvingShape {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.state {
+            State::Waiting => write!(f, "Waiting"),
+            State::Solving(_) => write!(f, "Solving"),
+            State::Completed => write!(f, "Completed"),
+        }
+    }
 }
 
 impl Drop for SolvingShape {

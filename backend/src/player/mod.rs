@@ -106,7 +106,9 @@ pub enum Player {
     /// Tries to solve a rune.
     SolvingRune(SolvingRune),
     /// Tries to solve lie detector's transparent shape.
+    #[strum(to_string = "SolvingShape({0})")]
     SolvingShape(SolvingShape),
+    #[strum(to_string = "SolvingVioletta({0})")]
     SolvingVioletta(SolvingVioletta),
     /// Enters the cash shop then exit after 10 seconds.
     CashShopThenExit(CashShop),
