@@ -69,7 +69,6 @@ class KeyInput(KeyInputServicer):
             return KeyStateResponse(KeyState.Pressed)
         else:
             return KeyStateResponse(KeyState.Released)
-            
 
     def SendMouse(self, request: MouseRequest, context):
         # Regardless of the type of Coordinate return in Init(), the coordinates are always based on
@@ -126,30 +125,24 @@ class KeyInput(KeyInputServicer):
         # Map coordinates from bot PC to input PC
         crop_left_px = 0  # Change this until it feels correct
         crop_top_px = 30  # Change this until it feels correct
-        scaled_x = int(((x - crop_left_px) / (width - crop_left_px)) * screen_width)
-        scaled_y = int(((y - crop_top_px) / (height - crop_top_px)) * screen_height)
+        scaled_x = int(
+            ((x - crop_left_px) / (width - crop_left_px)) * screen_width)
+        scaled_y = int(
+            ((y - crop_top_px) / (height - crop_top_px)) * screen_height)
 
         dx = scaled_x - position.x
         dy = scaled_y - position.y
 
         # Common logics, not very human but just an example
-        seed_int = int.from_bytes(self.seed[:4], "little", signed=False)
-        rnd = Random(seed_int)
-        ms = rnd.randrange(200, 300)
         if action == MouseAction.Move:
-            kmNet.move_auto(dx, dy, ms)
+            kmNet.move(dx, dy)
         elif action == MouseAction.Click:
-            kmNet.move_auto(dx, dy, ms)
+            kmNet.move(dx, dy)
             kmNet.mouse(1, 0, 0, 0)
             kmNet.mouse(0, 0, 0, 0)
         elif action == MouseAction.ScrollDown:
-            kmNet.move_auto(dx, dy, ms)
+            kmNet.move(dx, dy)
             kmNet.mouse(0, 0, 0, -1)
-
-        # Sleep to ensure mouse movement completes since KMBox move_auto doesn't seem to block until
-        # the move is actually complete.
-        # If you let the mouse jump instead of sliding like above, sleep is probably not needed.
-        time.sleep(ms / 1000)
 
         return MouseResponse()
 
@@ -172,20 +165,12 @@ class KeyInput(KeyInputServicer):
 
     def SendUp(self, request: KeyUpRequest, context):
         key = request.key
-        timer = self.timers_map.get(key)
-
-        if timer is None or not timer.is_alive():
-            kmNet.keyup(self.keys_map[key])
-
+        kmNet.keyup(self.keys_map[key])
         return KeyUpResponse()
 
     def SendDown(self, request: KeyDownRequest, context):
         key = request.key
-        timer = self.timers_map.get(key)
-
-        if timer is None or not timer.is_alive():
-            kmNet.keydown(self.keys_map[key])
-
+        kmNet.keydown(self.keys_map[key])
         return KeyDownResponse()
 
 
