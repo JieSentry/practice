@@ -3,7 +3,7 @@ resolver = "2"
 members = ["ui", "backend", "platforms"]
 
 [workspace.package]
-version = "0.25.0"
+version = "0.26.0"
 edition = "2024"
 
 [workspace.dependencies]
@@ -23,6 +23,11 @@ futures = "0.3"
 rand = "0.9.1"
 platforms = { path = "platforms" }
 backend = { path = "backend" }
+
+[workspace.lints.clippy]
+unnecessary_semicolon = "deny"
+declare_interior_mutable_const = "deny"
+redundant_clone = "deny"
 
 [profile]
 

@@ -1,17 +1,4 @@
-import pywinauto
-import pyautogui
-import grpc
-import ctypes
-
-user32 = ctypes.windll.user32
-
-from concurrent import futures
-from pywinauto import WindowSpecification, keyboard
-from pywinauto.application import Application
-
-# The two imports below is generated from:
-# python -m grpc_tools.protoc --python_out=. --pyi_out=. --grpc_python_out=. -I../../backend/proto ../..
-# /backend/proto/input.proto
+from input_pb2_grpc import KeyInputServicer, add_KeyInputServicer_to_server
 from input_pb2 import (
     Key,
     KeyRequest,
@@ -30,7 +17,21 @@ from input_pb2 import (
     KeyStateRequest,
     KeyStateResponse,
 )
-from input_pb2_grpc import KeyInputServicer, add_KeyInputServicer_to_server
+from pywinauto.application import Application
+from pywinauto import WindowSpecification, keyboard
+from threading import Timer
+from concurrent import futures
+import pywinauto
+import pyautogui
+import grpc
+import ctypes
+
+user32 = ctypes.windll.user32
+
+
+# The two imports below is generated from:
+# python -m grpc_tools.protoc --python_out=. --pyi_out=. --grpc_python_out=. -I../../backend/proto ../..
+# /backend/proto/input.proto
 
 
 class KeyInput(KeyInputServicer):
@@ -43,6 +44,7 @@ class KeyInput(KeyInputServicer):
         super().__init__()
         self.window = window
         self.keys_map = keys_map
+        self.timers_map: dict[Key, Timer] = {}
 
     # This is the init function that is called each time the bot connects to your service.
     def Init(self, request: KeyInitRequest, context):
@@ -69,7 +71,8 @@ class KeyInput(KeyInputServicer):
         return KeyInitResponse(mouse_coordinate=Coordinate.Relative)
 
     def KeyState(self, request: KeyStateRequest, context):
-        is_down = (user32.GetAsyncKeyState(self.vk_keys_map[request.key]) & 0x8000) != 0
+        is_down = (user32.GetAsyncKeyState(
+            self.vk_keys_map[request.key]) & 0x8000) != 0
         if is_down:
             return KeyStateResponse(KeyState.Pressed)
         else:
@@ -143,24 +146,32 @@ class KeyInput(KeyInputServicer):
             # above seed. You should use this delay and `time.sleep(delay)` on key down.
             key_down = request.down_ms / 1000.0
 
-            keyboard.send_keys("{" + key + " down}", pause=key_down, vk_packet=False)
-            keyboard.send_keys("{" + key + " up}", pause=0, vk_packet=False)
+            timer = self.timers_map.get(key)
+            if timer is None or not timer.is_alive():
+                self._send_down(key)
+                timer = Timer(key_down, self._send_up, args=(key))
+                timer.start()
+                self.timers_map[key] = timer
 
         return KeyResponse()
 
-    def SendUp(self, request: KeyUpRequest, context):
-        if self.window.has_keyboard_focus():
-            keyboard.send_keys(
-                "{" + self.keys_map[request.key] + " up}", pause=0, vk_packet=False
-            )
-        return KeyUpResponse()
-
     def SendDown(self, request: KeyDownRequest, context):
         if self.window.has_keyboard_focus():
-            keyboard.send_keys(
-                "{" + self.keys_map[request.key] + " down}", pause=0, vk_packet=False
-            )
+            self._send_down(request.key)
         return KeyDownResponse()
+
+    def SendUp(self, request: KeyUpRequest, context):
+        if self.window.has_keyboard_focus():
+            self._send_up(request.key)
+        return KeyUpResponse()
+
+    def _send_up(self, key: Key):
+        keyboard.send_keys(
+            "{" + self.keys_map[key] + " up}", pause=0, vk_packet=False)
+
+    def _send_down(self, key: Key):
+        keyboard.send_keys(
+            "{" + self.keys_map[key] + " down}", pause=0, vk_packet=False)
 
 
 if __name__ == "__main__":
@@ -331,7 +342,8 @@ if __name__ == "__main__":
     }
 
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=1))
-    add_KeyInputServicer_to_server(KeyInput(window, keys_map, vk_keys_map), server)
+    add_KeyInputServicer_to_server(
+        KeyInput(window, keys_map, vk_keys_map), server)
     server.add_insecure_port("[::]:5001")
     server.start()
     print("Server started, listening on 5001")

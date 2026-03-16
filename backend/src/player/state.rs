@@ -36,6 +36,9 @@ const MAX_BOOSTER_FAILED_COUNT: u32 = 5;
 /// there are no more cards to swap (e.g. All cards are at level 5).
 const MAX_FAMILIARS_SWAP_FAIL_COUNT: u32 = 3;
 
+/// The maximum number of times to retry detecting player's name.
+const MAX_NAME_RETRY_COUNT: u32 = 3;
+
 /// The maximum number of times horizontal movement can be repeated in non-auto-mobbing action.
 const HORIZONTAL_MOVEMENT_REPEAT_COUNT: u32 = 20;
 
@@ -141,11 +144,11 @@ impl BufferedStalling {
 }
 
 pub(super) struct BufferedStallingCallback {
-    inner: Box<dyn Fn(&Resources) + 'static>,
+    inner: Box<dyn Fn(&mut Resources) + 'static>,
 }
 
 impl BufferedStallingCallback {
-    pub fn new(callback: impl Fn(&Resources) + 'static) -> Self {
+    pub fn new(callback: impl Fn(&mut Resources) + 'static) -> Self {
         Self {
             inner: Box::new(callback),
         }
@@ -392,6 +395,10 @@ pub struct PlayerContext {
 
     /// The number of times [`Player::FamiliarsSwapping`] failed.
     familiars_swap_failed_count: u32,
+
+    name: Option<String>,
+    name_task: Option<Task<Result<String>>>,
+    name_retry_count: u32,
 }
 
 impl PlayerContext {
@@ -405,6 +412,11 @@ impl PlayerContext {
             reset_to_idle_next_update: true,
             ..PlayerContext::default()
         };
+    }
+
+    #[inline]
+    pub fn name(&self) -> Option<String> {
+        self.name.clone()
     }
 
     #[inline]
@@ -562,7 +574,7 @@ impl PlayerContext {
         self.normal_action = None;
     }
 
-    pub(super) fn clear_stalling_buffer_states(&mut self, resources: &Resources) {
+    pub(super) fn clear_stalling_buffer_states(&mut self, resources: &mut Resources) {
         if let Some(callback) = self.stalling_timeout_buffered_end_callback.take() {
             (callback.inner)(resources);
         }
@@ -570,7 +582,7 @@ impl PlayerContext {
         self.stalling_timeout_buffered_update_callback = None;
     }
 
-    pub(super) fn clear_stalling_buffer_states_if_possible(&mut self, resources: &Resources) {
+    pub(super) fn clear_stalling_buffer_states_if_possible(&mut self, resources: &mut Resources) {
         if matches!(
             self.stalling_buffered,
             BufferedStalling::Interruptible(_, _)
@@ -805,7 +817,7 @@ impl PlayerContext {
     /// TODO: Add unit tests
     pub(super) fn auto_mob_pathing_should_use_key(
         &mut self,
-        resources: &Resources,
+        resources: &mut Resources,
         minimap_state: Minimap,
     ) -> bool {
         const USE_KEY_Y_RANGE: i32 = AUTO_MOB_USE_KEY_Y_THRESHOLD + 4;
@@ -828,6 +840,7 @@ impl PlayerContext {
             Minimap::Detecting => return false,
         };
         let pos = self.last_known_pos.expect("in positional state");
+        let name = self.name();
         let Update::Ok(points) = update_detection_task(
             resources,
             self.config.auto_mob_use_key_when_pathing_update_millis,
@@ -837,6 +850,7 @@ impl PlayerContext {
                     minimap_bbox,
                     Rect::new(0, 0, minimap_bbox.width, minimap_bbox.height),
                     pos,
+                    name,
                 )
             },
         ) else {
@@ -882,7 +896,7 @@ impl PlayerContext {
     #[inline]
     pub fn auto_mob_pathing_point(
         &mut self,
-        resources: &Resources,
+        resources: &mut Resources,
         minimap_state: Minimap,
         bound: Rect,
     ) -> Point {
@@ -1014,7 +1028,7 @@ impl PlayerContext {
     /// [`None`] indicating this mob position should be dropped.
     pub fn auto_mob_pick_reachable_y_position(
         &mut self,
-        resources: &Resources,
+        resources: &mut Resources,
         minimap_state: Minimap,
         mob_pos: Point,
     ) -> Option<Point> {
@@ -1023,7 +1037,7 @@ impl PlayerContext {
 
     fn auto_mob_pick_reachable_y_position_inner(
         &mut self,
-        resources: &Resources,
+        resources: &mut Resources,
         minimap_state: Minimap,
         mob_pos: Point,
         bound_to_quads: bool,
@@ -1252,11 +1266,27 @@ impl PlayerContext {
     #[inline]
     pub(super) fn update_state(
         &mut self,
-        resources: &Resources,
+        resources: &mut Resources,
         player_state: Player,
         minimap_state: Minimap,
         buffs: &BuffEntities,
     ) -> bool {
+        if self.has_auto_mob_action_only()
+            && self.name.is_none()
+            && self.name_retry_count < MAX_NAME_RETRY_COUNT
+        {
+            match update_detection_task(resources, 0, &mut self.name_task, move |detector| {
+                detector.detect_player_name()
+            }) {
+                Update::Ok(name) => {
+                    debug!(target: "backend/player", "detected player name: {name}");
+                    self.name = Some(name);
+                }
+                Update::Err(_) => self.name_retry_count += 1,
+                Update::Pending => (),
+            }
+        }
+
         if self.update_position_state(resources, minimap_state) {
             self.update_health_state(resources, player_state);
             self.update_rune_validating_state(
@@ -1278,7 +1308,7 @@ impl PlayerContext {
     /// OpenCV top-left coordinate but flipped to bottom-left by subtracting the minimap height
     /// with the y position. This is more intuitive both for the UI and development experience.
     #[inline]
-    fn update_position_state(&mut self, resources: &Resources, minimap_state: Minimap) -> bool {
+    fn update_position_state(&mut self, resources: &mut Resources, minimap_state: Minimap) -> bool {
         let minimap_bbox = match &minimap_state {
             Minimap::Detecting => return false,
             Minimap::Idle(idle) => idle.bbox,
@@ -1367,7 +1397,7 @@ impl PlayerContext {
     #[inline]
     fn update_rune_validating_state(
         &mut self,
-        #[cfg(debug_assertions)] resources: &Resources,
+        #[cfg(debug_assertions)] resources: &mut Resources,
         buffs: &BuffEntities,
     ) {
         const VALIDATE_TIMEOUT: u32 = 375;
@@ -1399,7 +1429,7 @@ impl PlayerContext {
     /// bars are then cached and used to extract the current health and max health.
     // TODO: This should be a PlayerAction?
     #[inline]
-    fn update_health_state(&mut self, resources: &Resources, player_state: Player) {
+    fn update_health_state(&mut self, resources: &mut Resources, player_state: Player) {
         if matches!(player_state, Player::SolvingRune(_)) {
             return;
         }
@@ -1452,7 +1482,7 @@ impl PlayerContext {
     ///
     /// Upon being dead, a notification will be scheduled to notify the user.
     #[inline]
-    fn update_is_dead_state(&mut self, resources: &Resources) {
+    fn update_is_dead_state(&mut self, resources: &mut Resources) {
         let Update::Ok(is_dead) =
             update_detection_task(resources, 3000, &mut self.is_dead_task, |detector| {
                 Ok(detector.detect_player_is_dead())
@@ -1485,7 +1515,7 @@ impl PlayerContext {
         self.is_dead = is_dead;
     }
 
-    fn update_stalling_buffer_state(&mut self, resources: &Resources) {
+    fn update_stalling_buffer_state(&mut self, resources: &mut Resources) {
         match self.stalling_buffered {
             BufferedStalling::None => (),
             BufferedStalling::Interruptible(timeout, max_timeout)
@@ -1497,7 +1527,7 @@ impl PlayerContext {
 
     fn update_stalling_buffer_state_inner(
         &mut self,
-        resources: &Resources,
+        resources: &mut Resources,
         timeout: Timeout,
         max_timeout: u32,
     ) {
@@ -1556,7 +1586,7 @@ mod tests {
 
     #[test]
     fn auto_mob_pick_reachable_y_should_ignore_solidified_x_range() {
-        let resources = Resources::new(None, None);
+        let mut resources = Resources::new(None, None);
         let mut state = PlayerContext {
             auto_mob_reachable_y_map: HashMap::from([(50, 1)]),
             auto_mob_ignore_xs_map: HashMap::from([(50, vec![((53..58).into(), 3)])]),
@@ -1565,7 +1595,7 @@ mod tests {
 
         assert_matches!(
             state.auto_mob_pick_reachable_y_position(
-                &resources,
+                &mut resources,
                 Minimap::Detecting,
                 Point::new(55, 50)
             ),
@@ -1575,7 +1605,7 @@ mod tests {
 
     #[test]
     fn auto_mob_pick_reachable_y_in_threshold() {
-        let resources = Resources::new(None, None);
+        let mut resources = Resources::new(None, None);
         let mut state = PlayerContext {
             auto_mob_reachable_y_map: [100, 120, 150].into_iter().map(|y| (y, 1)).collect(),
             last_known_pos: Some(Point::new(0, 0)),
@@ -1585,14 +1615,14 @@ mod tests {
 
         // Expect 120 to be chosen since it's closest to 125
         assert_matches!(
-            state.auto_mob_pick_reachable_y_position(&resources, Minimap::Detecting, mob_pos),
+            state.auto_mob_pick_reachable_y_position(&mut resources, Minimap::Detecting, mob_pos),
             Some(Point { x: 50, y: 120 })
         );
     }
 
     #[test]
     fn auto_mob_pick_reachable_y_out_of_threshold() {
-        let resources = Resources::new(None, None);
+        let mut resources = Resources::new(None, None);
         let mut state = PlayerContext {
             auto_mob_reachable_y_map: [1000, 2000].into_iter().map(|y| (y, 1)).collect(),
             last_known_pos: Some(Point::new(0, 0)),
@@ -1602,7 +1632,7 @@ mod tests {
 
         // No y value is chosen so the original y is used
         assert_matches!(
-            state.auto_mob_pick_reachable_y_position(&resources, Minimap::Detecting, mob_pos),
+            state.auto_mob_pick_reachable_y_position(&mut resources, Minimap::Detecting, mob_pos),
             Some(Point { x: 50, y: 125 })
         );
     }
@@ -1731,7 +1761,7 @@ mod tests {
         resources.rng = rng;
 
         let bound = Rect::new(0, 0, 100, 100); // Whole map
-        let point = state.auto_mob_pathing_point(&resources, Minimap::Idle(idle), bound);
+        let point = state.auto_mob_pathing_point(&mut resources, Minimap::Idle(idle), bound);
 
         assert!(point.x >= 0 && point.x <= 20); // Platform xs
         assert_eq!(point.y, 80); // Platform y
@@ -1755,7 +1785,7 @@ mod tests {
         resources.rng = rng;
 
         let bound = Rect::new(0, 0, 100, 100);
-        let point = state.auto_mob_pathing_point(&resources, Minimap::Idle(idle), bound);
+        let point = state.auto_mob_pathing_point(&mut resources, Minimap::Idle(idle), bound);
 
         assert_eq!(point.x, 37);
         assert_eq!(point.y, 20); // 100 - 80

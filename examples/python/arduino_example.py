@@ -5,10 +5,25 @@ import time
 
 from threading import Timer
 from concurrent import futures
-# The two imports below is generated from:
-# python -m grpc_tools.protoc --python_out=. --pyi_out=. --grpc_python_out=. -I../../backend/proto ../..
-# /backend/proto/input.proto
-from input_pb2 import Key, KeyRequest, KeyResponse, KeyDownRequest, KeyDownResponse, KeyUpRequest, KeyUpResponse, KeyInitRequest, KeyInitResponse, MouseRequest, MouseResponse, MouseAction, Coordinate
+
+from input_pb2 import (
+    Key,
+    KeyRequest,
+    KeyResponse,
+    KeyDownRequest,
+    KeyDownResponse,
+    KeyUpRequest,
+    KeyUpResponse,
+    KeyInitRequest,
+    KeyInitResponse,
+    MouseRequest,
+    MouseResponse,
+    MouseAction,
+    Coordinate,
+    KeyState,
+    KeyStateRequest,
+    KeyStateResponse,
+)
 from input_pb2_grpc import KeyInputServicer, add_KeyInputServicer_to_server
 
 KEY_DOWN = 1
@@ -21,9 +36,11 @@ MOUSE_SCROLL = 5
 class KeyInput(KeyInputServicer):
     def __init__(self, keys_map: dict[Key, int], serial: serial.Serial) -> None:
         super().__init__()
+
         self.keys_map = keys_map
-        self.timers_map = {}
         self.serial = serial
+        self.timers_map: dict[Key, Timer] = {}
+        self.key_down: dict[Key, bool] = {}
 
     def Init(self, request: KeyInitRequest, context):
         return KeyInitResponse(mouse_coordinate=Coordinate.Screen)
@@ -57,43 +74,43 @@ class KeyInput(KeyInputServicer):
 
         return MouseResponse()
 
+    def KeyState(self, request: KeyStateRequest, context):
+        down = self.key_down.get(request.key, False)
+        return KeyStateResponse(
+            state=KeyState.Down if down else KeyState.Up
+        )
+
     def Send(self, request: KeyRequest, context):
-        key = self.keys_map[request.key]
-        key_down = request.down_ms / 1000.0
-        # timer = self.timers_map.get(key)
+        key = request.key
+        down_time = request.down_ms / 1000.0
 
-        # if timer is None or not timer.is_alive():
-        #     self.serial.write(bytes([KEY_DOWN, key]))
-        #     self.serial.write(bytes([KEY_UP, key]))
-        #     timer = Timer(key_down, lambda: self.serial.write(
-        #         bytes([KEY_UP, key])))
-        #     timer.start()
-        #     self.timers_map[key] = timer
+        timer = self.timers_map.get(key)
+        if timer is None or not timer.is_alive():
+            self._send_down(key)
 
-        self.serial.write(bytes([KEY_DOWN, key]))
-        time.sleep(key_down)
-        self.serial.write(bytes([KEY_UP, key]))
+            timer = Timer(down_time, self._send_up, args=(key,))
+            timer.start()
+            self.timers_map[key] = timer
 
         return KeyResponse()
 
-    def SendUp(self, request: KeyUpRequest, context):
-        key = request.key
-        # timer = self.timers_map.get(key)
-
-        # if timer is None or not timer.is_alive():
-        # self.serial.write(bytes([KEY_UP, self.keys_map[key]]))
-
-        self.serial.write(bytes([KEY_UP, self.keys_map[key]]))
-        return KeyUpResponse()
-
     def SendDown(self, request: KeyDownRequest, context):
         key = request.key
-        # timer = self.timers_map.get(key)
-
-        # if timer is None or not timer.is_alive():
-        # self.serial.write(bytes([KEY_DOWN, self.keys_map[key]]))
-        self.serial.write(bytes([KEY_DOWN, self.keys_map[key]]))
+        self._send_down(key)
         return KeyDownResponse()
+
+    def SendUp(self, request: KeyUpRequest, context):
+        key = request.key
+        self._send_up(key)
+        return KeyUpResponse()
+
+    def _send_up(self, key: Key):
+        self.serial.write(bytes([KEY_UP, self.keys_map[key]]))
+        self.key_down[key] = False
+
+    def _send_down(self, key: Key):
+        self.serial.write(bytes([KEY_DOWN, self.keys_map[key]]))
+        self.key_down[key] = True
 
 
 if __name__ == "__main__":

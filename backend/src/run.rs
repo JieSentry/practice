@@ -178,16 +178,25 @@ fn systems_loop() {
             resources.detector = Some(Arc::new(detector));
             resources.operation.update_tick();
 
-            minimap::run_system(&resources, &mut world.minimap, world.player.state.clone());
-            player::run_system(&resources, &mut world.player, &world.minimap, &world.buffs);
+            minimap::run_system(
+                &mut resources,
+                &mut world.minimap,
+                world.player.state.clone(),
+            );
+            player::run_system(
+                &mut resources,
+                &mut world.player,
+                &world.minimap,
+                &world.buffs,
+            );
             for skill in world.skills.iter_mut() {
-                skill::run_system(&resources, skill, world.player.state.clone());
+                skill::run_system(&mut resources, skill, world.player.state.clone());
             }
             for buff in world.buffs.iter_mut() {
-                buff::run_system(&resources, buff, world.player.state.clone());
+                buff::run_system(&mut resources, buff, world.player.state.clone());
             }
 
-            rotator.rotate_action(&resources, &mut world);
+            rotator.rotate_action(&mut resources, &mut world);
 
             let did_cycled_to_stop = resources.operation.halting();
             // Go to town on stop cycle
@@ -205,9 +214,9 @@ fn systems_loop() {
                 let _ = event_tx.send(WorldEvent::MinimapChanged);
             }
 
-            lie_detector_shape_event_task(&resources);
-            lie_detector_violleta_event_task(&resources);
-            elite_boss_event_task(&resources);
+            lie_detector_shape_event_task(&mut resources);
+            lie_detector_violleta_event_task(&mut resources);
+            elite_boss_event_task(&mut resources);
         }
 
         if was_capturing_normally && !is_capturing_normally {

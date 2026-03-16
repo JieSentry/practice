@@ -8,44 +8,10 @@ pub struct DatabaseEventHandler;
 impl EventHandler<DatabaseEvent> for DatabaseEventHandler {
     fn handle(&mut self, context: &mut EventContext<'_>, event: DatabaseEvent) {
         match event {
-            DatabaseEvent::MapUpdated(map) => {
-                let id = map.id.expect("valid map id if updated from database");
-                if Some(id) == context.map_service.map().and_then(|map| map.id) {
-                    context
-                        .mediator_service
-                        .queue_update_map(context.map_service.preset(), Some(map))
-                }
-            }
-            DatabaseEvent::MapDeleted(id) => {
-                if Some(id) == context.map_service.map().and_then(|map| map.id) {
-                    context
-                        .mediator_service
-                        .queue_update_map(context.map_service.preset(), None)
-                }
-            }
-            DatabaseEvent::CharacterDeleted(id) => {
-                let current_id = context
-                    .character_service
-                    .character()
-                    .and_then(|character| character.id);
-                if Some(id) == current_id {
-                    context.mediator_service.queue_update_character(None);
-                }
-            }
-            DatabaseEvent::CharacterUpdated(character) => {
-                let id = character
-                    .id
-                    .expect("valid character id if updated from database");
-                let current_id = context
-                    .character_service
-                    .character()
-                    .and_then(|character| character.id);
-                if Some(id) == current_id {
-                    context
-                        .mediator_service
-                        .queue_update_character(Some(character));
-                }
-            }
+            DatabaseEvent::MapUpdated(_)
+            | DatabaseEvent::MapDeleted(_)
+            | DatabaseEvent::CharacterDeleted(_)
+            | DatabaseEvent::CharacterUpdated(_) => { /* Handled by UI. */ }
             DatabaseEvent::SettingsUpdated(settings) => {
                 let settings = {
                     context.settings_service.update_settings(settings);

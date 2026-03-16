@@ -9,12 +9,11 @@ use super::{
 use crate::{
     ActionKeyWith,
     bridge::KeyKind,
-    ecs::{Resources, transition, transition_if},
+    ecs::Resources,
     minimap::Minimap,
     player::{
         MOVE_TIMEOUT, PlayerAction, PlayerEntity, actions::update_from_auto_mob_action,
-        next_action, state::LastMovement, timeout::ChangeAxis, transition_to_moving,
-        transition_to_moving_if,
+        next_action, state::LastMovement, timeout::ChangeAxis,
     },
 };
 
@@ -24,9 +23,6 @@ pub const FALLING_THRESHOLD: i32 = 4;
 /// Maximum y distance from the destination allowed to transition to [`Player::UseKey`] during
 /// a [`PlayerAction::Key`] with [`ActionKeyWith::Any`].
 const FALLING_TO_USE_KEY_THRESHOLD: i32 = 5;
-
-/// Tick to stop helding down [`KeyKind::Down`] at.
-const STOP_DOWN_KEY_TICK: u32 = 3;
 
 /// Maximum number of ticks before timing out.
 const TIMEOUT: u32 = MOVE_TIMEOUT + 3;
@@ -77,7 +73,7 @@ impl Falling {
 /// is already moving. Or if the player is already at destination or lower, it will returns
 /// to [`Player::Moving`].
 pub fn update_falling_state(
-    resources: &Resources,
+    resources: &mut Resources,
     player: &mut PlayerEntity,
     minimap_state: Minimap,
 ) {
@@ -92,33 +88,40 @@ pub fn update_falling_state(
         ChangeAxis::Vertical,
     ) {
         MovingLifecycle::Started(moving) => {
-            transition_if!(
-                player,
-                Player::Falling(falling.moving(moving.timeout_started(false))),
-                player.context.stalling_buffered.stalling(),
-                {
-                    player
-                        .context
-                        .clear_stalling_buffer_states_if_possible(resources);
-                }
-            );
+            if player.context.stalling_buffered.stalling() {
+                let moving = moving.timeout_started(false);
+                let falling = falling.moving(moving);
+
+                player
+                    .context
+                    .clear_stalling_buffer_states_if_possible(resources);
+                player.state = Player::Falling(falling);
+                return;
+            }
 
             // Stall until stationary before doing a fall by resetting timeout started
-            transition_if!(
-                player,
-                Player::Falling(
+            if !player.context.is_stationary {
+                player.state = Player::Falling(
                     falling
                         .moving(moving.timeout_started(false))
-                        .anchor(moving.pos)
-                ),
-                !player.context.is_stationary
-            );
+                        .anchor(moving.pos),
+                );
+                return;
+            }
 
             // Check if destination is already reached before starting
-            let (y_distance, y_direction) = moving.y_distance_direction_from(true, moving.pos);
-            transition_to_moving_if!(player, moving, y_direction >= 0);
+            let y_direction = moving.y_distance_direction_from(true, moving.pos).1;
+            if y_direction >= 0 {
+                player.state = Player::Moving(moving.dest, moving.exact, moving.intermediates);
+                return;
+            }
+
+            player.context.last_movement = Some(LastMovement::Falling);
+            player.state = Player::Falling(falling.moving(moving));
 
             // Do the fall
+            resources.input.send_key(KeyKind::Down);
+            let y_distance = moving.y_distance_direction_from(true, moving.pos).0;
             let teleport_fall_threshold = if player.context.config.has_extended_teleport_range {
                 EXTENDED_TELEPORT_FALL_THRESHOLD
             } else {
@@ -127,8 +130,6 @@ pub fn update_falling_state(
             let can_teleport = !player.context.config.disable_teleport_on_fall
                 && player.context.config.teleport_key.is_some()
                 && y_distance < teleport_fall_threshold;
-            player.context.last_movement = Some(LastMovement::Falling);
-            resources.input.send_key_down(KeyKind::Down);
             if can_teleport {
                 resources
                     .input
@@ -136,16 +137,11 @@ pub fn update_falling_state(
             } else {
                 resources.input.send_key(player.context.config.jump_key);
             }
-
-            transition!(player, Player::Falling(falling.moving(moving)))
         }
-        MovingLifecycle::Ended(moving) => transition_to_moving!(player, moving, {
-            resources.input.send_key_up(KeyKind::Down);
-        }),
+        MovingLifecycle::Ended(moving) => {
+            player.state = Player::Moving(moving.dest, moving.exact, moving.intermediates);
+        }
         MovingLifecycle::Updated(mut moving) => {
-            if moving.timeout.total == STOP_DOWN_KEY_TICK {
-                resources.input.send_key_up(KeyKind::Down);
-            }
             if !moving.completed {
                 let y_changed = moving.pos.y - falling.anchor.y;
                 if y_changed < 0 {
@@ -154,9 +150,9 @@ pub fn update_falling_state(
             } else if falling.timeout_on_complete {
                 moving.timeout.current = TIMEOUT;
             }
+
             // Sets initial next state first
             player.state = Player::Falling(falling.moving(moving));
-
             update_from_action(resources, player, minimap_state, moving)
         }
     }
@@ -164,7 +160,7 @@ pub fn update_falling_state(
 
 #[inline]
 fn update_from_action(
-    resources: &Resources,
+    resources: &mut Resources,
     player: &mut PlayerEntity,
     minimap_state: Minimap,
     moving: Moving,
@@ -175,15 +171,15 @@ fn update_from_action(
     match next_action(&player.context) {
         Some(PlayerAction::AutoMob(mob)) => {
             // Ignore `timeout_on_complete` for auto-mobbing intermediate destination
-            transition_to_moving_if!(
-                player,
-                moving,
-                moving.completed && moving.is_destination_intermediate() && y_direction >= 0,
-                {
-                    resources.input.send_key_up(KeyKind::Down);
-                }
-            );
-            transition_if!(has_teleport_key && !moving.completed);
+            if moving.completed && moving.is_destination_intermediate() && y_direction >= 0 {
+                resources.input.send_key_up(KeyKind::Down);
+                player.state = Player::Moving(moving.dest, moving.exact, moving.intermediates);
+                return;
+            }
+
+            if has_teleport_key && !moving.completed {
+                return;
+            }
 
             let (x_distance, x_direction) = moving.x_distance_direction_from(false, cur_pos);
             let (y_distance, _) = moving.y_distance_direction_from(false, cur_pos);
@@ -197,17 +193,16 @@ fn update_from_action(
                 y_distance,
             )
         }
+
         Some(PlayerAction::Key(
             key @ Key {
                 with: ActionKeyWith::Any,
                 ..
             },
         )) => {
-            transition_if!(
-                player,
-                Player::UseKey(UseKey::from_key(key)),
-                !has_teleport_key && moving.completed && y_distance < FALLING_TO_USE_KEY_THRESHOLD
-            )
+            if !has_teleport_key && moving.completed && y_distance < FALLING_TO_USE_KEY_THRESHOLD {
+                player.state = Player::UseKey(UseKey::from_key(key));
+            }
         }
         Some(
             PlayerAction::Key(Key {
@@ -227,7 +222,7 @@ fn update_from_action(
 mod tests {
     use std::assert_matches::assert_matches;
 
-    use mockall::predicate::eq;
+    use mockall::{Sequence, predicate::eq};
     use opencv::core::Point;
 
     use super::*;
@@ -264,7 +259,7 @@ mod tests {
     }
 
     #[test]
-    fn update_falling_state_started_presses_down_and_jump() {
+    fn update_falling_state_started() {
         let moving = mock_moving(POS, Point::new(POS.x, POS.y - 5)); // ensures falling
         let mut player = mock_player_entity_with_jump(POS);
         player.state = Player::Falling(Falling {
@@ -273,12 +268,19 @@ mod tests {
             timeout_on_complete: false,
         });
 
+        let mut seq = Sequence::new();
         let mut keys = MockInput::new();
-        keys.expect_send_key_down().once().with(eq(KeyKind::Down));
-        keys.expect_send_key().once().with(eq(KeyKind::Space));
-        let resources = Resources::new(Some(keys), None);
+        keys.expect_send_key()
+            .once()
+            .with(eq(KeyKind::Down))
+            .in_sequence(&mut seq);
+        keys.expect_send_key()
+            .once()
+            .with(eq(KeyKind::Space))
+            .in_sequence(&mut seq);
+        let mut resources = Resources::new(Some(keys), None);
 
-        update_falling_state(&resources, &mut player, Minimap::Detecting);
+        update_falling_state(&mut resources, &mut player, Minimap::Detecting);
 
         assert_matches!(
             player.state,
@@ -307,9 +309,9 @@ mod tests {
         let mut keys = MockInput::new();
         keys.expect_send_key_down().never();
         keys.expect_send_key().never();
-        let resources = Resources::new(Some(keys), None);
+        let mut resources = Resources::new(Some(keys), None);
 
-        update_falling_state(&resources, &mut player, Minimap::Detecting);
+        update_falling_state(&mut resources, &mut player, Minimap::Detecting);
 
         assert_matches!(
             player.state,
@@ -326,51 +328,11 @@ mod tests {
     }
 
     #[test]
-    fn update_falling_state_ended_releases_down_key() {
-        let moving = mock_moving(POS, POS)
-            .timeout_current(TIMEOUT)
-            .timeout_started(true);
-        let mut player = mock_player_entity_with_jump(POS);
-        player.state = Player::Falling(Falling {
-            moving,
-            anchor: Point::default(),
-            timeout_on_complete: false,
-        });
-
-        let mut keys = MockInput::new();
-        keys.expect_send_key_up().once().with(eq(KeyKind::Down));
-        let resources = Resources::new(Some(keys), None);
-
-        update_falling_state(&resources, &mut player, Minimap::Detecting);
-
-        assert_matches!(player.state, Player::Moving(_, _, _));
-    }
-
-    #[test]
-    fn update_falling_updates_releases_down_after_stop_tick() {
-        let mut moving = mock_moving(POS, Point::new(POS.x, POS.y - 5)).timeout_started(true);
-        moving.timeout.total = STOP_DOWN_KEY_TICK - 1;
-        let mut player = mock_player_entity_with_jump(POS);
-        player.state = Player::Falling(Falling {
-            moving,
-            anchor: Point::default(),
-            timeout_on_complete: false,
-        });
-
-        let mut keys = MockInput::new();
-        keys.expect_send_key_up().once().with(eq(KeyKind::Down));
-        let resources = Resources::new(Some(keys), None);
-
-        update_falling_state(&resources, &mut player, Minimap::Detecting);
-
-        assert_matches!(player.state, Player::Falling { .. });
-    }
-
-    #[test]
     fn update_falling_completes_and_timeouts_if_enabled() {
-        let moving = mock_moving(POS, Point::new(POS.x, POS.y - 5))
+        let mut moving = mock_moving(POS, Point::new(POS.x, POS.y - 5))
             .completed(true)
             .timeout_started(true);
+        moving.timeout.total = 5;
         let mut player = mock_player_entity_with_jump(POS);
         player.state = Player::Falling(Falling {
             moving,
@@ -378,9 +340,9 @@ mod tests {
             timeout_on_complete: true,
         });
 
-        let resources = Resources::new(None, None);
+        let mut resources = Resources::new(None, None);
 
-        update_falling_state(&resources, &mut player, Minimap::Detecting);
+        update_falling_state(&mut resources, &mut player, Minimap::Detecting);
 
         assert_matches!(
             player.state,
@@ -400,9 +362,10 @@ mod tests {
 
     #[test]
     fn update_falling_completes_without_timeout_if_disabled() {
-        let moving = mock_moving(POS, Point::new(POS.x, POS.y - 5))
+        let mut moving = mock_moving(POS, Point::new(POS.x, POS.y - 5))
             .completed(true)
             .timeout_started(true);
+        moving.timeout.total = 5;
         let mut player = mock_player_entity_with_jump(POS);
         player.state = Player::Falling(Falling {
             moving,
@@ -410,9 +373,9 @@ mod tests {
             timeout_on_complete: false,
         });
 
-        let resources = Resources::new(None, None);
+        let mut resources = Resources::new(None, None);
 
-        update_falling_state(&resources, &mut player, Minimap::Detecting);
+        update_falling_state(&mut resources, &mut player, Minimap::Detecting);
 
         assert_matches!(
             player.state,

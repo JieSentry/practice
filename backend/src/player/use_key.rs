@@ -9,12 +9,11 @@ use super::{
 use crate::{
     ActionKeyDirection, ActionKeyWith, Position, WaitAfterBuffered,
     bridge::{InputKeyDownOptions, KeyKind, LinkKeyKind},
-    ecs::{Resources, transition, transition_if},
+    ecs::Resources,
     minimap::Minimap,
     player::{
         LastMovement, MOVE_TIMEOUT, Moving, Player, PlayerEntity, next_action,
         state::{BufferedStalling, BufferedStallingCallback},
-        transition_from_action,
     },
     run::MS_PER_TICK,
 };
@@ -210,7 +209,7 @@ impl UseKey {
 ///
 /// There are multiple stages to using a key as described by [`State`].
 pub fn update_use_key_state(
-    resources: &Resources,
+    resources: &mut Resources,
     player: &mut PlayerEntity,
     minimap_state: Minimap,
 ) {
@@ -221,16 +220,13 @@ pub fn update_use_key_state(
     match use_key.state {
         State::Precondition => {
             update_precondition(resources, &mut player.context, &mut use_key);
-            transition_if!(
-                player,
-                Player::Stalling(Timeout::default(), use_key.wait_before_use_ticks),
-                matches!(use_key.pending_transition, PendingTransition::WaitBefore),
-                {
-                    use_key.pending_transition = PendingTransition::None;
-                    use_key.state = State::Using(Using::default());
-                    player.context.stalling_timeout_state = Some(Player::UseKey(use_key));
-                }
-            );
+            if matches!(use_key.pending_transition, PendingTransition::WaitBefore) {
+                use_key.pending_transition = PendingTransition::None;
+                use_key.state = State::Using(Using::default());
+                player.context.stalling_timeout_state = Some(Player::UseKey(use_key));
+                player.state = Player::Stalling(Timeout::default(), use_key.wait_before_use_ticks);
+                return;
+            }
         }
         State::ChangingDirection(_) => {
             update_changing_direction(resources, &mut player.context, &mut use_key);
@@ -238,9 +234,9 @@ pub fn update_use_key_state(
         #[allow(unused_assignments)]
         State::EnsuringUseWith => {
             update_ensuring_use_with(&player.context, &mut use_key);
-            transition_if!(
-                player,
-                Player::DoubleJumping(DoubleJumping::new(
+            if matches!(use_key.pending_transition, PendingTransition::DoubleJump) {
+                use_key.pending_transition = PendingTransition::None;
+                player.state = Player::DoubleJumping(DoubleJumping::new(
                     Moving::new(
                         player.context.last_known_pos.expect("in positional state"),
                         player.context.last_known_pos.expect("in positional state"),
@@ -249,12 +245,9 @@ pub fn update_use_key_state(
                     ),
                     true,
                     true,
-                )),
-                matches!(use_key.pending_transition, PendingTransition::DoubleJump),
-                {
-                    use_key.pending_transition = PendingTransition::None;
-                }
-            );
+                ));
+                return;
+            }
         }
         State::Using(_) => {
             update_using(resources, &player.context, &mut use_key);
@@ -272,7 +265,7 @@ pub fn update_use_key_state(
                 };
                 let update_callback = if should_buffer_holding {
                     Some(BufferedStallingCallback::new(
-                        move |resources: &Resources| {
+                        move |resources: &mut Resources| {
                             resources.input.send_key_down_with_options(
                                 use_key.key,
                                 InputKeyDownOptions::default().repeatable(),
@@ -284,7 +277,7 @@ pub fn update_use_key_state(
                 };
                 let end_callback = if should_buffer_holding {
                     Some(BufferedStallingCallback::new(
-                        move |resources: &Resources| {
+                        move |resources: &mut Resources| {
                             resources.input.send_key_up(use_key.key);
                         },
                     ))
@@ -304,17 +297,12 @@ pub fn update_use_key_state(
                 };
                 player.context.stalling_timeout_buffered_update_callback = update_callback;
                 player.context.stalling_timeout_buffered_end_callback = end_callback;
-            } else {
-                transition_if!(
-                    player,
-                    Player::Stalling(Timeout::default(), use_key.wait_after_use_ticks),
-                    has_transition,
-                    {
-                        use_key.pending_transition = PendingTransition::None;
-                        use_key.state = State::Postcondition;
-                        player.context.stalling_timeout_state = Some(Player::UseKey(use_key));
-                    }
-                );
+            } else if has_transition {
+                use_key.pending_transition = PendingTransition::None;
+                use_key.state = State::Postcondition;
+                player.context.stalling_timeout_state = Some(Player::UseKey(use_key));
+                player.state = Player::Stalling(Timeout::default(), use_key.wait_after_use_ticks);
+                return;
             }
         }
         State::Postcondition => {
@@ -323,7 +311,7 @@ pub fn update_use_key_state(
                 use_key.state = State::Precondition;
             }
         }
-    };
+    }
 
     let player_next_state = if use_key.current_count >= use_key.count {
         Player::Idle
@@ -346,26 +334,32 @@ pub fn update_use_key_state(
                     should_terminate: true
                 })
             );
-            transition_if!(player, player_next_state, !is_terminal || !should_terminate);
+            if !is_terminal || !should_terminate {
+                player.state = player_next_state;
+                return;
+            }
 
             player
                 .context
                 .auto_mob_track_ignore_xs(minimap_state, false);
-            transition_if!(
-                player,
-                Player::Stalling(Timeout::default(), MOVE_TIMEOUT),
-                player.context.auto_mob_reachable_y_require_update(y)
-            );
+            if player.context.auto_mob_reachable_y_require_update(y) {
+                player.state = Player::Stalling(Timeout::default(), MOVE_TIMEOUT);
+                return;
+            }
 
             assert_matches!(player_next_state, Player::Idle);
-            transition_from_action!(player, player_next_state);
+            player.context.clear_action_completed();
+            player.state = player_next_state;
         }
 
         Some(PlayerAction::PingPong(ping_pong)) => {
             assert!(!use_key.key_hold_buffered_to_wait_after);
             assert!(use_key.wait_after_buffered == WaitAfterBuffered::None);
 
-            transition_if!(player, player_next_state, !is_terminal);
+            if !is_terminal {
+                player.state = player_next_state;
+                return;
+            }
 
             player.context.clear_unstucking(true);
             update_from_ping_pong_action(
@@ -377,38 +371,47 @@ pub fn update_use_key_state(
             )
         }
 
-        Some(PlayerAction::Move(_) | PlayerAction::Key(_)) => {
-            transition_from_action!(player, player_next_state, is_terminal)
+        Some(action @ (PlayerAction::Move(_) | PlayerAction::Key(_))) => {
+            if is_terminal {
+                if !action.is_key_action_without_position() {
+                    player.context.clear_unstucking(false);
+                }
+                player.context.clear_action_completed();
+            }
+
+            player.state = player_next_state;
         }
 
-        None => transition!(player, player_next_state),
+        None => player.state = player_next_state,
 
         _ => unreachable!(),
     }
 }
 
-fn update_precondition(resources: &Resources, context: &mut PlayerContext, use_key: &mut UseKey) {
-    transition_if!(context.stalling_buffered.stalling(), {
+fn update_precondition(
+    resources: &mut Resources,
+    context: &mut PlayerContext,
+    use_key: &mut UseKey,
+) {
+    if context.stalling_buffered.stalling() {
         context.clear_stalling_buffer_states_if_possible(resources);
-    });
+        return;
+    }
 
-    transition_if!(
-        use_key,
-        State::ChangingDirection(Timeout::default()),
-        !ensure_direction(context, use_key.direction)
-    );
+    if !ensure_direction(context, use_key.direction) {
+        use_key.state = State::ChangingDirection(Timeout::default());
+        return;
+    }
 
-    transition_if!(
-        use_key,
-        State::EnsuringUseWith,
-        !ensure_use_with(context, use_key.with)
-    );
+    if !ensure_use_with(context, use_key.with) {
+        use_key.state = State::EnsuringUseWith;
+        return;
+    }
 
-    transition_if!(
-        use_key,
-        State::Using(Using::default()),
-        use_key.wait_before_use_ticks == 0
-    );
+    if use_key.wait_before_use_ticks == 0 {
+        use_key.state = State::Using(Using::default());
+        return;
+    }
 
     use_key.pending_transition = PendingTransition::WaitBefore;
 }
@@ -434,7 +437,7 @@ fn ensure_use_with(context: &PlayerContext, with: ActionKeyWith) -> bool {
     }
 }
 
-fn update_using(resources: &Resources, context: &PlayerContext, use_key: &mut UseKey) {
+fn update_using(resources: &mut Resources, context: &PlayerContext, use_key: &mut UseKey) {
     let State::Using(using) = use_key.state else {
         panic!("use key state is not using");
     };
@@ -443,7 +446,9 @@ fn update_using(resources: &Resources, context: &PlayerContext, use_key: &mut Us
         LinkKeyKind::After(_) => {
             if !using.hold_completed {
                 update_holding_key(resources, use_key);
-                transition_if!(use_key.key_hold_ticks > 0);
+                if use_key.key_hold_ticks > 0 {
+                    return;
+                }
             }
 
             if !using.link_completed {
@@ -458,7 +463,9 @@ fn update_using(resources: &Resources, context: &PlayerContext, use_key: &mut Us
             resources.input.send_key(key);
             if !using.hold_completed {
                 update_holding_key(resources, use_key);
-                transition_if!(use_key.key_hold_ticks > 0);
+                if use_key.key_hold_ticks > 0 {
+                    return;
+                }
             }
         }
         LinkKeyKind::Along(_) => {
@@ -481,16 +488,17 @@ fn update_using(resources: &Resources, context: &PlayerContext, use_key: &mut Us
 
             if !using.hold_completed {
                 update_holding_key(resources, use_key);
-                transition_if!(use_key.key_hold_ticks > 0);
+                if use_key.key_hold_ticks > 0 {
+                    return;
+                }
             }
         }
     }
 
-    transition_if!(
-        use_key,
-        State::Postcondition,
-        use_key.wait_after_use_ticks == 0 && !use_key.should_buffer_key_holding()
-    );
+    if use_key.wait_after_use_ticks == 0 && !use_key.should_buffer_key_holding() {
+        use_key.state = State::Postcondition;
+        return;
+    }
 
     use_key.pending_transition = PendingTransition::WaitAfter;
 }
@@ -498,12 +506,13 @@ fn update_using(resources: &Resources, context: &PlayerContext, use_key: &mut Us
 fn update_ensuring_use_with(context: &PlayerContext, use_key: &mut UseKey) {
     match use_key.with {
         ActionKeyWith::Any => unreachable!(),
-        ActionKeyWith::Stationary => transition_if!(
-            use_key,
-            State::Precondition,
-            State::EnsuringUseWith,
-            context.is_stationary
-        ),
+        ActionKeyWith::Stationary => {
+            use_key.state = if context.is_stationary {
+                State::Precondition
+            } else {
+                State::EnsuringUseWith
+            };
+        }
         ActionKeyWith::DoubleJump => {
             use_key.pending_transition = PendingTransition::DoubleJump;
         }
@@ -511,7 +520,7 @@ fn update_ensuring_use_with(context: &PlayerContext, use_key: &mut UseKey) {
 }
 
 fn update_changing_direction(
-    resources: &Resources,
+    resources: &mut Resources,
     context: &mut PlayerContext,
     use_key: &mut UseKey,
 ) {
@@ -526,88 +535,76 @@ fn update_changing_direction(
 
     match next_timeout_lifecycle(timeout, CHANGE_DIRECTION_TIMEOUT) {
         Lifecycle::Started(timeout) => {
-            transition_if!(
-                use_key,
-                State::ChangingDirection(timeout.started(false)),
-                !resources.input.is_key_cleared(key)
-            );
-            transition!(use_key, State::ChangingDirection(timeout), {
-                resources.input.send_key(key);
-            })
+            if !resources.input.is_key_cleared(key) {
+                use_key.state = State::ChangingDirection(timeout.started(false));
+                return;
+            }
+            resources.input.send_key(key);
+            use_key.state = State::ChangingDirection(timeout);
         }
-        Lifecycle::Ended => transition!(use_key, State::Precondition, {
+        Lifecycle::Ended => {
             context.last_known_direction = use_key.direction;
-        }),
-        Lifecycle::Updated(timeout) => transition!(use_key, State::ChangingDirection(timeout)),
+            use_key.state = State::Precondition;
+        }
+        Lifecycle::Updated(timeout) => {
+            use_key.state = State::ChangingDirection(timeout);
+        }
     }
 }
 
 #[inline]
-fn update_holding_key(resources: &Resources, use_key: &mut UseKey) {
+fn update_holding_key(resources: &mut Resources, use_key: &mut UseKey) {
     let State::Using(using) = use_key.state else {
         panic!("use key state is not using");
     };
 
     if use_key.key_hold_ticks == 0 {
-        transition!(
-            use_key,
-            State::Using(Using {
-                hold_completed: true,
-                ..using
-            }),
-            {
-                resources.input.send_key(use_key.key);
-            }
-        );
+        resources.input.send_key(use_key.key);
+        use_key.state = State::Using(Using {
+            hold_completed: true,
+            ..using
+        });
+        return;
     }
 
     match next_timeout_lifecycle(using.hold_timeout, use_key.key_hold_ticks) {
         Lifecycle::Started(timeout) => {
-            transition!(
-                use_key,
-                State::Using(Using {
-                    hold_timeout: timeout,
-                    hold_completed: use_key.should_buffer_key_holding(),
-                    ..using
-                }),
-                {
-                    resources.input.send_key_down_with_options(
-                        use_key.key,
-                        InputKeyDownOptions::default().repeatable(),
-                    );
-                }
+            resources.input.send_key_down_with_options(
+                use_key.key,
+                InputKeyDownOptions::default().repeatable(),
             );
+            use_key.state = State::Using(Using {
+                hold_timeout: timeout,
+                hold_completed: use_key.should_buffer_key_holding(),
+                ..using
+            });
         }
-        Lifecycle::Updated(timeout) => transition!(
-            use_key,
-            State::Using(Using {
+        Lifecycle::Updated(timeout) => {
+            resources.input.send_key_down_with_options(
+                use_key.key,
+                InputKeyDownOptions::default().repeatable(),
+            );
+            use_key.state = State::Using(Using {
                 hold_timeout: timeout,
                 ..using
-            }),
-            {
-                resources.input.send_key_down_with_options(
-                    use_key.key,
-                    InputKeyDownOptions::default().repeatable(),
-                );
-            }
-        ),
+            });
+        }
         Lifecycle::Ended => {
-            transition!(
-                use_key,
-                State::Using(Using {
-                    hold_completed: true,
-                    ..using
-                }),
-                {
-                    resources.input.send_key_up(use_key.key);
-                }
-            );
+            resources.input.send_key_up(use_key.key);
+            use_key.state = State::Using(Using {
+                hold_completed: true,
+                ..using
+            });
         }
     }
 }
 
 #[inline]
-fn update_linking_key(resources: &Resources, use_key: &mut UseKey, link_key_timing_millis: u64) {
+fn update_linking_key(
+    resources: &mut Resources,
+    use_key: &mut UseKey,
+    link_key_timing_millis: u64,
+) {
     let State::Using(using) = use_key.state else {
         panic!("use key state is not using");
     };
@@ -620,59 +617,46 @@ fn update_linking_key(resources: &Resources, use_key: &mut UseKey, link_key_timi
     let link_key_timeout = ((link_key_timing_millis / MS_PER_TICK) as u32).max(min_timeout);
 
     match next_timeout_lifecycle(using.link_timeout, link_key_timeout) {
-        Lifecycle::Started(timeout) => transition!(
-            use_key,
-            State::Using(Using {
+        Lifecycle::Started(timeout) => {
+            match link_key {
+                LinkKeyKind::Before(key) => {
+                    resources.input.send_key(key);
+                }
+                LinkKeyKind::Along(key) => {
+                    resources.input.send_key_down(key);
+                }
+                LinkKeyKind::AtTheSame(_) | LinkKeyKind::After(_) => (),
+                LinkKeyKind::None => panic!("there is no link key"),
+            }
+            use_key.state = State::Using(Using {
                 link_timeout: timeout,
                 ..using
-            }),
-            {
-                match link_key {
-                    LinkKeyKind::Before(key) => {
-                        resources.input.send_key(key);
-                    }
-                    LinkKeyKind::Along(key) => {
-                        resources.input.send_key_down(key);
-                    }
-                    LinkKeyKind::AtTheSame(_) | LinkKeyKind::After(_) => (),
-                    LinkKeyKind::None => panic!("there is no link key"),
+            });
+        }
+        Lifecycle::Ended => {
+            match link_key {
+                LinkKeyKind::After(key) => {
+                    resources.input.send_key(key);
                 }
+                LinkKeyKind::Along(key) => {
+                    resources.input.send_key_up(key);
+                }
+                LinkKeyKind::AtTheSame(_) | LinkKeyKind::Before(_) => (),
+                LinkKeyKind::None => panic!("there is no link key"),
             }
-        ),
-        Lifecycle::Ended => transition!(
-            use_key,
-            State::Using(Using {
+            use_key.state = State::Using(Using {
                 link_completed: true,
                 ..using
-            }),
-            {
-                match link_key {
-                    LinkKeyKind::After(key) => {
-                        resources.input.send_key(key);
-                    }
-                    LinkKeyKind::Along(key) => {
-                        resources.input.send_key_up(key);
-                    }
-                    LinkKeyKind::AtTheSame(_) | LinkKeyKind::Before(_) => (),
-                    LinkKeyKind::None => panic!("there is no link key"),
-                }
-            }
-        ),
+            });
+        }
         Lifecycle::Updated(timeout) => {
-            transition!(
-                use_key,
-                State::Using(Using {
-                    link_timeout: timeout,
-                    ..using
-                }),
-                {
-                    if matches!(link_key, LinkKeyKind::Along(_))
-                        && timeout.total == LINK_ALONG_PRESS_TICK
-                    {
-                        resources.input.send_key(use_key.key);
-                    }
-                }
-            )
+            if matches!(link_key, LinkKeyKind::Along(_)) && timeout.total == LINK_ALONG_PRESS_TICK {
+                resources.input.send_key(use_key.key);
+            }
+            use_key.state = State::Using(Using {
+                link_timeout: timeout,
+                ..using
+            });
         }
     }
 }
@@ -715,7 +699,7 @@ mod tests {
 
     #[test]
     fn update_use_key_state_ensuring_use_with_stationary() {
-        let resources = Resources::new(None, None);
+        let mut resources = Resources::new(None, None);
         let mut player = make_player(UseKey {
             key: KeyKind::A,
             key_hold_ticks: 0,
@@ -734,7 +718,7 @@ mod tests {
         });
 
         // Start EnsuringUseWith
-        update_use_key_state(&resources, &mut player, Minimap::Detecting);
+        update_use_key_state(&mut resources, &mut player, Minimap::Detecting);
         assert_matches!(
             player.state,
             Player::UseKey(UseKey {
@@ -745,7 +729,7 @@ mod tests {
 
         // Complete EnsuringUseWith when stationary
         player.context.is_stationary = true;
-        update_use_key_state(&resources, &mut player, Minimap::Detecting);
+        update_use_key_state(&mut resources, &mut player, Minimap::Detecting);
         assert_matches!(
             player.state,
             Player::UseKey(UseKey {
@@ -757,7 +741,7 @@ mod tests {
 
     #[test]
     fn update_use_key_state_ensuring_use_with_double_jump() {
-        let resources = Resources::new(None, None);
+        let mut resources = Resources::new(None, None);
         let mut player = make_player(UseKey {
             key: KeyKind::A,
             key_hold_ticks: 0,
@@ -777,7 +761,7 @@ mod tests {
         player.context.last_known_pos = Some(Point::default());
 
         // Start EnsuringUseWith
-        update_use_key_state(&resources, &mut player, Minimap::Detecting);
+        update_use_key_state(&mut resources, &mut player, Minimap::Detecting);
         assert_matches!(
             player.state,
             Player::UseKey(UseKey {
@@ -787,7 +771,7 @@ mod tests {
         );
 
         // Transitions to double jump
-        update_use_key_state(&resources, &mut player, Minimap::Detecting);
+        update_use_key_state(&mut resources, &mut player, Minimap::Detecting);
         assert_matches!(
             player.state,
             Player::DoubleJumping(DoubleJumping { forced: true, .. })
@@ -803,7 +787,7 @@ mod tests {
         keys.expect_send_key()
             .withf(|k| matches!(k, KeyKind::Left))
             .once();
-        let resources = Resources::new(Some(keys), None);
+        let mut resources = Resources::new(Some(keys), None);
         let mut use_key = UseKey {
             key: KeyKind::A,
             key_hold_ticks: 0,
@@ -823,7 +807,7 @@ mod tests {
         let mut player = make_player(use_key);
 
         // Transition into ChangingDirection
-        update_use_key_state(&resources, &mut player, Minimap::Detecting);
+        update_use_key_state(&mut resources, &mut player, Minimap::Detecting);
         assert_matches!(
             player.state,
             Player::UseKey(UseKey {
@@ -833,7 +817,7 @@ mod tests {
         );
 
         // Sends down on started
-        update_use_key_state(&resources, &mut player, Minimap::Detecting);
+        update_use_key_state(&mut resources, &mut player, Minimap::Detecting);
         assert_matches!(
             player.state,
             Player::UseKey(UseKey {
@@ -849,7 +833,7 @@ mod tests {
             current: 3,
         });
         player = make_player(use_key);
-        update_use_key_state(&resources, &mut player, Minimap::Detecting);
+        update_use_key_state(&mut resources, &mut player, Minimap::Detecting);
         assert_matches!(
             player.context.last_known_direction,
             ActionKeyDirection::Left
@@ -869,7 +853,7 @@ mod tests {
         keys.expect_send_key()
             .times(3)
             .withf(|k| matches!(k, KeyKind::A));
-        let resources = Resources::new(Some(keys), None);
+        let mut resources = Resources::new(Some(keys), None);
         let use_key = UseKey {
             key: KeyKind::A,
             key_hold_ticks: 0,
@@ -889,7 +873,7 @@ mod tests {
         let mut player = make_player(use_key);
 
         for i in 0..3 {
-            update_use_key_state(&resources, &mut player, Minimap::Detecting);
+            update_use_key_state(&mut resources, &mut player, Minimap::Detecting);
             assert_matches!(
                 player.state,
                 Player::UseKey(UseKey {
@@ -898,7 +882,7 @@ mod tests {
                 })
             );
 
-            update_use_key_state(&resources, &mut player, Minimap::Detecting);
+            update_use_key_state(&mut resources, &mut player, Minimap::Detecting);
             assert_matches!(
                 player.state,
                 Player::UseKey(UseKey {
@@ -907,7 +891,7 @@ mod tests {
                 })
             );
 
-            update_use_key_state(&resources, &mut player, Minimap::Detecting);
+            update_use_key_state(&mut resources, &mut player, Minimap::Detecting);
             if i == 2 {
                 assert_matches!(player.state, Player::Idle);
             } else {
@@ -924,7 +908,7 @@ mod tests {
 
     #[test]
     fn update_use_key_state_waits_before() {
-        let resources = Resources::new(None, None);
+        let mut resources = Resources::new(None, None);
         let use_key = UseKey {
             key: KeyKind::A,
             key_hold_ticks: 0,
@@ -943,7 +927,7 @@ mod tests {
         };
         let mut player = make_player(use_key);
 
-        update_use_key_state(&resources, &mut player, Minimap::Detecting);
+        update_use_key_state(&mut resources, &mut player, Minimap::Detecting);
 
         assert_matches!(player.state, Player::Stalling(_, 5));
         assert_matches!(
@@ -962,7 +946,7 @@ mod tests {
         keys.expect_send_key()
             .withf(|k| matches!(k, KeyKind::A))
             .once();
-        let resources = Resources::new(Some(keys), None);
+        let mut resources = Resources::new(Some(keys), None);
         let use_key = UseKey {
             key: KeyKind::A,
             key_hold_ticks: 0,
@@ -981,7 +965,7 @@ mod tests {
         };
         let mut player = make_player(use_key);
 
-        update_use_key_state(&resources, &mut player, Minimap::Detecting);
+        update_use_key_state(&mut resources, &mut player, Minimap::Detecting);
 
         assert_matches!(player.state, Player::Stalling(_, 7));
         assert_matches!(
@@ -1010,7 +994,7 @@ mod tests {
             .withf(|k| matches!(k, KeyKind::Alt))
             .once()
             .in_sequence(&mut sequence);
-        let resources = Resources::new(Some(keys), None);
+        let mut resources = Resources::new(Some(keys), None);
         let mut use_key = UseKey {
             key: KeyKind::A,
             key_hold_ticks: 0,
@@ -1030,7 +1014,7 @@ mod tests {
         let mut player = make_player(use_key);
 
         // Hold Alt
-        update_use_key_state(&resources, &mut player, Minimap::Detecting);
+        update_use_key_state(&mut resources, &mut player, Minimap::Detecting);
         assert_matches!(
             player.state,
             Player::UseKey(UseKey {
@@ -1052,7 +1036,7 @@ mod tests {
             ..Default::default()
         });
         player = make_player(use_key);
-        update_use_key_state(&resources, &mut player, Minimap::Detecting);
+        update_use_key_state(&mut resources, &mut player, Minimap::Detecting);
         assert_matches!(
             player.state,
             Player::UseKey(UseKey {
@@ -1074,7 +1058,7 @@ mod tests {
             ..Default::default()
         });
         player = make_player(use_key);
-        update_use_key_state(&resources, &mut player, Minimap::Detecting);
+        update_use_key_state(&mut resources, &mut player, Minimap::Detecting);
         assert_matches!(
             player.state,
             Player::UseKey(UseKey {
@@ -1099,7 +1083,7 @@ mod tests {
             .withf(|k| matches!(k, KeyKind::A))
             .once()
             .in_sequence(&mut sequence);
-        let resources = Resources::new(Some(keys), None);
+        let mut resources = Resources::new(Some(keys), None);
 
         let mut use_key = UseKey {
             key: KeyKind::A,
@@ -1120,7 +1104,7 @@ mod tests {
         let mut player = make_player(use_key);
 
         // Press Alt
-        update_use_key_state(&resources, &mut player, Minimap::Detecting);
+        update_use_key_state(&mut resources, &mut player, Minimap::Detecting);
         assert_matches!(
             player.state,
             Player::UseKey(UseKey {
@@ -1139,7 +1123,7 @@ mod tests {
             ..Default::default()
         });
         player = make_player(use_key);
-        update_use_key_state(&resources, &mut player, Minimap::Detecting);
+        update_use_key_state(&mut resources, &mut player, Minimap::Detecting);
     }
 
     #[test]
@@ -1154,7 +1138,7 @@ mod tests {
             .withf(|k| matches!(k, KeyKind::Alt))
             .once()
             .in_sequence(&mut sequence);
-        let resources = Resources::new(Some(keys), None);
+        let mut resources = Resources::new(Some(keys), None);
 
         let mut use_key = UseKey {
             key: KeyKind::A,
@@ -1175,7 +1159,7 @@ mod tests {
         let mut player = make_player(use_key);
 
         // Press A
-        update_use_key_state(&resources, &mut player, Minimap::Detecting);
+        update_use_key_state(&mut resources, &mut player, Minimap::Detecting);
         assert_matches!(
             player.state,
             Player::UseKey(UseKey {
@@ -1199,7 +1183,7 @@ mod tests {
             ..Default::default()
         });
         player = make_player(use_key);
-        update_use_key_state(&resources, &mut player, Minimap::Detecting);
+        update_use_key_state(&mut resources, &mut player, Minimap::Detecting);
     }
 
     #[test]
@@ -1214,7 +1198,7 @@ mod tests {
             .withf(|k| matches!(k, KeyKind::A))
             .once()
             .in_sequence(&mut sequence);
-        let resources = Resources::new(Some(keys), None);
+        let mut resources = Resources::new(Some(keys), None);
 
         let use_key = UseKey {
             key: KeyKind::A,
@@ -1235,7 +1219,7 @@ mod tests {
         let mut player = make_player(use_key);
 
         // Press Alt then A
-        update_use_key_state(&resources, &mut player, Minimap::Detecting);
+        update_use_key_state(&mut resources, &mut player, Minimap::Detecting);
         assert_matches!(
             player.state,
             Player::UseKey(UseKey {
@@ -1261,7 +1245,7 @@ mod tests {
             .times(1)
             .in_sequence(&mut sequence);
 
-        let resources = Resources::new(Some(keys), None);
+        let mut resources = Resources::new(Some(keys), None);
         let use_key = UseKey {
             key: KeyKind::A,
             key_hold_ticks: 3,
@@ -1282,9 +1266,9 @@ mod tests {
         let mut player = make_player(use_key);
 
         for _ in 0..4 {
-            update_use_key_state(&resources, &mut player, Minimap::Detecting);
+            update_use_key_state(&mut resources, &mut player, Minimap::Detecting);
         }
-        update_use_key_state(&resources, &mut player, Minimap::Detecting);
+        update_use_key_state(&mut resources, &mut player, Minimap::Detecting);
     }
 
     #[test]
@@ -1300,7 +1284,7 @@ mod tests {
             .times(1)
             .in_sequence(&mut sequence);
 
-        let resources = Resources::new(Some(keys), None);
+        let mut resources = Resources::new(Some(keys), None);
         let use_key = UseKey {
             key: KeyKind::A,
             key_hold_ticks: 2,
@@ -1320,7 +1304,7 @@ mod tests {
 
         let mut player = make_player(use_key);
 
-        update_use_key_state(&resources, &mut player, Minimap::Detecting);
+        update_use_key_state(&mut resources, &mut player, Minimap::Detecting);
         assert_matches!(
             player.state,
             Player::UseKey(UseKey {
@@ -1332,7 +1316,7 @@ mod tests {
             })
         );
 
-        update_use_key_state(&resources, &mut player, Minimap::Detecting);
+        update_use_key_state(&mut resources, &mut player, Minimap::Detecting);
         assert_matches!(
             player.context.stalling_buffered,
             BufferedStalling::Interruptible(_, 6)
@@ -1378,7 +1362,7 @@ mod tests {
             .times(1)
             .in_sequence(&mut sequence);
 
-        let resources = Resources::new(Some(keys), None);
+        let mut resources = Resources::new(Some(keys), None);
         let use_key = UseKey {
             key: KeyKind::A,
             count: 2,
@@ -1401,10 +1385,10 @@ mod tests {
 
         let mut player = make_player(use_key);
 
-        update_use_key_state(&resources, &mut player, Minimap::Detecting); // hold
-        update_use_key_state(&resources, &mut player, Minimap::Detecting); // hold 
-        update_use_key_state(&resources, &mut player, Minimap::Detecting); // release
-        update_use_key_state(&resources, &mut player, Minimap::Detecting); // postcondition
+        update_use_key_state(&mut resources, &mut player, Minimap::Detecting); // hold
+        update_use_key_state(&mut resources, &mut player, Minimap::Detecting); // hold 
+        update_use_key_state(&mut resources, &mut player, Minimap::Detecting); // release
+        update_use_key_state(&mut resources, &mut player, Minimap::Detecting); // postcondition
         assert!(!player.context.stalling_buffered.stalling());
         assert!(
             player
@@ -1431,8 +1415,8 @@ mod tests {
             state: State::Using(Using::default()),
             ..use_key
         });
-        update_use_key_state(&resources, &mut player, Minimap::Detecting); // hold
-        update_use_key_state(&resources, &mut player, Minimap::Detecting); // buffer
+        update_use_key_state(&mut resources, &mut player, Minimap::Detecting); // hold
+        update_use_key_state(&mut resources, &mut player, Minimap::Detecting); // buffer
         assert_matches!(
             player.context.stalling_buffered,
             BufferedStalling::Uninterruptible(_, _)

@@ -1,4 +1,9 @@
-use std::{cell::RefCell, rc::Rc, sync::Arc};
+use std::{
+    cell::RefCell,
+    fmt::{self, Display},
+    rc::Rc,
+    sync::Arc,
+};
 
 use anyhow::Result;
 use log::debug;
@@ -8,11 +13,10 @@ use tokio::sync::mpsc::{self, error::TryRecvError};
 use crate::{
     bridge::MouseKind,
     detect::Detector,
-    ecs::{Resources, transition, transition_if, try_ok_transition},
+    ecs::Resources,
     player::{
         Player, PlayerAction, PlayerEntity, next_action,
         timeout::{Lifecycle, Timeout, next_timeout_lifecycle},
-        transition_from_action,
     },
     solvers::ViolettaSolver,
     task::{Task, Update, update_detection_task},
@@ -41,6 +45,16 @@ pub struct SolvingVioletta {
     lie_detector_task: Rc<RefCell<Option<Task<Result<bool>>>>>,
 }
 
+impl Display for SolvingVioletta {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.state {
+            State::Waiting => write!(f, "Waiting"),
+            State::Solving(_) => write!(f, "Solving"),
+            State::Completed => write!(f, "Completed"),
+        }
+    }
+}
+
 impl Drop for SolvingVioletta {
     fn drop(&mut self) {
         if let Some(solving) = self.solving.as_mut() {
@@ -53,7 +67,7 @@ impl Drop for SolvingVioletta {
 ///
 /// Note: This state does not use any [`Task`], so all detections are blocking. But this should be
 /// acceptable for this state.
-pub fn update_solving_violetta_state(resources: &Resources, player: &mut PlayerEntity) {
+pub fn update_solving_violetta_state(resources: &mut Resources, player: &mut PlayerEntity) {
     let Player::SolvingVioletta(mut solving_violetta) = player.state.clone() else {
         panic!("state is not solving violetta");
     };
@@ -71,17 +85,19 @@ pub fn update_solving_violetta_state(resources: &Resources, player: &mut PlayerE
     };
 
     match next_action(&player.context) {
-        Some(PlayerAction::SolveVioletta) => transition_from_action!(
-            player,
-            player_next_state,
-            matches!(player_next_state, Player::Idle)
-        ),
+        Some(PlayerAction::SolveVioletta) => {
+            if matches!(player_next_state, Player::Idle) {
+                player.context.clear_action_completed();
+            }
+
+            player.state = player_next_state;
+        }
         Some(_) => unreachable!(),
-        None => transition!(player, Player::Idle), // Force cancel if not from action
+        None => player.state = Player::Idle, // Force cancel if not from action
     }
 }
 
-fn update_waiting(resources: &Resources, solving_violetta: &mut SolvingVioletta) {
+fn update_waiting(resources: &mut Resources, solving_violetta: &mut SolvingVioletta) {
     const CHECK_INTERVAL: u64 = 30;
 
     let State::Waiting = solving_violetta.state else {
@@ -98,23 +114,23 @@ fn update_waiting(resources: &Resources, solving_violetta: &mut SolvingVioletta)
         return;
     }
 
-    let title = try_ok_transition!(
-        solving_violetta,
-        State::Completed,
-        resources.detector().detect_lie_detector_violetta()
-    );
+    let title = match resources.detector().detect_lie_detector_violetta() {
+        Ok(val) => val,
+        Err(_) => {
+            solving_violetta.state = State::Completed;
+            return;
+        }
+    };
 
-    transition!(solving_violetta, State::Solving(Timeout::default()), {
-        let tl = title.tl() + Point::new(-180, 55);
-        let br = tl + Point::new(430, 250);
-        let region = Rect::from_points(tl, br);
-
-        solving_violetta.solving = Some(Rc::new(RefCell::new(start_solving_task(region))));
-        debug!(target: "backend/player", "lie detector violetta region: {region:?}");
-    });
+    let tl = title.tl() + Point::new(-180, 55);
+    let br = tl + Point::new(430, 250);
+    let region = Rect::from_points(tl, br);
+    debug!(target:"backend/player","lie detector violetta region: {region:?}");
+    solving_violetta.solving = Some(Rc::new(RefCell::new(start_solving_task(region))));
+    solving_violetta.state = State::Solving(Timeout::default());
 }
 
-fn update_solving(resources: &Resources, solving_violetta: &mut SolvingVioletta) {
+fn update_solving(resources: &mut Resources, solving_violetta: &mut SolvingVioletta) {
     let State::Solving(timeout) = solving_violetta.state else {
         panic!("solving violetta state is not solving")
     };
@@ -126,23 +142,26 @@ fn update_solving(resources: &Resources, solving_violetta: &mut SolvingVioletta)
         &mut *solving_violetta.lie_detector_task.borrow_mut(),
         |detector| Ok(detector.detect_lie_detector_violetta().is_ok()),
     );
-    if let Update::Ok(has_lie_detector) = update {
-        transition_if!(solving_violetta, State::Completed, !has_lie_detector);
+    if let Update::Ok(has_lie_detector) = update
+        && !has_lie_detector
+    {
+        solving_violetta.state = State::Completed;
+        return;
     }
 
     match next_timeout_lifecycle(timeout, 1320) {
-        Lifecycle::Ended => transition!(solving_violetta, State::Completed),
+        Lifecycle::Ended => {
+            solving_violetta.state = State::Completed;
+        }
         Lifecycle::Started(timeout) | Lifecycle::Updated(timeout) => {
-            transition!(solving_violetta, State::Solving(timeout), {
-                let mut solving = solving_violetta.solving.as_mut().unwrap().borrow_mut();
-                let _ = solving.detector_tx.try_send(resources.detector_cloned());
-
-                if let Ok(cursor) = solving.cursor_rx.try_recv() {
-                    resources
-                        .input
-                        .send_mouse(cursor.x, cursor.y, MouseKind::Click);
-                }
-            })
+            let mut solving = solving_violetta.solving.as_mut().unwrap().borrow_mut();
+            let _ = solving.detector_tx.try_send(resources.detector_cloned());
+            if let Ok(cursor) = solving.cursor_rx.try_recv() {
+                resources
+                    .input
+                    .send_mouse(cursor.x, cursor.y, MouseKind::Click);
+            }
+            solving_violetta.state = State::Solving(timeout);
         }
     }
 }

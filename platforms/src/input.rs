@@ -142,10 +142,18 @@ impl Input {
         Err(Error::PlatformNotSupported)
     }
 
-    /// Sends a single key press `kind`.
-    pub fn send_key(&self, kind: KeyKind) -> Result<()> {
+    pub fn is_all_keys_cleared(&self) -> Result<bool> {
         if cfg!(windows) {
-            return self.windows.send_key(kind);
+            return Ok(self.windows.is_all_keys_cleared());
+        }
+
+        Err(Error::PlatformNotSupported)
+    }
+
+    /// Sends a single key press `kind`.
+    pub fn send_key(&mut self, kind: KeyKind, down_ms: u64) -> Result<()> {
+        if cfg!(windows) {
+            return self.windows.send_key(kind, down_ms);
         }
 
         Err(Error::PlatformNotSupported)
@@ -155,7 +163,7 @@ impl Input {
     ///
     /// If `repeatable` is `true`, consecutive calls will continue to send the down stroke even if
     /// the key is already down.
-    pub fn send_key_down(&self, kind: KeyKind, repeatable: bool) -> Result<()> {
+    pub fn send_key_down(&mut self, kind: KeyKind, repeatable: bool) -> Result<()> {
         if cfg!(windows) {
             return self.windows.send_key_down(kind, repeatable);
         }
@@ -164,7 +172,7 @@ impl Input {
     }
 
     /// Releases key `kind`.
-    pub fn send_key_up(&self, kind: KeyKind) -> Result<()> {
+    pub fn send_key_up(&mut self, kind: KeyKind) -> Result<()> {
         if cfg!(windows) {
             return self.windows.send_key_up(kind);
         }

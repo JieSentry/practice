@@ -1,5 +1,3 @@
-use std::cell::RefCell;
-
 use noise::{NoiseFn, Perlin};
 use rand::{Rng as RandRng, SeedableRng, rngs::StdRng, seq::IteratorRandom};
 use rand_distr::{
@@ -13,15 +11,22 @@ pub type PerlinSeed = u32;
 /// A wrapper around [`StdRng`] and [`Perlin`].
 #[derive(Clone, Debug)]
 pub struct Rng {
-    rng: RefCell<StdRng>,
+    rng: StdRng,
     rng_seed: RngSeed,
     perlin: Perlin,
+}
+
+#[cfg(test)]
+impl Default for Rng {
+    fn default() -> Self {
+        Self::new(rand::rng().random(), rand::rng().random())
+    }
 }
 
 impl Rng {
     pub fn new(rng_seed: RngSeed, perlin_seed: PerlinSeed) -> Self {
         Self {
-            rng: RefCell::new(StdRng::from_seed(rng_seed)),
+            rng: StdRng::from_seed(rng_seed),
             rng_seed,
             perlin: Perlin::new(perlin_seed),
         }
@@ -50,45 +55,35 @@ impl Rng {
     }
 
     #[inline]
-    pub fn random_bool(&self, probability: f64) -> bool {
-        self.rng.borrow_mut().random_bool(probability)
+    pub fn random_bool(&mut self, probability: f64) -> bool {
+        self.rng.random_bool(probability)
     }
 
     #[inline]
-    pub fn random_range<T, R>(&self, range: R) -> T
+    pub fn random_range<T, R>(&mut self, range: R) -> T
     where
         T: SampleUniform,
         R: SampleRange<T>,
     {
-        self.rng.borrow_mut().random_range(range)
+        self.rng.random_range(range)
     }
 
     #[inline]
-    pub fn random_choose<T: IteratorRandom>(&self, iter: T) -> Option<T::Item> {
-        iter.choose(&mut self.rng.borrow_mut())
+    pub fn random_choose<T: IteratorRandom>(&mut self, iter: T) -> Option<T::Item> {
+        iter.choose(&mut self.rng)
     }
 
-    /// Samples a random `(delay, tick count)` pair.
+    /// Samples a random delay for sending key input.
     ///
     /// The delay is sampled from a normal distribution with mean `mean_ms` and
     /// standard deviation `std_ms`. These two paramters are in milliseconds. The sampled
-    /// delay milliseconds is then clamped to `(min_ms, max_ms)` range, divided by `tick_ms` and
-    /// rounded to get the tick count.
-    pub fn random_delay_tick_count(
-        &self,
-        mean_ms: f32,
-        std_ms: f32,
-        tick_ms: f32,
-        min_ms: f32,
-        max_ms: f32,
-    ) -> (f32, u32) {
-        debug_assert!(std_ms >= 0.0 && tick_ms > 0.0);
+    /// delay milliseconds is then clamped to `(min_ms, max_ms)` range.
+    pub fn random_key_delay(&mut self, mean_ms: f32, std_ms: f32, min_ms: f32, max_ms: f32) -> f32 {
+        debug_assert!(std_ms >= 0.0);
 
-        let mut rng = self.rng.borrow_mut();
         let normal = Normal::new(mean_ms, std_ms).unwrap();
-        let ms = normal.sample(&mut rng).max(min_ms).min(max_ms);
-        let tick_count = (ms / tick_ms).round() as u32;
-        (ms, tick_count)
+        let sample = normal.sample(&mut self.rng);
+        sample.max(min_ms).min(max_ms)
     }
 
     /// Generates a pair of mean and standard deviation from the provided parameters using
@@ -96,7 +91,7 @@ impl Rng {
     ///
     /// Delta time is 1.
     pub fn random_mean_std_pair(
-        &self,
+        &mut self,
         base_mean: f32,
         current_mean: f32,
         base_std: f32,
@@ -108,13 +103,12 @@ impl Rng {
         // enough for me. Consult ChatGPT, DeepSeek, Claude, ... senseis for more details.
         let normal = Normal::new(0.0, 1.0).unwrap();
 
-        let mut rng = self.rng.borrow_mut();
-        let next_mean_normal_sample = normal.sample(&mut rng);
+        let next_mean_normal_sample = normal.sample(&mut self.rng);
         let next_mean = current_mean
             + reversion_rate * (base_mean - current_mean)
             + volatility * next_mean_normal_sample;
 
-        let next_std_normal_sample = normal.sample(&mut rng);
+        let next_std_normal_sample = normal.sample(&mut self.rng);
         let next_std = (current_std
             + reversion_rate * (base_std - current_std)
             + volatility * next_std_normal_sample)
@@ -134,16 +128,15 @@ mod tests {
     ];
 
     #[test]
-    fn random_tick_count_seeded() {
-        let rng = Rng::new(SEED, 1337);
-        let (_, count) =
-            rng.random_delay_tick_count(83.99979, 28.149803, 1000.0 / 30.0, 80.0, 120.0);
-        assert_eq!(count, 2);
+    fn random_key_delay_seeded() {
+        let mut rng = Rng::new(SEED, 1337);
+        let delay = rng.random_key_delay(83.99979, 28.149803, 80.0, 120.0);
+        assert!((delay - 80.0) == 0.0);
     }
 
     #[test]
     fn random_mu_std_pair_seeded() {
-        let rng = Rng::new(SEED, 1337);
+        let mut rng = Rng::new(SEED, 1337);
         let (mean, std) = rng.random_mean_std_pair(85.0, 85.0, 30.0, 30.0, 0.05, 0.1);
 
         assert!(mean - 84.88451 < 0.01);
