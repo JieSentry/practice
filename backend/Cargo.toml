@@ -37,6 +37,7 @@ ordered_hash_map = "0.4.0"
 noise = "0.9"
 reqwest = { version = "0.12.20", features = ["multipart"] }
 include_dir = "0.7.4"
+uuid = { version = "1.12.1", features = ["v4"] }
 
 [build-dependencies]
 tonic-build = "*"
