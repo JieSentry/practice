@@ -201,35 +201,87 @@ fn SectionNotifications() -> Element {
                     selected: settings().notifications.webhook_provider,
                 }
                 div {}
-                SettingsTextInput {
-                    text_label: "Webhook URL",
-                    button_label: "Update",
-                    sensitive: true,
-                    on_value: move |webhook_url| {
-                        save_settings(Settings {
-                            notifications: Notifications {
-                                webhook_url,
-                                ..notifications.peek().clone()
+                match notifications().webhook_provider {
+                    WebhookProvider::Discord => rsx! {
+                        SettingsTextInput {
+                            text_label: "Webhook URL",
+                            button_label: "Update",
+                            sensitive: true,
+                            on_value: move |webhook_url| {
+                                save_settings(Settings {
+                                    notifications: Notifications {
+                                        webhook_url,
+                                        ..notifications.peek().clone()
+                                    },
+                                    ..settings.peek().clone()
+                                });
                             },
-                            ..settings.peek().clone()
-                        });
-                    },
-                    value: notifications().webhook_url,
-                }
-                SettingsTextInput {
-                    text_label: "Discord ping user ID",
-                    button_label: "Update",
-                    sensitive: true,
-                    on_value: move |discord_user_id| {
-                        save_settings(Settings {
-                            notifications: Notifications {
-                                discord_user_id,
-                                ..notifications.peek().clone()
+                            value: notifications().webhook_url,
+                        }
+                        SettingsTextInput {
+                            text_label: "Discord ping user ID",
+                            button_label: "Update",
+                            sensitive: true,
+                            on_value: move |discord_user_id| {
+                                save_settings(Settings {
+                                    notifications: Notifications {
+                                        discord_user_id,
+                                        ..notifications.peek().clone()
+                                    },
+                                    ..settings.peek().clone()
+                                });
                             },
-                            ..settings.peek().clone()
-                        });
+                            value: notifications().discord_user_id,
+                        }
                     },
-                    value: notifications().discord_user_id,
+                    WebhookProvider::Feishu => rsx! {
+                        SettingsTextInput {
+                            text_label: "App ID",
+                            button_label: "Update",
+                            sensitive: true,
+                            on_value: move |feishu_app_id| {
+                                save_settings(Settings {
+                                    notifications: Notifications {
+                                        feishu_app_id,
+                                        ..notifications.peek().clone()
+                                    },
+                                    ..settings.peek().clone()
+                                });
+                            },
+                            value: notifications().webhook_url,
+                        },
+                        SettingsTextInput {
+                            text_label: "App Secret",
+                            button_label: "Update",
+                            sensitive: true,
+                            on_value: move |feishu_app_secret| {
+                                save_settings(Settings {
+                                    notifications: Notifications {
+                                        feishu_app_secret,
+                                        ..notifications.peek().clone()
+                                    },
+                                    ..settings.peek().clone()
+                                });
+                            },
+                            value: notifications().webhook_url,
+                        },
+                        SettingsTextInput {
+                            text_label: "user mobile",
+                            button_label: "Update",
+                            sensitive: true,
+                            on_value: move |feishu_user_mobile| {
+                                save_settings(Settings {
+                                    notifications: Notifications {
+                                        feishu_user_mobile,
+                                        ..notifications.peek().clone()
+                                    },
+                                    ..settings.peek().clone()
+                                });
+                            },
+                            value: notifications().webhook_url,
+                        }
+                        
+                    },
                 }
             }
             div { class: "grid grid-cols-3 gap-3",
