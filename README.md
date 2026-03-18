@@ -24,7 +24,7 @@ VCPKG_ROOT = # Your vcpkg folder
 
 ## Support this project
 
+If you wish to support this project, thank you! I currently accept donations via cryptocurrency:
+
 - Ethereum (ETH, USDC, USDT): 0x8EE660010a3f2D65b525F6b51975A4BEC82e1F09
 - Solana (SOL): ADM9b1gxaR5FA9KeCSV2NMN8XyjcgTKcJbqaWoQXk4wV
-
-
