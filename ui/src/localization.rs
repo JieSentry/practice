@@ -142,7 +142,7 @@ fn SectionInfo() -> Element {
                         Data { description: "Convert button." }
                     }
                     tr {
-                        Data { description: "Others", rowspan: 3 }
+                        Data { description: "Others", rowspan: 4 }
                         Data { description: "Detect whether change channel menu is opened." }
                         Data { description: "Change channel text." }
                     }
@@ -153,6 +153,10 @@ fn SectionInfo() -> Element {
                     tr {
                         Data { description: "Detect whether Generic/HEXA booster is in use." }
                         Data { description: "Timer text." }
+                    }
+                    tr {
+                        Data { description: "Detect lie detector event." }
+                        Data { description: "Lie detector title." }
                     }
                 }
             }
@@ -415,6 +419,28 @@ fn SectionOthers() -> Element {
                         });
                     },
                     value: localization().timer_base64,
+                }
+                LocalizationTemplateInput {
+                    label: "Lie detector (new)",
+                    template: DetectionTemplate::LieDetectorNew,
+                    on_value: move |image: Option<Vec<u8>>| async move {
+                        save_localization(Localization {
+                            lie_detector_new_base64: to_base64(image, false).await,
+                            ..localization()
+                        });
+                    },
+                    value: localization().lie_detector_new_base64,
+                }
+                LocalizationTemplateInput {
+                    label: "Lie detector (old)",
+                    template: DetectionTemplate::LieDetectorOld,
+                    on_value: move |image: Option<Vec<u8>>| async move {
+                        save_localization(Localization {
+                            lie_detector_old_base64: to_base64(image, false).await,
+                            ..localization()
+                        });
+                    },
+                    value: localization().lie_detector_old_base64,
                 }
             }
         }

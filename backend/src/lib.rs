@@ -183,6 +183,8 @@ pub enum DetectionTemplate {
     HexaBoosterButton,
     HexaMaxButton,
     HexaConvertButton,
+    LieDetectorNew,
+    LieDetectorOld,
 }
 
 /// The four quads of a bound.

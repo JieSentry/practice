@@ -23,6 +23,10 @@ pub struct Localization {
     pub hexa_erda_conversion_button_base64: Option<String>,
     pub hexa_booster_button_base64: Option<String>,
     pub hexa_max_button_base64: Option<String>,
+    #[serde(default)]
+    pub lie_detector_new_base64: Option<String>,
+    #[serde(default)]
+    pub lie_detector_old_base64: Option<String>,
 }
 
 impl_identifiable!(Localization);
