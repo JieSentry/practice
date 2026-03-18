@@ -21,3 +21,10 @@ VCPKG_ROOT = # Your vcpkg folder
 ```
 2. If it is your first time building, run `npm install` inside `ui` directory
 3. Run `dx build --release --package ui` in the root directory
+
+## Support this project
+
+- Ethereum (ETH, USDC, USDT): 0x8EE660010a3f2D65b525F6b51975A4BEC82e1F09
+- Solana (SOL): ADM9b1gxaR5FA9KeCSV2NMN8XyjcgTKcJbqaWoQXk4wV
+
+
