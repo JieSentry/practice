@@ -66,9 +66,9 @@ class KeyInput(KeyInputServicer):
     def KeyState(self, request: KeyStateRequest, context):
         key = self.keys_map[request.key]
         if kmNet.isdown_keyboard(key) == 1:
-            return KeyStateResponse(KeyState.Pressed)
+            return KeyStateResponse(state=KeyState.Pressed)
         else:
-            return KeyStateResponse(KeyState.Released)
+            return KeyStateResponse(state=KeyState.Released)
 
     def SendMouse(self, request: MouseRequest, context):
         # Regardless of the type of Coordinate return in Init(), the coordinates are always based on
@@ -149,15 +149,17 @@ class KeyInput(KeyInputServicer):
     def Send(self, request: KeyRequest, context):
         # This `key` is an enum representing the key the bot want your customized input to send.
         # You should map this to the key supported by your customized input method.
-        key = self.keys_map[request.key]
+        # key
+        key = request.key
+        key_mapped = self.keys_map[key]
         # This is key down sleep milliseconds. It is generated automatically by the bot using the
         # above seed. You should use this delay and `time.sleep(delay)` on key down.
         key_down = request.down_ms / 1000.0
         timer = self.timers_map.get(key)
 
         if timer is None or not timer.is_alive():
-            kmNet.keydown(key)
-            timer = Timer(key_down, lambda: kmNet.keyup(key))
+            kmNet.keydown(key_mapped)
+            timer = Timer(key_down, lambda: kmNet.keyup(key_mapped))
             timer.start()
             self.timers_map[key] = timer
 

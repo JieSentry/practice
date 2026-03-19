@@ -74,9 +74,9 @@ class KeyInput(KeyInputServicer):
         is_down = (user32.GetAsyncKeyState(
             self.vk_keys_map[request.key]) & 0x8000) != 0
         if is_down:
-            return KeyStateResponse(KeyState.Pressed)
+            return KeyStateResponse(state=KeyState.Pressed)
         else:
-            return KeyStateResponse(KeyState.Released)
+            return KeyStateResponse(state=KeyState.Released)
 
     def SendMouse(self, request: MouseRequest, context):
         # Regardless of the type of Coordinate return in Init(), the coordinates are always based on
