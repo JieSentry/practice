@@ -141,7 +141,7 @@ class KeyInput(KeyInputServicer):
         if self.window.has_keyboard_focus():
             # This `key` is an enum representing the key the bot want your customized input to send.
             # You should map this to the key supported by your customized input method.
-            key = self.keys_map[request.key]
+            key = request.key
             # This is key down sleep milliseconds. It is generated automatically by the bot using the
             # above seed. You should use this delay and `time.sleep(delay)` on key down.
             key_down = request.down_ms / 1000.0
