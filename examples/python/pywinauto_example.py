@@ -72,7 +72,7 @@ class KeyInput(KeyInputServicer):
 
     def KeyState(self, request: KeyStateRequest, context):
         is_down = (user32.GetAsyncKeyState(
-            self.vk_keys_map[request.key]) & 0x8000) != 0
+            self.keys_map[request.key]) & 0x8000) != 0
         if is_down:
             return KeyStateResponse(state=KeyState.Pressed)
         else:
@@ -149,7 +149,7 @@ class KeyInput(KeyInputServicer):
             timer = self.timers_map.get(key)
             if timer is None or not timer.is_alive():
                 self._send_down(key)
-                timer = Timer(key_down, self._send_up, args=(key))
+                timer = Timer(key_down, self._send_up, args=(key,))
                 timer.start()
                 self.timers_map[key] = timer
 
