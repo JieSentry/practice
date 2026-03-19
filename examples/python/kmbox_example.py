@@ -65,7 +65,7 @@ class KeyInput(KeyInputServicer):
 
     def KeyState(self, request: KeyStateRequest, context):
         key = self.keys_map[request.key]
-        if kmNet.isdown_keyboard(key):
+        if kmNet.isdown_keyboard(key) == 1:
             return KeyStateResponse(KeyState.Pressed)
         else:
             return KeyStateResponse(KeyState.Released)
@@ -176,6 +176,7 @@ class KeyInput(KeyInputServicer):
 
 if __name__ == "__main__":
     kmNet.init("192.168.2.188", "8704", "33005C53")
+    kmNet.monitor(1)
     # Generated with ChatGPT, might not be accurate
     keys_map = {
         # Letters A-Z

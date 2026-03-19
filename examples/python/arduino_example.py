@@ -77,7 +77,7 @@ class KeyInput(KeyInputServicer):
     def KeyState(self, request: KeyStateRequest, context):
         down = self.key_down.get(request.key, False)
         return KeyStateResponse(
-            state=KeyState.Down if down else KeyState.Up
+            state=KeyState.Pressed if down else KeyState.Released
         )
 
     def Send(self, request: KeyRequest, context):
