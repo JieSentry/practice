@@ -159,6 +159,7 @@ fn main() {
     let out_dir = dir.join("src").join("grpc");
     tonic_build::configure()
         .out_dir(out_dir)
+        .build_server(false)
         .compile_protos(&[proto_file], &[proto_dir])
         .unwrap();
 
