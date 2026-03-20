@@ -23,6 +23,7 @@ pub struct RecordingHandle {
     writer: VideoWriter,
 }
 
+#[cfg(debug_assertions)]
 impl RecordingHandle {
     pub fn write(&mut self, detector: &dyn Detector) {
         self.writer.write(&detector.mat()).unwrap()

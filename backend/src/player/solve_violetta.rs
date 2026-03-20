@@ -212,6 +212,7 @@ fn start_solving_task(
                 let _ = cursor_tx.try_send(cursor);
             }
 
+            #[cfg(debug_assertions)]
             if recording {
                 let _ = record_tx.send(detector.clone());
             }
