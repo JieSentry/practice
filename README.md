@@ -1,3 +1,6 @@
+# Notice
+Unfortunately, I have decided to discontinue the development of `komari`. The repository is now archived and will no longer receive updates or bug fixes.
+
 ## Disclaimer
 
 This project is intended for personal and educational use only. Use of automation or botting tools may violate Nexon's Terms of Service and can result in penalties, including permanent account bans. I do not guarantee continued development or maintenance of this project. It may be discontinued at any time. This project is not affiliated with or endorsed by Nexon. Use at your own risk.
