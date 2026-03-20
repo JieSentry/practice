@@ -63,17 +63,14 @@ impl DebugService {
         if self.state.is_empty() {
             let _ = self.state.send(DebugState {
                 is_recording: self.writer.is_some(),
-                is_rune_auto_saving: resources.debug.auto_save_rune(),
+                is_rune_auto_saving: resources.debug.auto_save_rune,
+                is_lie_detector_auto_recording: resources.debug.auto_record_lie_detector,
             });
         }
     }
 
     pub fn subscribe_state(&self) -> Receiver<DebugState> {
         self.state.subscribe()
-    }
-
-    pub fn set_auto_save_rune(&self, resources: &mut Resources, auto_save: bool) {
-        resources.debug.set_auto_save_rune(auto_save);
     }
 
     pub fn record_video(&mut self, resources: &mut Resources, start: bool) {

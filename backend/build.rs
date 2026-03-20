@@ -46,10 +46,10 @@ fn main() {
     let admin = resources_dir.join("admin_ideal_ratio.png");
     let timer = resources_dir.join("timer_ideal_ratio.png");
     let level = resources_dir.join("level_ideal_ratio.png");
-    let lie_detector_shape = resources_dir.join("lie_detector_shape_ideal_ratio.png");
+    let lie_detector_new = resources_dir.join("lie_detector_new_ideal_ratio.png");
+    let lie_detector_old = resources_dir.join("lie_detector_old_ideal_ratio.png");
     let lie_detector_shape_prepare =
         resources_dir.join("lie_detector_shape_prepare_ideal_ratio.png");
-    let lie_detector_violetta = resources_dir.join("lie_detector_violetta_ideal_ratio.png");
     let lie_detector_violetta_face =
         resources_dir.join("lie_detector_violetta_face_ideal_ratio.png");
     let lie_detector_violetta_prepare =
@@ -159,6 +159,7 @@ fn main() {
     let out_dir = dir.join("src").join("grpc");
     tonic_build::configure()
         .out_dir(out_dir)
+        .build_server(false)
         .compile_protos(&[proto_file], &[proto_dir])
         .unwrap();
 
@@ -261,16 +262,16 @@ fn main() {
     println!("cargo:rustc-env=TIMER_TEMPLATE={}", timer.to_str().unwrap());
     println!("cargo:rustc-env=LEVEL_TEMPLATE={}", level.to_str().unwrap());
     println!(
-        "cargo:rustc-env=LIE_DETECTOR_SHAPE_TEMPLATE={}",
-        lie_detector_shape.to_str().unwrap()
+        "cargo:rustc-env=LIE_DETECTOR_NEW_TEMPLATE={}",
+        lie_detector_new.to_str().unwrap()
+    );
+    println!(
+        "cargo:rustc-env=LIE_DETECTOR_OLD_TEMPLATE={}",
+        lie_detector_old.to_str().unwrap()
     );
     println!(
         "cargo:rustc-env=LIE_DETECTOR_SHAPE_PREPARE_TEMPLATE={}",
         lie_detector_shape_prepare.to_str().unwrap()
-    );
-    println!(
-        "cargo:rustc-env=LIE_DETECTOR_VIOLETTA_TEMPLATE={}",
-        lie_detector_violetta.to_str().unwrap()
     );
     println!(
         "cargo:rustc-env=LIE_DETECTOR_VIOLETTA_FACE_TEMPLATE={}",

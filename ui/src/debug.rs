@@ -1,6 +1,6 @@
 use backend::{
-    DebugState, TransparentShapeDifficulty, auto_save_rune, debug_state_receiver, record_video,
-    test_spin_rune, test_transparent_shape, test_violetta,
+    DebugState, TransparentShapeDifficulty, auto_record_lie_detector, auto_save_rune,
+    debug_state_receiver, record_video, test_spin_rune, test_transparent_shape, test_violetta,
 };
 use dioxus::prelude::*;
 use tokio::sync::broadcast::error::RecvError;
@@ -86,6 +86,19 @@ pub fn DebugScreen() -> Element {
                             "Stop auto saving rune"
                         } else {
                             "Start auto saving rune"
+                        }
+                    }
+                    Button {
+                        style: ButtonStyle::Secondary,
+                        on_click: move |_| async move {
+                            let recording = state.peek().is_lie_detector_auto_recording;
+                            auto_record_lie_detector(!recording).await;
+                        },
+
+                        if state().is_lie_detector_auto_recording {
+                            "Stop auto record lie detector"
+                        } else {
+                            "Start auto record lie detector"
                         }
                     }
                 }
