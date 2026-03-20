@@ -1,6 +1,10 @@
-#[cfg(test)]
-use std::rc::Rc;
 use std::sync::Arc;
+
+#[cfg(debug_assertions)]
+use opencv::{
+    core::Size,
+    videoio::{VideoWriter, VideoWriterTrait},
+};
 
 use crate::services::Event;
 #[cfg(test)]
@@ -11,28 +15,48 @@ use crate::{
     skill::SkillEntities,
 };
 #[cfg(debug_assertions)]
-use crate::{debug::save_rune_for_training, solvers::SolvedArrow};
+use crate::{debug::save_rune_for_training, run::FPS, solvers::SolvedArrow, utils::DatasetDir};
+
+#[derive(Debug)]
+#[cfg(debug_assertions)]
+pub struct RecordingHandle {
+    writer: VideoWriter,
+}
+
+impl RecordingHandle {
+    pub fn write(&mut self, detector: &dyn Detector) {
+        self.writer.write(&detector.mat()).unwrap()
+    }
+}
 
 #[derive(Debug, Default)]
 #[cfg(debug_assertions)]
 pub struct Debug {
-    auto_save: bool,
+    pub auto_save_rune: bool,
+    pub auto_record_lie_detector: bool,
     last_rune_detector: Option<Arc<dyn Detector>>,
     last_rune_result: Option<[SolvedArrow; 4]>,
 }
 
 #[cfg(debug_assertions)]
 impl Debug {
-    pub fn auto_save_rune(&self) -> bool {
-        self.auto_save
-    }
+    pub fn new_recording(&self, frame_size: Size) -> RecordingHandle {
+        use rand::distr::SampleString;
+        use rand_distr::Alphanumeric;
 
-    pub fn set_auto_save_rune(&mut self, auto_save: bool) {
-        self.auto_save = auto_save
+        let id = Alphanumeric.sample_string(&mut rand::rng(), 8);
+        let file = DatasetDir::Recordings
+            .to_folder()
+            .join(format!("ld_{id}.mp4"));
+        let fourcc = VideoWriter::fourcc('H', 'V', 'C', '1').unwrap();
+        let writer =
+            VideoWriter::new(file.to_str().unwrap(), fourcc, FPS as f64, frame_size, true).unwrap();
+
+        RecordingHandle { writer }
     }
 
     pub fn save_last_rune_result(&self) {
-        if !self.auto_save {
+        if !self.auto_save_rune {
             return;
         }
 
@@ -76,7 +100,7 @@ pub struct Resources {
 impl Resources {
     #[cfg(test)]
     pub fn new(input: Option<MockInput>, detector: Option<MockDetector>) -> Self {
-        use std::cell::RefCell;
+        use std::{cell::RefCell, rc::Rc};
 
         use crate::operation::{OperationConfiguration, OperationState};
 

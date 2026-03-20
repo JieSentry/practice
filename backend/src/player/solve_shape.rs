@@ -10,6 +10,8 @@ use log::debug;
 use opencv::core::{Point, Rect};
 use tokio::sync::mpsc::{self, error::TryRecvError};
 
+#[cfg(debug_assertions)]
+use crate::ecs::RecordingHandle;
 use crate::{
     bridge::MouseKind,
     detect::Detector,
@@ -119,12 +121,29 @@ fn update_waiting(resources: &mut Resources, solving_shape: &mut SolvingShape) {
         }
     };
 
+    #[cfg(debug_assertions)]
+    let handle = if resources.debug.auto_record_lie_detector {
+        use opencv::core::MatTraitConst;
+
+        let size = resources.detector().mat().size().unwrap();
+        let handle = resources.debug.new_recording(size);
+
+        Some(handle)
+    } else {
+        None
+    };
+
     let tl = title.tl() + Point::new(0, 20);
     let br = tl + Point::new(755, 505);
     let region = Rect::from_points(tl, br);
-    solving_shape.solving = Some(Rc::new(RefCell::new(start_solving_task(region))));
-    debug!(target:"backend/player","lie detector transparent shape region: {region:?}");
+    let solving = start_solving_task(
+        region,
+        #[cfg(debug_assertions)]
+        handle,
+    );
+    solving_shape.solving = Some(Rc::new(RefCell::new(solving)));
     solving_shape.state = State::Solving(Timeout::default());
+    debug!(target:"backend/player","lie detector transparent shape region: {region:?}");
 }
 
 fn update_solving(resources: &mut Resources, solving_shape: &mut SolvingShape) {
@@ -163,9 +182,17 @@ fn update_solving(resources: &mut Resources, solving_shape: &mut SolvingShape) {
     }
 }
 
-fn start_solving_task(region: Rect) -> Solving {
+fn start_solving_task(
+    region: Rect,
+    #[cfg(debug_assertions)] handle: Option<RecordingHandle>,
+) -> Solving {
     let (cursor_tx, cursor_rx) = mpsc::channel(1);
     let (detector_tx, mut detector_rx) = mpsc::channel::<Arc<dyn Detector>>(3);
+
+    #[cfg(debug_assertions)]
+    let (record_tx, mut record_rx) = mpsc::unbounded_channel::<Arc<dyn Detector>>();
+    #[cfg(debug_assertions)]
+    let recording = handle.is_some();
 
     let task = Task::spawn_blocking(move || {
         let mut solver = TransparentShapeSolver::default();
@@ -178,11 +205,36 @@ fn start_solving_task(region: Rect) -> Solving {
                     TryRecvError::Disconnected => break,
                 },
             };
+
             if let Some(cursor) = solver.solve(&*detector, region) {
                 let _ = cursor_tx.try_send(cursor);
             }
+
+            #[cfg(debug_assertions)]
+            if recording {
+                let _ = record_tx.send(detector.clone());
+            }
         }
     });
+
+    #[cfg(debug_assertions)]
+    if recording {
+        Task::spawn_blocking(move || {
+            let mut handle = handle.unwrap();
+
+            loop {
+                let detector = match record_rx.try_recv() {
+                    Ok(detector) => detector,
+                    Err(err) => match err {
+                        TryRecvError::Empty => continue,
+                        TryRecvError::Disconnected => break,
+                    },
+                };
+
+                handle.write(detector.as_ref())
+            }
+        });
+    }
 
     Solving {
         task,
