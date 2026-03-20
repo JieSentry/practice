@@ -187,7 +187,7 @@ fn start_solving_task(
     #[cfg(debug_assertions)] handle: Option<RecordingHandle>,
 ) -> Solving {
     let (cursor_tx, cursor_rx) = mpsc::channel(1);
-    let (detector_tx, mut detector_rx) = mpsc::channel::<Arc<dyn Detector>>(3);
+    let (detector_tx, mut detector_rx) = mpsc::channel::<Arc<dyn Detector>>(2);
 
     #[cfg(debug_assertions)]
     let (record_tx, mut record_rx) = mpsc::unbounded_channel::<Arc<dyn Detector>>();
