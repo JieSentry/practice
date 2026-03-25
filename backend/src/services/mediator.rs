@@ -215,8 +215,13 @@ fn handle_ui_request(
         Request::DebugStateReceiver => Response::DebugStateReceiver(subscribe_debug_state(context)),
         #[cfg(debug_assertions)]
         Request::AutoSaveRune(auto_save) => {
-            update_auto_save_rune(context, auto_save);
+            context.resources.debug.auto_save_rune = auto_save;
             Response::AutoSaveRune
+        }
+        #[cfg(debug_assertions)]
+        Request::AutoRecordLieDetector(auto_record) => {
+            context.resources.debug.auto_record_lie_detector = auto_record;
+            Response::AutoRecordLieDetector
         }
         #[cfg(debug_assertions)]
         Request::RecordVideo(start) => {
@@ -347,13 +352,6 @@ fn save_capture_image(context: &mut EventContext<'_>, is_grayscale: bool) {
 #[cfg(debug_assertions)]
 fn subscribe_debug_state(context: &mut EventContext<'_>) -> broadcast::Receiver<DebugState> {
     context.debug_service.subscribe_state()
-}
-
-#[cfg(debug_assertions)]
-fn update_auto_save_rune(context: &mut EventContext<'_>, auto_save: bool) {
-    context
-        .debug_service
-        .set_auto_save_rune(context.resources, auto_save);
 }
 
 #[cfg(debug_assertions)]
