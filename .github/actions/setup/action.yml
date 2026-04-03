@@ -1,0 +1,73 @@
+name: Setup
+runs:
+  using: composite
+  steps:
+    - name: Setup build environment variables
+      shell: pwsh
+      run: |
+        Add-Content $env:GITHUB_ENV "CARGO_TERM_COLOR=always"
+        Add-Content $env:GITHUB_ENV "SCCACHE_GHA_ENABLED=true"
+        Add-Content $env:GITHUB_ENV "RUST_BACKTRACE=1"
+        Add-Content $env:GITHUB_ENV "RUSTC_WRAPPER=sccache"
+        Add-Content $env:GITHUB_ENV "VCPKG_ENABLE_METRICS=0"
+        Add-Content $env:GITHUB_ENV "VCPKG_VERSION=2026.02.27"
+        Add-Content $env:GITHUB_ENV "VCPKG_ROOT=$env:GITHUB_WORKSPACE\vcpkg"
+        Add-Content $env:GITHUB_ENV "VCPKG_INSTALLED_DIR=$env:GITHUB_WORKSPACE\vcpkg\installed"
+        Add-Content $env:GITHUB_ENV "OPENCV_MSVC_CRT=static"
+        Add-Content $env:GITHUB_ENV "OPENCV_DISABLE_PROBES=environment,pkg_config,cmake,vcpkg_cmake"
+        Add-Content $env:GITHUB_ENV "VCPKGRS_TRIPLET=x64-windows-static"
+
+    - name: Restore vcpkg cache
+      uses: actions/cache/restore@v4
+      id: cache-vcpkg
+      with:
+        path: ${{ env.VCPKG_ROOT }}
+        key: vcpkg-${{ env.VCPKG_VERSION }}
+
+    - if: steps.cache-vcpkg.outputs.cache-hit != 'true'
+      shell: pwsh
+      run: |
+        git clone https://github.com/Microsoft/vcpkg.git "${{ env.VCPKG_ROOT }}"
+        cd "${{ env.VCPKG_ROOT }}"
+        git fetch --all --prune --tags
+        git status
+        git checkout .
+        git checkout "2025.10.17"
+        ./bootstrap-vcpkg.bat -disableMetrics
+        echo "set(VCPKG_BUILD_TYPE release)" >> triplets/x64-windows.cmake
+        echo "set(VCPKG_BUILD_TYPE release)" >> triplets/x64-windows-static.cmake
+        ./vcpkg.exe install --clean-after-build --recurse opencv4[contrib,nonfree]:x64-windows-static
+
+    - if: steps.cache-vcpkg.outputs.cache-hit != 'true'
+      name: Save vcpkg cache
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ env.VCPKG_ROOT }}
+        key: vcpkg-${{ env.VCPKG_VERSION }}
+
+    - uses: actions/setup-node@v4
+      with:
+        node-version: latest
+        cache: "npm"
+        cache-dependency-path: "./ui/package-lock.json"
+    - name: Install TailwindCSS and Dioxus CLI
+      shell: pwsh
+      run: |
+        cd ui
+        npm install
+
+    - uses: mozilla-actions/sccache-action@v0.0.9
+
+    - uses: cargo-bins/cargo-binstall@main
+    - name: Install Dioxus CLI
+      shell: pwsh
+      run: cargo binstall dioxus-cli@0.7.2 --no-confirm
+
+    - name: Install protoc
+      shell: pwsh
+      run: choco install -y protoc --version "33.0.0"
+
+    - name: Install LLVM and Clang
+      uses: KyleMayes/install-llvm-action@v2
+      with:
+        version: "21"

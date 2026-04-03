@@ -1,0 +1,209 @@
+use futures::stream::BoxStream;
+
+use crate::{Error, Result, Window};
+#[cfg(windows)]
+use crate::{windows::WindowsInput, windows::WindowsInputReceiver};
+
+#[derive(Debug, Clone, Copy)]
+pub enum MouseKind {
+    Move,
+    Click,
+    Scroll,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum KeyState {
+    Pressed,
+    Released,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum KeyKind {
+    A,
+    B,
+    C,
+    D,
+    E,
+    F,
+    G,
+    H,
+    I,
+    J,
+    K,
+    L,
+    M,
+    N,
+    O,
+    P,
+    Q,
+    R,
+    S,
+    T,
+    U,
+    V,
+    W,
+    X,
+    Y,
+    Z,
+
+    Zero,
+    One,
+    Two,
+    Three,
+    Four,
+    Five,
+    Six,
+    Seven,
+    Eight,
+    Nine,
+
+    F1,
+    F2,
+    F3,
+    F4,
+    F5,
+    F6,
+    F7,
+    F8,
+    F9,
+    F10,
+    F11,
+    F12,
+
+    Up,
+    Down,
+    Left,
+    Right,
+
+    Home,
+    End,
+    PageUp,
+    PageDown,
+    Insert,
+    Delete,
+    Ctrl,
+    Enter,
+    Space,
+    Tilde,
+    Quote,
+    Semicolon,
+    Comma,
+    Period,
+    Slash,
+    Esc,
+    Shift,
+    Alt,
+    Backspace,
+}
+
+/// Kind of input to send.
+#[derive(Debug, Clone, Copy)]
+pub enum InputKind {
+    /// Sends input only if the foreground window is [`Window`] and focused.
+    Focused,
+    /// Sends input only if the foreground window is not [`Window`], overlaps with [`Window`] and
+    /// is focused.
+    Foreground,
+}
+
+/// Struct for sending key and mouse inputs.
+#[derive(Debug)]
+pub struct Input {
+    #[cfg(windows)]
+    windows: WindowsInput,
+}
+
+impl Input {
+    pub fn new(window: Window, kind: InputKind) -> Result<Self> {
+        if cfg!(windows) {
+            return Ok(Self {
+                windows: WindowsInput::new(window.windows, kind),
+            });
+        }
+
+        Err(Error::PlatformNotSupported)
+    }
+
+    /// Sends mouse `kind` with coordinates `x`, `y` in relative to the provided [`Window`].
+    pub fn send_mouse(&self, x: i32, y: i32, kind: MouseKind) -> Result<()> {
+        if cfg!(windows) {
+            return self.windows.send_mouse(x, y, kind);
+        }
+
+        Err(Error::PlatformNotSupported)
+    }
+
+    /// Retrieves the current state of key `kind`.
+    pub fn key_state(&self, kind: KeyKind) -> Result<KeyState> {
+        if cfg!(windows) {
+            return self.windows.key_state(kind);
+        }
+
+        Err(Error::PlatformNotSupported)
+    }
+
+    pub fn is_all_keys_cleared(&self) -> Result<bool> {
+        if cfg!(windows) {
+            return Ok(self.windows.is_all_keys_cleared());
+        }
+
+        Err(Error::PlatformNotSupported)
+    }
+
+    /// Sends a single key press `kind`.
+    pub fn send_key(&mut self, kind: KeyKind, down_ms: u64) -> Result<()> {
+        if cfg!(windows) {
+            return self.windows.send_key(kind, down_ms);
+        }
+
+        Err(Error::PlatformNotSupported)
+    }
+
+    /// Holds down key `kind`.
+    ///
+    /// If `repeatable` is `true`, consecutive calls will continue to send the down stroke even if
+    /// the key is already down.
+    pub fn send_key_down(&mut self, kind: KeyKind, repeatable: bool) -> Result<()> {
+        if cfg!(windows) {
+            return self.windows.send_key_down(kind, repeatable);
+        }
+
+        Ok(())
+    }
+
+    /// Releases key `kind`.
+    pub fn send_key_up(&mut self, kind: KeyKind) -> Result<()> {
+        if cfg!(windows) {
+            return self.windows.send_key_up(kind);
+        }
+
+        Err(Error::PlatformNotSupported)
+    }
+}
+
+#[derive(Debug)]
+pub struct InputReceiver {
+    #[cfg(windows)]
+    windows: WindowsInputReceiver,
+}
+
+impl InputReceiver {
+    pub fn new(window: Window, input_kind: InputKind) -> Result<Self> {
+        if cfg!(windows) {
+            return Ok(Self {
+                windows: WindowsInputReceiver::new(window.windows, input_kind),
+            });
+        }
+
+        Err(Error::PlatformNotSupported)
+    }
+
+    /// Attempts to receive a key stroke previously sent from the OS.
+    pub fn as_stream(&self) -> Result<BoxStream<'static, KeyKind>> {
+        if cfg!(windows) {
+            return Ok(self.windows.as_stream());
+        }
+
+        Err(Error::PlatformNotSupported)
+    }
+}

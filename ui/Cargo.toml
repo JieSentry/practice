@@ -1,0 +1,23 @@
+[package]
+name = "ui"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+futures-util = "0.3"
+rand = { workspace = true }
+tokio = { workspace = true }
+dioxus = { version = "0.7.2", features = ["desktop"] }
+backend = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+humantime = "2.2.0"
+num-traits = "0.2.19"
+fern = "0.7.1"
+log = { workspace = true }
+log-panics = "2.1.0"
+tw_merge = "0.1.7"
+
+[lints]
+workspace = true
+

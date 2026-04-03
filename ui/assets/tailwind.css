@@ -1,0 +1,88 @@
+@import "tailwindcss";
+
+::-webkit-scrollbar {
+    width: 3px;
+    height: 3px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--color-quarternary-surface);
+}
+
+::-webkit-scrollbar-track {
+    background: var(--color-tertiary-surface);
+}
+
+html,
+body,
+#main {
+	overflow-x: auto;
+	overflow-y: auto;
+	height: 100%;
+    background: var(--color-primary-surface);
+}
+
+select,
+::picker(select) {
+	appearance: base-select;
+}
+
+::picker(select) {
+    border: none;
+}
+
+::picker(select)::-webkit-scrollbar {
+    width: 3px;
+    height: 3px;
+    background: var(--color-secondary-surface);
+}
+
+::picker(select)::-webkit-scrollbar-thumb {
+    background: var(--color-quarternary-surface);
+}
+
+::picker(select)::-webkit-scrollbar-track {
+    background: var(--color-tertiary-surface);
+}
+
+option::checkmark {
+    order: 1;
+    margin-left: auto;
+    content: "✓";
+}
+
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+input[type="checkbox"]:checked {
+	background-image: url("data:image/svg+xml,%3csvg aria-hidden='true' xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 16 12'%3e %3cpath stroke='white' stroke-linecap='round' stroke-linejoin='round' stroke-width='3' d='M1 5.917 5.724 10.5 15 1.5'/%3e %3c/svg%3e");
+	background-repeat: no-repeat;
+	background-size: 0.6em 0.6em;
+	background-position: center;
+}
+
+@theme {
+    --text-xxs: 0.6875rem;
+}
+
+@theme inline {
+    --color-primary-surface: var(--color-gray-950);
+    --color-secondary-surface: var(--color-gray-900);
+    --color-tertiary-surface: var(--color-gray-800);
+    --color-quarternary-surface: var(--color-gray-500);
+
+    --color-primary-text: var(--color-gray-50);
+    --color-secondary-text: var(--color-gray-400);
+    --color-tertiary-text: var(--color-gray-600);
+    --color-danger-text: var(--color-red-400);
+
+    --color-primary-border: var(--color-gray-600);
+    --color-secondary-border: var(--color-gray-700);
+
+    --color-primary-icon: var(--color-gray-50);
+    --color-secondary-icon: var(--color-gray-400);
+    --color-danger-icon: var(--color-red-500);
+}

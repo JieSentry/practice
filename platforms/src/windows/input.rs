@@ -1,0 +1,573 @@
+use std::{
+    mem::{self, size_of},
+    sync::{Arc, LazyLock, Mutex},
+    thread,
+    time::Duration,
+};
+
+use bit_vec::BitVec;
+use futures::{StreamExt, future, stream::BoxStream};
+use tokio::{
+    spawn,
+    sync::broadcast::{self, Sender},
+    time,
+};
+use tokio_stream::wrappers::BroadcastStream;
+use windows::{
+    Win32::{
+        Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM},
+        Graphics::Gdi::{ClientToScreen, IntersectRect, MONITOR_DEFAULTTONULL, MonitorFromWindow},
+        System::Threading::GetCurrentProcessId,
+        UI::{
+            Input::KeyboardAndMouse::{
+                GetAsyncKeyState, INPUT, INPUT_0, INPUT_KEYBOARD, INPUT_MOUSE, KEYBD_EVENT_FLAGS,
+                KEYBDINPUT, KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP, MAPVK_VK_TO_VSC_EX,
+                MOUSE_EVENT_FLAGS, MOUSEEVENTF_ABSOLUTE, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP,
+                MOUSEEVENTF_MOVE, MOUSEEVENTF_VIRTUALDESK, MOUSEEVENTF_WHEEL, MOUSEINPUT,
+                MapVirtualKeyW, SendInput, VIRTUAL_KEY, VK_0, VK_1, VK_2, VK_3, VK_4, VK_5, VK_6,
+                VK_7, VK_8, VK_9, VK_A, VK_B, VK_BACK, VK_C, VK_CONTROL, VK_D, VK_DELETE, VK_DOWN,
+                VK_E, VK_END, VK_ESCAPE, VK_F, VK_F1, VK_F2, VK_F3, VK_F4, VK_F5, VK_F6, VK_F7,
+                VK_F8, VK_F9, VK_F10, VK_F11, VK_F12, VK_G, VK_H, VK_HOME, VK_I, VK_INSERT, VK_J,
+                VK_K, VK_L, VK_LEFT, VK_M, VK_MENU, VK_N, VK_NEXT, VK_O, VK_OEM_1, VK_OEM_2,
+                VK_OEM_3, VK_OEM_7, VK_OEM_COMMA, VK_OEM_PERIOD, VK_P, VK_PRIOR, VK_Q, VK_R,
+                VK_RETURN, VK_RIGHT, VK_S, VK_SHIFT, VK_SPACE, VK_T, VK_U, VK_UP, VK_V, VK_W, VK_X,
+                VK_Y, VK_Z,
+            },
+            WindowsAndMessaging::{
+                CallNextHookEx, GetForegroundWindow, GetSystemMetrics, GetWindowRect,
+                GetWindowThreadProcessId, HC_ACTION, HHOOK, KBDLLHOOKSTRUCT, LLKHF_INJECTED,
+                LLKHF_LOWER_IL_INJECTED, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN,
+                SM_YVIRTUALSCREEN, SetWindowsHookExW, WH_KEYBOARD_LL, WM_KEYDOWN, WM_KEYUP,
+            },
+        },
+    },
+    core::Owned,
+};
+
+use super::{HandleCell, handle::Handle};
+use crate::{
+    Error, Result,
+    input::{InputKind, KeyKind, KeyState, MouseKind},
+};
+
+static KEY_CHANNEL: LazyLock<Sender<KeyKind>> = LazyLock::new(|| broadcast::channel(1).0);
+static PROCESS_ID: LazyLock<u32> = LazyLock::new(|| unsafe { GetCurrentProcessId() });
+
+pub fn init() -> Owned<HHOOK> {
+    unsafe extern "system" fn keyboard_ll(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+        let msg = wparam.0 as u32;
+        if code as u32 == HC_ACTION && (msg == WM_KEYUP || msg == WM_KEYDOWN) {
+            let lparam_ptr = lparam.0 as *mut KBDLLHOOKSTRUCT;
+            let mut key = unsafe { lparam_ptr.read() };
+            let vkey = unsafe { mem::transmute::<u16, VIRTUAL_KEY>(key.vkCode as u16) };
+            let key_kind = KeyKind::try_from(vkey);
+            let ignore = key.dwExtraInfo == *PROCESS_ID as usize;
+            if !ignore
+                && msg == WM_KEYUP
+                && let Ok(key) = key_kind
+            {
+                let _ = KEY_CHANNEL.send(key);
+            } else if ignore {
+                // Won't work if the hook is not on the top of the chain
+                key.flags &= !LLKHF_INJECTED;
+                key.flags &= !LLKHF_LOWER_IL_INJECTED;
+                unsafe {
+                    *lparam_ptr = key;
+                }
+            }
+        }
+        unsafe { CallNextHookEx(None, code, wparam, lparam) }
+    }
+    unsafe { Owned::new(SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_ll), None, 0).unwrap()) }
+}
+
+#[derive(Debug)]
+pub struct WindowsInputReceiver {
+    handle_cell: HandleCell,
+    input_kind: InputKind,
+}
+
+impl WindowsInputReceiver {
+    pub fn new(handle: Handle, input_kind: InputKind) -> Self {
+        Self {
+            handle_cell: HandleCell::new(handle),
+            input_kind,
+        }
+    }
+
+    pub fn as_stream(&self) -> BoxStream<'static, KeyKind> {
+        let cell = self.handle_cell.clone();
+        let kind = self.input_kind;
+
+        BroadcastStream::new(KEY_CHANNEL.subscribe())
+            .filter_map(|result| match result {
+                Ok(key) => future::ready(Some(key)),
+                Err(_) => future::ready(None),
+            })
+            .filter(move |_| future::ready(can_process_key(&cell, kind)))
+            .boxed()
+    }
+}
+
+#[derive(Debug)]
+enum InputKeyStroke {
+    Up,
+    Down,
+    DownRepeatable,
+}
+
+#[derive(Debug)]
+pub struct WindowsInput {
+    handle: HandleCell,
+    input_kind: InputKind,
+    key_down: Arc<Mutex<BitVec>>,
+    key_sending: Arc<Mutex<BitVec>>,
+}
+
+impl WindowsInput {
+    pub fn new(handle: Handle, kind: InputKind) -> Self {
+        Self {
+            handle: HandleCell::new(handle),
+            input_kind: kind,
+            key_down: Arc::new(Mutex::new(BitVec::from_elem(256, false))),
+            key_sending: Arc::new(Mutex::new(BitVec::from_elem(256, false))),
+        }
+    }
+
+    pub fn send_mouse(&self, x: i32, y: i32, kind: MouseKind) -> Result<()> {
+        #[inline]
+        fn mouse_input(dx: i32, dy: i32, flags: MOUSE_EVENT_FLAGS, data: i32) -> [INPUT; 1] {
+            [INPUT {
+                r#type: INPUT_MOUSE,
+                Anonymous: INPUT_0 {
+                    mi: MOUSEINPUT {
+                        dx,
+                        dy,
+                        dwFlags: flags,
+                        mouseData: data as u32,
+                        ..MOUSEINPUT::default()
+                    },
+                },
+            }]
+        }
+
+        let mut handle = self.get_handle()?;
+        if !is_foreground(handle, self.input_kind) {
+            return Err(Error::WindowNotFound);
+        }
+        if matches!(self.input_kind, InputKind::Foreground) {
+            handle = unsafe { GetForegroundWindow() };
+        }
+
+        let (dx, dy) = client_to_absolute_coordinate_raw(handle, x, y)?;
+        let base_flags = MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_MOVE | MOUSEEVENTF_VIRTUALDESK;
+
+        match kind {
+            MouseKind::Move => send_input(mouse_input(dx, dy, base_flags, 0)),
+            MouseKind::Click => {
+                send_input(mouse_input(dx, dy, base_flags | MOUSEEVENTF_LEFTDOWN, 0))?;
+                // TODO: Hack or double-click won't work...
+                thread::sleep(Duration::from_millis(80));
+                send_input(mouse_input(dx, dy, base_flags | MOUSEEVENTF_LEFTUP, 0))
+            }
+            MouseKind::Scroll => {
+                send_input(mouse_input(dx, dy, base_flags | MOUSEEVENTF_WHEEL, -150))
+            }
+        }
+    }
+
+    pub fn key_state(&self, kind: KeyKind) -> Result<KeyState> {
+        let result = unsafe { GetAsyncKeyState(VIRTUAL_KEY::from(kind).0 as i32) } as u16;
+        let is_down = result & 0x8000 != 0;
+        let state = if is_down {
+            KeyState::Pressed
+        } else {
+            KeyState::Released
+        };
+
+        Ok(state)
+    }
+
+    pub fn is_all_keys_cleared(&self) -> bool {
+        !self.key_down.lock().unwrap().any()
+    }
+
+    pub fn send_key(&mut self, kind: KeyKind, down_ms: u64) -> Result<()> {
+        if self.is_key_sending(kind) {
+            return Err(Error::KeyNotSent);
+        }
+
+        let mut clone = self.clone();
+        clone.send_input(kind, InputKeyStroke::Down)?;
+        clone.set_key_sending(kind, true);
+
+        let mut send_up = move || {
+            let _ = clone.send_input(kind, InputKeyStroke::Up);
+            clone.set_key_sending(kind, false);
+        };
+        if down_ms > 0 {
+            spawn(async move {
+                time::sleep(Duration::from_millis(down_ms)).await;
+                send_up()
+            });
+        } else {
+            send_up()
+        }
+
+        Ok(())
+    }
+
+    pub fn send_key_up(&mut self, kind: KeyKind) -> Result<()> {
+        self.send_input(kind, InputKeyStroke::Up)
+    }
+
+    pub fn send_key_down(&mut self, kind: KeyKind, repeatable: bool) -> Result<()> {
+        let stroke = if repeatable {
+            InputKeyStroke::DownRepeatable
+        } else {
+            InputKeyStroke::Down
+        };
+
+        self.send_input(kind, stroke)
+    }
+
+    #[inline]
+    fn send_input(&mut self, kind: KeyKind, stroke: InputKeyStroke) -> Result<()> {
+        let handle = self.get_handle()?;
+        let is_down = matches!(
+            stroke,
+            InputKeyStroke::Down | InputKeyStroke::DownRepeatable
+        );
+        if is_down && !is_foreground(handle, self.input_kind) {
+            return Err(Error::KeyNotSent);
+        }
+
+        let key = kind.into();
+        let (scan_code, is_extended) = to_scan_code(key);
+        let mut key_down = self.key_down.lock().unwrap();
+        let was_key_down = key_down.get(key.0 as usize).unwrap_or_default();
+        match (is_down, was_key_down) {
+            (true, true) => {
+                if !matches!(stroke, InputKeyStroke::DownRepeatable) {
+                    return Err(Error::KeyNotSent);
+                }
+            }
+            (false, false) => return Err(Error::KeyNotSent),
+            _ => {
+                key_down.set(key.0 as usize, is_down);
+            }
+        }
+        send_input(to_input(key, scan_code, is_extended, is_down))
+    }
+
+    #[inline]
+    fn get_handle(&self) -> Result<HWND> {
+        self.handle.as_inner().ok_or(Error::WindowNotFound)
+    }
+
+    fn is_key_sending(&self, kind: KeyKind) -> bool {
+        self.key_sending
+            .lock()
+            .unwrap()
+            .get(kind.id() as usize)
+            .unwrap_or_default()
+    }
+
+    fn set_key_sending(&mut self, kind: KeyKind, sending: bool) {
+        self.key_sending
+            .lock()
+            .unwrap()
+            .set(kind.id() as usize, sending)
+    }
+
+    fn clone(&self) -> Self {
+        Self {
+            handle: self.handle.clone(),
+            input_kind: self.input_kind,
+            key_down: self.key_down.clone(),
+            key_sending: self.key_sending.clone(),
+        }
+    }
+}
+
+impl KeyKind {
+    fn id(&self) -> u16 {
+        VIRTUAL_KEY::from(*self).0
+    }
+}
+
+impl TryFrom<VIRTUAL_KEY> for KeyKind {
+    type Error = Error;
+
+    fn try_from(value: VIRTUAL_KEY) -> Result<Self> {
+        Ok(match value {
+            VK_A => KeyKind::A,
+            VK_B => KeyKind::B,
+            VK_C => KeyKind::C,
+            VK_D => KeyKind::D,
+            VK_E => KeyKind::E,
+            VK_F => KeyKind::F,
+            VK_G => KeyKind::G,
+            VK_H => KeyKind::H,
+            VK_I => KeyKind::I,
+            VK_J => KeyKind::J,
+            VK_K => KeyKind::K,
+            VK_L => KeyKind::L,
+            VK_M => KeyKind::M,
+            VK_N => KeyKind::N,
+            VK_O => KeyKind::O,
+            VK_P => KeyKind::P,
+            VK_Q => KeyKind::Q,
+            VK_R => KeyKind::R,
+            VK_S => KeyKind::S,
+            VK_T => KeyKind::T,
+            VK_U => KeyKind::U,
+            VK_V => KeyKind::V,
+            VK_W => KeyKind::W,
+            VK_X => KeyKind::X,
+            VK_Y => KeyKind::Y,
+            VK_Z => KeyKind::Z,
+            VK_0 => KeyKind::Zero,
+            VK_1 => KeyKind::One,
+            VK_2 => KeyKind::Two,
+            VK_3 => KeyKind::Three,
+            VK_4 => KeyKind::Four,
+            VK_5 => KeyKind::Five,
+            VK_6 => KeyKind::Six,
+            VK_7 => KeyKind::Seven,
+            VK_8 => KeyKind::Eight,
+            VK_9 => KeyKind::Nine,
+            VK_F1 => KeyKind::F1,
+            VK_F2 => KeyKind::F2,
+            VK_F3 => KeyKind::F3,
+            VK_F4 => KeyKind::F4,
+            VK_F5 => KeyKind::F5,
+            VK_F6 => KeyKind::F6,
+            VK_F7 => KeyKind::F7,
+            VK_F8 => KeyKind::F8,
+            VK_F9 => KeyKind::F9,
+            VK_F10 => KeyKind::F10,
+            VK_F11 => KeyKind::F11,
+            VK_F12 => KeyKind::F12,
+            VK_UP => KeyKind::Up,
+            VK_DOWN => KeyKind::Down,
+            VK_LEFT => KeyKind::Left,
+            VK_RIGHT => KeyKind::Right,
+            VK_HOME => KeyKind::Home,
+            VK_END => KeyKind::End,
+            VK_PRIOR => KeyKind::PageUp,
+            VK_NEXT => KeyKind::PageDown,
+            VK_INSERT => KeyKind::Insert,
+            VK_DELETE => KeyKind::Delete,
+            VK_CONTROL => KeyKind::Ctrl,
+            VK_RETURN => KeyKind::Enter,
+            VK_SPACE => KeyKind::Space,
+            VK_OEM_3 => KeyKind::Tilde,
+            VK_OEM_7 => KeyKind::Quote,
+            VK_OEM_1 => KeyKind::Semicolon,
+            VK_OEM_COMMA => KeyKind::Comma,
+            VK_OEM_PERIOD => KeyKind::Period,
+            VK_OEM_2 => KeyKind::Slash,
+            VK_ESCAPE => KeyKind::Esc,
+            VK_SHIFT => KeyKind::Shift,
+            VK_MENU => KeyKind::Alt,
+            _ => return Err(Error::KeyNotFound),
+        })
+    }
+}
+
+impl From<KeyKind> for VIRTUAL_KEY {
+    fn from(value: KeyKind) -> Self {
+        match value {
+            KeyKind::A => VK_A,
+            KeyKind::B => VK_B,
+            KeyKind::C => VK_C,
+            KeyKind::D => VK_D,
+            KeyKind::E => VK_E,
+            KeyKind::F => VK_F,
+            KeyKind::G => VK_G,
+            KeyKind::H => VK_H,
+            KeyKind::I => VK_I,
+            KeyKind::J => VK_J,
+            KeyKind::K => VK_K,
+            KeyKind::L => VK_L,
+            KeyKind::M => VK_M,
+            KeyKind::N => VK_N,
+            KeyKind::O => VK_O,
+            KeyKind::P => VK_P,
+            KeyKind::Q => VK_Q,
+            KeyKind::R => VK_R,
+            KeyKind::S => VK_S,
+            KeyKind::T => VK_T,
+            KeyKind::U => VK_U,
+            KeyKind::V => VK_V,
+            KeyKind::W => VK_W,
+            KeyKind::X => VK_X,
+            KeyKind::Y => VK_Y,
+            KeyKind::Z => VK_Z,
+            KeyKind::Zero => VK_0,
+            KeyKind::One => VK_1,
+            KeyKind::Two => VK_2,
+            KeyKind::Three => VK_3,
+            KeyKind::Four => VK_4,
+            KeyKind::Five => VK_5,
+            KeyKind::Six => VK_6,
+            KeyKind::Seven => VK_7,
+            KeyKind::Eight => VK_8,
+            KeyKind::Nine => VK_9,
+            KeyKind::F1 => VK_F1,
+            KeyKind::F2 => VK_F2,
+            KeyKind::F3 => VK_F3,
+            KeyKind::F4 => VK_F4,
+            KeyKind::F5 => VK_F5,
+            KeyKind::F6 => VK_F6,
+            KeyKind::F7 => VK_F7,
+            KeyKind::F8 => VK_F8,
+            KeyKind::F9 => VK_F9,
+            KeyKind::F10 => VK_F10,
+            KeyKind::F11 => VK_F11,
+            KeyKind::F12 => VK_F12,
+            KeyKind::Up => VK_UP,
+            KeyKind::Down => VK_DOWN,
+            KeyKind::Left => VK_LEFT,
+            KeyKind::Right => VK_RIGHT,
+            KeyKind::Home => VK_HOME,
+            KeyKind::End => VK_END,
+            KeyKind::PageUp => VK_PRIOR,
+            KeyKind::PageDown => VK_NEXT,
+            KeyKind::Insert => VK_INSERT,
+            KeyKind::Delete => VK_DELETE,
+            KeyKind::Ctrl => VK_CONTROL,
+            KeyKind::Enter => VK_RETURN,
+            KeyKind::Space => VK_SPACE,
+            KeyKind::Tilde => VK_OEM_3,
+            KeyKind::Quote => VK_OEM_7,
+            KeyKind::Semicolon => VK_OEM_1,
+            KeyKind::Comma => VK_OEM_COMMA,
+            KeyKind::Period => VK_OEM_PERIOD,
+            KeyKind::Slash => VK_OEM_2,
+            KeyKind::Esc => VK_ESCAPE,
+            KeyKind::Shift => VK_SHIFT,
+            KeyKind::Alt => VK_MENU,
+            KeyKind::Backspace => VK_BACK,
+        }
+    }
+}
+
+fn client_to_absolute_coordinate_raw(handle: HWND, x: i32, y: i32) -> Result<(i32, i32)> {
+    let mut point = POINT { x, y };
+    unsafe { ClientToScreen(handle, &raw mut point).ok()? };
+
+    let virtual_left = unsafe { GetSystemMetrics(SM_XVIRTUALSCREEN) };
+    let virtual_top = unsafe { GetSystemMetrics(SM_YVIRTUALSCREEN) };
+    let virtual_width = unsafe { GetSystemMetrics(SM_CXVIRTUALSCREEN) };
+    let virtual_height = unsafe { GetSystemMetrics(SM_CYVIRTUALSCREEN) };
+    if virtual_width == 0 || virtual_height == 0 {
+        return Err(Error::WindowInvalidSize);
+    }
+
+    let dx = (point.x - virtual_left) * 65536 / virtual_width;
+    let dy = (point.y - virtual_top) * 65536 / virtual_height;
+    Ok((dx, dy))
+}
+
+fn can_process_key(cell: &HandleCell, kind: InputKind) -> bool {
+    let fg = unsafe { GetForegroundWindow() };
+    let mut fg_pid = 0;
+    unsafe { GetWindowThreadProcessId(fg, Some(&raw mut fg_pid)) };
+    if fg_pid == *PROCESS_ID {
+        return true;
+    }
+
+    cell.as_inner()
+        .map(|handle| is_foreground(handle, kind))
+        .unwrap_or_default()
+}
+
+#[inline]
+fn is_foreground(handle: HWND, kind: InputKind) -> bool {
+    let handle_fg = unsafe { GetForegroundWindow() };
+    if handle_fg.is_invalid() {
+        return false;
+    }
+    match kind {
+        InputKind::Focused => handle_fg == handle,
+        InputKind::Foreground => {
+            if handle_fg == handle {
+                return false;
+            }
+            // Null != Null?
+            if unsafe {
+                MonitorFromWindow(handle_fg, MONITOR_DEFAULTTONULL)
+                    != MonitorFromWindow(handle, MONITOR_DEFAULTTONULL)
+            } {
+                return false;
+            }
+            let mut rect_fg = RECT::default();
+            let mut rect_handle = RECT::default();
+            let mut rect_intersect = RECT::default();
+            unsafe {
+                if GetWindowRect(handle_fg, &mut rect_fg).is_err()
+                    || GetWindowRect(handle, &mut rect_handle).is_err()
+                {
+                    return false;
+                }
+                IntersectRect(
+                    &raw mut rect_intersect,
+                    &raw const rect_fg,
+                    &raw const rect_handle,
+                )
+                .as_bool()
+            }
+        }
+    }
+}
+
+#[inline]
+fn send_input(input: [INPUT; 1]) -> Result<()> {
+    let result = unsafe { SendInput(&input, size_of::<INPUT>() as i32) };
+    // could be UIPI
+    if result == 0 {
+        Err(Error::from_last_win_error())
+    } else {
+        Ok(())
+    }
+}
+
+#[inline]
+fn to_scan_code(key: VIRTUAL_KEY) -> (u16, bool) {
+    let scan_code = unsafe { MapVirtualKeyW(key.0 as u32, MAPVK_VK_TO_VSC_EX) } as u16;
+    let code = scan_code & 0xFF;
+    let is_extended = if VK_INSERT == key {
+        true
+    } else {
+        (scan_code & 0xFF00) != 0
+    };
+    (code, is_extended)
+}
+
+#[inline]
+fn to_input(key: VIRTUAL_KEY, scan_code: u16, is_extended: bool, is_down: bool) -> [INPUT; 1] {
+    let is_extended = if is_extended {
+        KEYEVENTF_EXTENDEDKEY
+    } else {
+        KEYBD_EVENT_FLAGS::default()
+    };
+    let is_up = if is_down {
+        KEYBD_EVENT_FLAGS::default()
+    } else {
+        KEYEVENTF_KEYUP
+    };
+    [INPUT {
+        r#type: INPUT_KEYBOARD,
+        Anonymous: INPUT_0 {
+            ki: KEYBDINPUT {
+                wVk: key,
+                wScan: scan_code,
+                dwFlags: is_extended | is_up,
+                dwExtraInfo: *PROCESS_ID as usize,
+                ..KEYBDINPUT::default()
+            },
+        },
+    }]
+}
