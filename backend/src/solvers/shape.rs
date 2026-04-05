@@ -219,9 +219,10 @@ impl TransparentShapeSolver {
 
     // 【新增】辅助函数：更新连续低角度计数
     fn update_low_angle_count(&mut self, tracks: &[STrack], bg_direction: Point2d) {
-        if let Some(current_id) = self.current_track_id {
-            if let Some(current_track) = tracks.iter().find(|t| t.track_id() == current_id) {
-                if let Some(angle) = track_background_degree(current_track, bg_direction) {
+        if let Some(current_id) = self.current_track_id
+            && let Some(current_track) = tracks.iter().find(|t| t.track_id() == current_id)
+            && let Some(angle) = track_background_degree(current_track, bg_direction)
+        {
                     if angle < 30.0 {
                         self.current_low_angle_frames += 1;
                     } else {
@@ -229,8 +230,6 @@ impl TransparentShapeSolver {
                     }
                 }
             }
-        }
-    }
 }
 
 impl Drop for TransparentShapeSolver {
@@ -328,14 +327,10 @@ fn track_background_score(
     // 4. 综合评分：角度权重提高到0.6，更看重方向差异
     let mut score = angle_score * 0.6 + proximity_score * 0.4;  
   
-    // 5. 大幅削弱当前目标的惯性加分，且连续低角度时直接取消加分
-    if is_current_track {  
-        if current_low_angle_frames < 1 {
-            // 只有第1帧还保持小幅加分
-            score += 0.1; 
-        }
-        // 连续低角度超过1帧，完全取消加分
-    }  
+    // 修复：合并嵌套if，解决编译报错
+    if is_current_track && current_low_angle_frames < 1 {
+        score += 0.1; 
+    }
   
     // 6. 提高低分过滤阈值，筛选更严格
     if score <= 0.2 {  
