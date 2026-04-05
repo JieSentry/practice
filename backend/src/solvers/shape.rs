@@ -25,7 +25,7 @@ pub struct TransparentShapeSolver {
 impl Default for TransparentShapeSolver {
     fn default() -> Self {
         Self {
-            tracker: ByteTracker::new(FPS as u64, 0.25, 0.1, 0.25, IouGating::Position),
+            tracker: ByteTracker::new(FPS as u64, 0.25, 0.1, 0.25, IouGating::None),
             current_track_id: None,
             candidate_track_id: None,
             candidate_track_count: 0,
@@ -131,60 +131,47 @@ impl TransparentShapeSolver {
         }
     }
 
-    fn update_and_find_best_track<'a>(  
-        &mut self,  
-        tracks: &'a [STrack],  
-        region: Rect,  
-    ) -> Option<&'a STrack> {  
-        let current_track_id = self.current_track_id?;  
-        let last_cursor = self.last_cursor?;  
-        let bg_direction = self.bg_direction;  
-        let match_track = tracks  
-            .iter()  
-            .filter(|track| {  
-                track.track_id() == current_track_id  
-                    || track.tracklet_len() >= 1  
-            })  
-            .filter_map(|track| {  
-                let is_current =  
-                    track.track_id() == current_track_id;  
-                let score = track_background_score(  
-                    track,  
-                    last_cursor,  
-                    bg_direction,  
-                    region,  
-                    is_current,  
-                )?;  
-                Some((track, score))  
-            })  
-            .max_by(|(_, a_score), (_, b_score)| {  
-                a_score.partial_cmp(b_score).unwrap()  
-            })  
-            .map(|(track, _)| track);  
-  
-        if let Some(track) = match_track {  
-            if track.track_id() == current_track_id {  
-                self.candidate_track_id = None;  
-                self.candidate_track_count = 0;  
-            }  
-  
-            if self.candidate_track_id == Some(track.track_id()) {  
-                self.candidate_track_count += 1;  
-            } else {  
-                self.candidate_track_id = Some(track.track_id());  
-                self.candidate_track_count = 0;  
-            }  
-  
-            if self.candidate_track_count >= 4 {  
-                self.candidate_track_id = None;  
-                self.candidate_track_count = 0;  
-                return Some(track);  
-            }  
-        }  
-  
-        tracks  
-            .iter()  
-            .find(|track| track.track_id() == current_track_id)  
+    fn update_and_find_best_track<'a>(
+        &mut self,
+        tracks: &'a [STrack],
+        region: Rect,
+    ) -> Option<&'a STrack> {
+        let current_track_id = self.current_track_id?;
+        let last_cursor = self.last_cursor?;
+        let bg_direction = self.bg_direction;
+        let match_track = tracks
+            .iter()
+            .filter(|track| track.track_id() == current_track_id || track.tracklet_len() >= 1)
+            .filter_map(|track| {
+                let score = track_background_score(track, last_cursor, bg_direction, region)?;
+                Some((track, score))
+            })
+            .max_by(|(_, a_score), (_, b_score)| a_score.partial_cmp(b_score).unwrap())
+            .map(|(track, _)| track);
+
+        if let Some(track) = match_track {
+            if track.track_id() == current_track_id {
+                self.candidate_track_id = None;
+                self.candidate_track_count = 0;
+            }
+
+            if self.candidate_track_id == Some(track.track_id()) {
+                self.candidate_track_count += 1;
+            } else {
+                self.candidate_track_id = Some(track.track_id());
+                self.candidate_track_count = 0;
+            }
+
+            if self.candidate_track_count >= 1 {
+                self.candidate_track_id = None;
+                self.candidate_track_count = 0;
+                return Some(track);
+            }
+        }
+
+        tracks
+            .iter()
+            .find(|track| track.track_id() == current_track_id)
     }
 }
 
@@ -243,46 +230,31 @@ fn predicted_center(track: &STrack) -> Point {
     )
 }
 
-fn track_background_score(  
-    track: &STrack,  
-    last_cursor: Point,  
-    bg_direction: Point2d,  
-    region: Rect,  
-    is_current_track: bool,  
-) -> Option<f64> {  
-    let angle = track_background_degree(track, bg_direction)?;  
-  
-    // 当前 track 用宽松阈值（即使与背景同向也不轻易丢弃）  
-    // 其他 track 保持原阈值  
-    let min_angle = if is_current_track { 15.0 } else { 45.0 };  
-    if angle <= min_angle {  
-        return None;  
-    }  
-  
-    // 角度分：0~1，与背景方向差异越大越可能是目标  
-    let angle_score = angle / 180.0;  
-  
-    // 距离分：0~1，离光标越近越可能是当前跟踪的目标  
-    let cursor_dir = mid_point(track.rect()) - last_cursor;  
-    let dist_squared =  
-        (cursor_dir.x.pow(2) + cursor_dir.y.pow(2)) as f64;  
-    let sigma = 0.3 * diag(region);  
-    let proximity_score = (-dist_squared / (2.0 * sigma.powi(2))).exp();  
-  
-    // 综合评分：角度和距离各占一半  
-    let mut score = angle_score * 0.5 + proximity_score * 0.5;  
-  
-    // 当前 track 获得额外加分，使其更难被其他 track 抢走  
-    if is_current_track {  
-        score += 0.3;  
-    }  
-  
-    // 过滤掉综合分太低的 track  
-    if score <= 0.15 {  
-        return None;  
-    }  
-  
-    Some(score)  
+fn track_background_score(
+    track: &STrack,
+    last_cursor: Point,
+    bg_direction: Point2d,
+    region: Rect,
+) -> Option<f64> {
+    let angle = track_background_degree(track, bg_direction)?;
+    if angle <= 45.0 {
+        return None;
+    }
+    let score = angle / 180.0;
+
+    let distance_penalty = if angle >= 60.0 {
+        1.0
+    } else {
+        let cursor_dir = mid_point(track.rect()) - last_cursor;
+        let cursor_squared = (cursor_dir.x.pow(2) + cursor_dir.y.pow(2)) as f64;
+        let sigma = 0.25 * diag(region);
+        (-cursor_squared / (2.0 * sigma.powi(2))).exp()
+    };
+    if distance_penalty <= 0.3 {
+        return None;
+    }
+
+    Some(score * distance_penalty)
 }
 
 fn track_background_degree(track: &STrack, bg_direction: Point2d) -> Option<f64> {
