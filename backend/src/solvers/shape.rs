@@ -18,6 +18,8 @@ pub struct TransparentShapeSolver {
     last_cursor: Option<Point>,
     last_velocity: Option<Point2d>,
     bg_direction: Point2d,
+    // 【新增】记录当前目标连续低角度的帧数
+    current_low_angle_frames: u32, 
     #[cfg(debug_assertions)]
     is_debugging: bool,
 }
@@ -32,6 +34,7 @@ impl Default for TransparentShapeSolver {
             last_cursor: None,
             last_velocity: None,
             bg_direction: Point2d::default(),
+            current_low_angle_frames: 0, // 【新增】初始化为0
             #[cfg(debug_assertions)]
             is_debugging: false,
         }
@@ -131,47 +134,102 @@ impl TransparentShapeSolver {
         }
     }
 
-    fn update_and_find_best_track<'a>(
-        &mut self,
-        tracks: &'a [STrack],
-        region: Rect,
-    ) -> Option<&'a STrack> {
-        let current_track_id = self.current_track_id?;
-        let last_cursor = self.last_cursor?;
-        let bg_direction = self.bg_direction;
-        let match_track = tracks
-            .iter()
-            .filter(|track| track.track_id() == current_track_id || track.tracklet_len() >= 1)
-            .filter_map(|track| {
-                let score = track_background_score(track, last_cursor, bg_direction, region)?;
-                Some((track, score))
-            })
-            .max_by(|(_, a_score), (_, b_score)| a_score.partial_cmp(b_score).unwrap())
-            .map(|(track, _)| track);
+    fn update_and_find_best_track<'a>(  
+        &mut self,  
+        tracks: &'a [STrack],  
+        region: Rect,  
+    ) -> Option<&'a STrack> {  
+        let current_track_id = self.current_track_id?;  
+        let last_cursor = self.last_cursor?;  
+        let bg_direction = self.bg_direction;  
+  
+        // 1. 先更新当前目标的连续低角度计数
+        self.update_low_angle_count(tracks, bg_direction);
 
-        if let Some(track) = match_track {
-            if track.track_id() == current_track_id {
-                self.candidate_track_id = None;
-                self.candidate_track_count = 0;
-            }
+        // 2. 计算所有候选分数
+        let scored_tracks: Vec<_> = tracks  
+            .iter()  
+            .filter(|track| {  
+                track.track_id() == current_track_id || track.tracklet_len() >= 1  
+            })  
+            .filter_map(|track| {  
+                let is_current = track.track_id() == current_track_id;  
+                let score = track_background_score(
+                    track, 
+                    last_cursor, 
+                    bg_direction, 
+                    region, 
+                    is_current,
+                    self.current_low_angle_frames // 传入计数
+                )?;  
+                Some((track, score, is_current))  
+            })  
+            .collect();  
+  
+        // 3. 找出最高分
+        let best_track_info = scored_tracks.iter().max_by(|(_, a, _), (_, b, _)| a.partial_cmp(b).unwrap());
+        let (best_track, best_score, is_best_current) = match best_track_info {
+            Some(info) => info,
+            None => return tracks.iter().find(|t| t.track_id() == current_track_id),
+        };
 
-            if self.candidate_track_id == Some(track.track_id()) {
-                self.candidate_track_count += 1;
-            } else {
-                self.candidate_track_id = Some(track.track_id());
-                self.candidate_track_count = 0;
-            }
-
-            if self.candidate_track_count >= 1 {
-                self.candidate_track_id = None;
-                self.candidate_track_count = 0;
-                return Some(track);
-            }
+        // 4. 快速切换逻辑
+        if *is_best_current {
+            // 还是当前目标，重置候选
+            self.candidate_track_id = None;
+            self.candidate_track_count = 0;
+            return Some(best_track);
         }
 
-        tracks
-            .iter()
-            .find(|track| track.track_id() == current_track_id)
+        // 处理候选
+        let is_same_candidate = self.candidate_track_id == Some(best_track.track_id());
+        if is_same_candidate {
+            self.candidate_track_count += 1;
+        } else {
+            self.candidate_track_id = Some(best_track.track_id());
+            self.candidate_track_count = 1;
+        }
+
+        // 获取当前目标的分数
+        let current_score = scored_tracks.iter()
+            .find(|(_, _, is_cur)| *is_cur)
+            .map(|(_, s, _)| s)
+            .unwrap_or(&0.0);
+
+        // 【核心】快速切换条件：
+        // 1. 候选分数比当前高 0.15 以上，且连续 2 帧 -> 切换
+        // 2. 候选分数比当前高 0.3 以上 -> 直接切换（无需等待）
+        // 3. 当前目标连续低角度超过 2 帧，且有候选 -> 直接切换
+        let should_switch = (best_score - current_score > 0.15 && self.candidate_track_count >= 2)
+            || (best_score - current_score > 0.3)
+            || (self.current_low_angle_frames >= 2 && self.candidate_track_count >= 1);
+
+        if should_switch {
+            debug!(target: "backend/player", "Fast switch from {:?} to {}", self.current_track_id, best_track.track_id());
+            self.current_track_id = Some(best_track.track_id());
+            self.current_low_angle_frames = 0; // 重置计数
+            self.candidate_track_id = None;
+            self.candidate_track_count = 0;
+            return Some(best_track);
+        }
+
+        // 默认返回当前目标
+        tracks.iter().find(|t| t.track_id() == current_track_id)
+    }
+
+    // 【新增】辅助函数：更新连续低角度计数
+    fn update_low_angle_count(&mut self, tracks: &[STrack], bg_direction: Point2d) {
+        if let Some(current_id) = self.current_track_id {
+            if let Some(current_track) = tracks.iter().find(|t| t.track_id() == current_id) {
+                if let Some(angle) = track_background_degree(current_track, bg_direction) {
+                    if angle < 30.0 {
+                        self.current_low_angle_frames += 1;
+                    } else {
+                        self.current_low_angle_frames = 0;
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -230,31 +288,61 @@ fn predicted_center(track: &STrack) -> Point {
     )
 }
 
-fn track_background_score(
-    track: &STrack,
-    last_cursor: Point,
-    bg_direction: Point2d,
-    region: Rect,
-) -> Option<f64> {
-    let angle = track_background_degree(track, bg_direction)?;
-    if angle <= 45.0 {
-        return None;
-    }
-    let score = angle / 180.0;
-
-    let distance_penalty = if angle >= 60.0 {
-        1.0
+fn track_background_score(  
+    track: &STrack,  
+    last_cursor: Point,  
+    bg_direction: Point2d,  
+    region: Rect,  
+    is_current_track: bool,  
+    // 【新增参数】需要在结构体中维护这个字段，记录当前目标连续低角度的帧数
+    current_low_angle_frames: u32, 
+) -> Option<f64> {  
+    let angle = track_background_degree(track, bg_direction)?;  
+  
+    // 1. 动态角度阈值：当前目标如果连续低角度，直接用严格阈值
+    let min_angle = if is_current_track {
+        if current_low_angle_frames >= 2 {
+            // 如果已经连续2帧角度小，不再宽容，直接用45度
+            45.0
+        } else {
+            // 只给1帧的缓冲期
+            25.0 
+        }
     } else {
-        let cursor_dir = mid_point(track.rect()) - last_cursor;
-        let cursor_squared = (cursor_dir.x.pow(2) + cursor_dir.y.pow(2)) as f64;
-        let sigma = 0.25 * diag(region);
-        (-cursor_squared / (2.0 * sigma.powi(2))).exp()
+        45.0
     };
-    if distance_penalty <= 0.3 {
-        return None;
-    }
-
-    Some(score * distance_penalty)
+    
+    if angle <= min_angle {  
+        return None;  
+    }  
+  
+    // 2. 角度分：保持原有逻辑
+    let angle_score = angle / 180.0;  
+  
+    // 3. 距离分：保持原有逻辑
+    let cursor_dir = mid_point(track.rect()) - last_cursor;  
+    let dist_squared = (cursor_dir.x.pow(2) + cursor_dir.y.pow(2)) as f64;  
+    let sigma = 0.3 * diag(region);  
+    let proximity_score = (-dist_squared / (2.0 * sigma.powi(2))).exp();  
+  
+    // 4. 综合评分：角度权重提高到0.6，更看重方向差异
+    let mut score = angle_score * 0.6 + proximity_score * 0.4;  
+  
+    // 5. 大幅削弱当前目标的惯性加分，且连续低角度时直接取消加分
+    if is_current_track {  
+        if current_low_angle_frames < 1 {
+            // 只有第1帧还保持小幅加分
+            score += 0.1; 
+        }
+        // 连续低角度超过1帧，完全取消加分
+    }  
+  
+    // 6. 提高低分过滤阈值，筛选更严格
+    if score <= 0.2 {  
+        return None;  
+    }  
+  
+    Some(score)  
 }
 
 fn track_background_degree(track: &STrack, bg_direction: Point2d) -> Option<f64> {
