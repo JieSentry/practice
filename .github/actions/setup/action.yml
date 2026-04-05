@@ -61,7 +61,7 @@ runs:
     - uses: cargo-bins/cargo-binstall@main
     - name: Install Dioxus CLI
       shell: pwsh
-      run: cargo binstall dioxus-cli@0.7.2 --no-confirm --locked
+      run: cargo binstall dioxus-cli@0.7.2 --no-confirm
 
     - name: Install protoc
       shell: pwsh
