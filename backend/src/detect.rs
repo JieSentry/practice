@@ -514,8 +514,8 @@ impl Detector for DefaultDetector {
         detect_lie_detector_shape(self.bgr(), &self.localization)
     }
 
-    fn detect_lie_detector_shape_preparing(&self) -> bool {
-        detect_lie_detector_shape_preparing(self.bgr()).is_ok()
+    fn detect_lie_detector_shape_preparing(&self) -> bool {  
+        detect_lie_detector_shape_preparing(self.bgr(), &self.localization).is_ok()  
     }
 
     fn detect_lie_detector_violetta(&self) -> Result<Rect> {
@@ -2309,16 +2309,26 @@ fn detect_lie_detector_shape(bgr: &impl ToInputArray, localization: &Localizatio
     )
 }
 
-fn detect_lie_detector_shape_preparing(bgr: &impl ToInputArray) -> Result<Rect> {
-    static TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {
-        imgcodecs::imdecode(
-            include_bytes!(env!("LIE_DETECTOR_SHAPE_PREPARE_TEMPLATE")),
-            IMREAD_COLOR,
-        )
-        .unwrap()
-    });
+pub static LIE_DETECTOR_SHAPE_PREPARE_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {  
+    imgcodecs::imdecode(  
+        include_bytes!(env!("LIE_DETECTOR_SHAPE_PREPARE_TEMPLATE")),  
+        IMREAD_COLOR,  
+    )  
+    .unwrap()  
+});
 
-    detect_template(bgr, &*TEMPLATE, Point::default(), 0.6)
+fn detect_lie_detector_shape_preparing(bgr: &impl ToInputArray, localization: &Localization) -> Result<Rect> {  
+    let template = localization  
+        .lie_detector_shape_prepare_base64  
+        .as_ref()  
+        .and_then(|base64| to_mat_from_base64(base64, false).ok());  
+  
+    detect_template(  
+        bgr,  
+        template.as_ref().unwrap_or(&*LIE_DETECTOR_SHAPE_PREPARE_TEMPLATE),  
+        Point::default(),  
+        0.6,  
+    )  
 }
 
 pub static LIE_DETECTOR_VIOLETTA_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {

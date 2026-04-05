@@ -27,8 +27,8 @@ pub struct Localization {
     pub lie_detector_new_base64: Option<String>,
     #[serde(default)]
     pub lie_detector_old_base64: Option<String>,
+    #[serde(default)]  
     pub lie_detector_shape_prepare_base64: Option<String>,
-    #[serde(default)]
 }
 
 impl_identifiable!(Localization);
