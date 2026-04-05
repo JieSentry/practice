@@ -186,12 +186,6 @@ impl TransparentShapeSolver {
             .iter()  
             .find(|track| track.track_id() == current_track_id)  
     }
-        }
-
-        tracks
-            .iter()
-            .find(|track| track.track_id() == current_track_id)
-    }
 }
 
 impl Drop for TransparentShapeSolver {
