@@ -280,7 +280,6 @@ fn SectionNotifications() -> Element {
                             },
                             value: notifications().feishu_open_id,
                         }
-
                     },
                 }
             }
