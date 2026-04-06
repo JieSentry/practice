@@ -143,7 +143,7 @@ fn systems_loop() {
         event_tx.clone(),
         |detector| detector.detect_lie_detector_shape().is_ok(),
     );
-    let mut lie_detector_violleta_event_task = event_task(
+    let mut lie_detector_violetta_event_task = event_task(
         WorldEvent::LieDetectorViolettaAppeared,
         event_tx.clone(),
         |detector| detector.detect_lie_detector_violetta().is_ok(),
@@ -215,7 +215,7 @@ fn systems_loop() {
             }
 
             lie_detector_shape_event_task(&mut resources);
-            lie_detector_violleta_event_task(&mut resources);
+            lie_detector_violetta_event_task(&mut resources);
             elite_boss_event_task(&mut resources);
         }
 

@@ -76,7 +76,12 @@ impl NotificationKind {
             .discord_user_id
             .is_empty()
             .not()
-            .then_some(format!("<@{}> ", settings.notifications.discord_user_id))
+            .then_some(match settings.notifications.webhook_provider {
+                WebhookProvider::Discord => {
+                    format!("<@{}> ", settings.notifications.discord_user_id)
+                }
+                _ => settings.notifications.discord_user_id.clone() + " ",
+            })
             .unwrap_or_default();
 
         match self {
@@ -412,10 +417,10 @@ async fn post_feishu_notification(
         .send()
         .await
         .inspect(|_| {
-            debug!(target: "notification", "calling Webhook API {:?} succeeded", notification.kind);
+            debug!(target: "backend/notification", "calling Webhook API {:?} succeeded", notification.kind);
         })
         .inspect_err(|err| {
-            error!(target: "notification", "calling Webhook API failed {err}");
+            error!(target: "backend/notification", "calling Webhook API failed {err}");
         });
 
     Ok(())
