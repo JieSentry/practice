@@ -8,7 +8,7 @@ use std::{
 use anyhow::Result;
 use log::debug;
 use opencv::core::{Point, Rect};
-use tokio::sync::mpsc::{self, error::TryRecvError};
+use tokio::sync::mpsc;
 
 #[cfg(debug_assertions)]
 use crate::ecs::RecordingHandle;
@@ -198,12 +198,9 @@ fn start_solving_task(
         let mut solver = TransparentShapeSolver::default();
 
         loop {
-            let detector = match detector_rx.try_recv() {
-                Ok(detector) => detector,
-                Err(err) => match err {
-                    TryRecvError::Empty => continue,
-                    TryRecvError::Disconnected => break,
-                },
+            let detector = match detector_rx.blocking_recv() {  
+                Some(detector) => detector,  
+                None => break,  
             };
 
             if let Some(cursor) = solver.solve(&*detector, region) {
@@ -223,12 +220,9 @@ fn start_solving_task(
             let mut handle = handle.unwrap();
 
             loop {
-                let detector = match record_rx.try_recv() {
-                    Ok(detector) => detector,
-                    Err(err) => match err {
-                        TryRecvError::Empty => continue,
-                        TryRecvError::Disconnected => break,
-                    },
+                let detector = match record_rx.blocking_recv() {  
+                    Some(detector) => detector,  
+                    None => break,  
                 };
 
                 handle.write(detector.as_ref())
