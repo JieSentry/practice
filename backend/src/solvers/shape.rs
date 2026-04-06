@@ -17,9 +17,9 @@ pub struct TransparentShapeSolver {
     candidate_track_count: u32,
     last_cursor: Option<Point>,
     last_velocity: Option<Point2d>,
-    bg_direction: Point2d,
-    // 【新增】记录当前目标连续低角度的帧数
-    current_low_angle_frames: u32, 
+    // 【移除】bg_direction 不再需要，因为不知道目标运动方向
+    // 【新增】记录当前目标被连续检测到的帧数，越长越可信
+    current_track_streak: u32,
     #[cfg(debug_assertions)]
     is_debugging: bool,
 }
@@ -27,14 +27,15 @@ pub struct TransparentShapeSolver {
 impl Default for TransparentShapeSolver {
     fn default() -> Self {
         Self {
-            tracker: ByteTracker::new(FPS as u64, 0.25, 0.1, 0.25, IouGating::None),
+            // 【修改1】ByteTracker参数：专门针对多假阳性场景优化
+            // 提高 track_thresh 过滤低质量检测；开启 IoU 防止 ID 跳变
+            tracker: ByteTracker::new(FPS as u64, 0.35, 0.5, 0.5, IouGating::IoU),
             current_track_id: None,
             candidate_track_id: None,
             candidate_track_count: 0,
             last_cursor: None,
             last_velocity: None,
-            bg_direction: Point2d::default(),
-            current_low_angle_frames: 0, // 【新增】初始化为0
+            current_track_streak: 0,
             #[cfg(debug_assertions)]
             is_debugging: false,
         }
@@ -59,26 +60,30 @@ impl TransparentShapeSolver {
         );
 
         self.update_initial_track_if_needed(region, &tracks);
-        self.update_background_direction(&tracks);
 
         match self.update_and_find_best_track(&tracks, region) {
             Some(track) => {
                 let next_cursor = predicted_center(track);
                 if self.current_track_id != Some(track.track_id()) {
                     debug!(target: "backend/player", "shape id switches from {:?} to {}", self.current_track_id, track.track_id());
+                    self.current_track_streak = 0; // 切换目标时重置计数
+                } else {
+                    self.current_track_streak += 1; // 没切换就增加计数
                 }
+                
                 self.current_track_id = Some(track.track_id());
                 self.last_cursor = Some(next_cursor);
                 self.last_velocity = Some(track.kalman_velocity());
 
                 #[cfg(debug_assertions)]
                 if self.is_debugging {
+                    // 注意：debug函数如果需要bg_direction可以传默认值，这里不再维护
                     debug_transparent_shapes(
                         detector,
                         &tracks,
                         region,
                         next_cursor,
-                        self.bg_direction,
+                        Point2d::default(),
                     );
                 }
 
@@ -86,7 +91,7 @@ impl TransparentShapeSolver {
             }
             None => {
                 let last_cursor = self.last_cursor?;
-                let last_velocity = self.last_velocity.expect("set if last_cursor set") * 1.5;
+                let last_velocity = self.last_velocity.expect("set if last_cursor set") * 0.8;
                 let next_cursor = last_cursor
                     + Point::new(
                         last_velocity.x.round() as i32,
@@ -98,6 +103,7 @@ impl TransparentShapeSolver {
                 }
 
                 self.last_cursor = Some(next_cursor);
+                self.current_track_streak = 0; // 丢失目标时重置计数
 
                 #[cfg(debug_assertions)]
                 if self.is_debugging {
@@ -106,7 +112,7 @@ impl TransparentShapeSolver {
                         &tracks,
                         region,
                         next_cursor,
-                        self.bg_direction,
+                        Point2d::default(),
                     );
                 }
 
@@ -115,73 +121,67 @@ impl TransparentShapeSolver {
         }
     }
 
+    // 【修改2】初始目标选择：只看检测分和轨迹长度，不看角度
     fn update_initial_track_if_needed(&mut self, region: Rect, tracks: &[STrack]) {
         if self.current_track_id.is_none() {
-            let region_mid = mid_point(Rect::new(0, 0, region.width, region.height));
-            if let Some(track) = find_track_closest_to(region_mid, tracks) {
+            let best_track = tracks
+                .iter()
+                .filter(|t| t.tracklet_len() >= 1)
+                .max_by(|a, b| {
+                    // 优先比检测分，检测分一样比轨迹长度
+                    a.score().partial_cmp(&b.score()).unwrap()
+                        .then_with(|| a.tracklet_len().cmp(&b.tracklet_len()))
+                });
+
+            if let Some(track) = best_track {
                 self.current_track_id = Some(track.track_id());
                 self.last_cursor = Some(mid_point(track.rect()));
                 self.last_velocity = Some(track.kalman_velocity());
+                self.current_track_streak = 1;
             }
         }
     }
 
-    fn update_background_direction(&mut self, tracks: &[STrack]) {
-        if let Some(direction) = estimate_background_direction(self.last_cursor, tracks)
-            .and_then(|direction| unit(self.bg_direction * 0.5 + direction * 0.5))
-        {
-            self.bg_direction = direction;
-        }
-    }
+    // 【核心修改3】彻底重写：锁死当前目标，除非它消失
+    fn update_and_find_best_track<'a>(
+        &mut self,
+        tracks: &'a [STrack],
+        region: Rect,
+    ) -> Option<&'a STrack> {
+        let current_track_id = self.current_track_id?;
+        let last_cursor = self.last_cursor?;
 
-    fn update_and_find_best_track<'a>(  
-        &mut self,  
-        tracks: &'a [STrack],  
-        region: Rect,  
-    ) -> Option<&'a STrack> {  
-        let current_track_id = self.current_track_id?;  
-        let last_cursor = self.last_cursor?;  
-        let bg_direction = self.bg_direction;  
-  
-        // 1. 先更新当前目标的连续低角度计数
-        self.update_low_angle_count(tracks, bg_direction);
+        // 1. 先找当前正在跟踪的目标还在不在
+        let current_track = tracks.iter().find(|t| t.track_id() == current_track_id);
 
-        // 2. 计算所有候选分数
-        let scored_tracks: Vec<_> = tracks  
-            .iter()  
-            .filter(|track| {  
-                track.track_id() == current_track_id || track.tracklet_len() >= 1  
-            })  
-            .filter_map(|track| {  
-                let is_current = track.track_id() == current_track_id;  
-                let score = track_background_score(
-                    track, 
-                    last_cursor, 
-                    bg_direction, 
-                    region, 
-                    is_current,
-                    self.current_low_angle_frames // 传入计数
-                )?;  
-                Some((track, score, is_current))  
-            })  
-            .collect();  
-  
-        // 3. 找出最高分
-        let best_track_info = scored_tracks.iter().max_by(|(_, a, _), (_, b, _)| a.partial_cmp(b).unwrap());
-        let (best_track, best_score, is_best_current) = match best_track_info {
-            Some(info) => info,
-            None => return tracks.iter().find(|t| t.track_id() == current_track_id),
-        };
-
-        // 4. 快速切换逻辑
-        if *is_best_current {
-            // 还是当前目标，重置候选
+        // 【核心逻辑】如果当前目标还在，直接返回它！不跟任何其他候选比分数！
+        // 只要它还能被检测到，就绝不换目标
+        if let Some(track) = current_track {
             self.candidate_track_id = None;
             self.candidate_track_count = 0;
-            return Some(best_track);
+            return Some(track);
         }
 
-        // 处理候选
+        // 2. 如果当前目标真的消失了，才开始选新目标
+        debug!(target: "backend/player", "Current track lost, finding new candidate...");
+
+        let scored_tracks: Vec<_> = tracks
+            .iter()
+            .filter(|track| track.tracklet_len() >= 1)
+            .filter_map(|track| {
+                let score = track_stability_score(track, last_cursor, region);
+                Some((track, score))
+            })
+            .collect();
+
+        let best_track_info = scored_tracks.iter().max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap());
+        
+        let (best_track, best_score) = match best_track_info {
+            Some(info) => info,
+            None => return None,
+        };
+
+        // 处理新候选的确认逻辑
         let is_same_candidate = self.candidate_track_id == Some(best_track.track_id());
         if is_same_candidate {
             self.candidate_track_count += 1;
@@ -190,46 +190,14 @@ impl TransparentShapeSolver {
             self.candidate_track_count = 1;
         }
 
-        // 获取当前目标的分数
-        let current_score = scored_tracks.iter()
-            .find(|(_, _, is_cur)| *is_cur)
-            .map(|(_, s, _)| s)
-            .unwrap_or(&0.0);
-
-        // 【核心】快速切换条件：
-        // 1. 候选分数比当前高 0.15 以上，且连续 2 帧 -> 切换
-        // 2. 候选分数比当前高 0.3 以上 -> 直接切换（无需等待）
-        // 3. 当前目标连续低角度超过 2 帧，且有候选 -> 直接切换
-        let should_switch = (best_score - current_score > 0.15 && self.candidate_track_count >= 2)
-            || (best_score - current_score > 0.3)
-            || (self.current_low_angle_frames >= 2 && self.candidate_track_count >= 1);
-
-        if should_switch {
-            debug!(target: "backend/player", "Fast switch from {:?} to {}", self.current_track_id, best_track.track_id());
-            self.current_track_id = Some(best_track.track_id());
-            self.current_low_angle_frames = 0; // 重置计数
-            self.candidate_track_id = None;
-            self.candidate_track_count = 0;
+        // 新候选必须连续2帧都是最高分，才确认切换
+        if self.candidate_track_count >= 2 && best_score > 0.3 {
+            debug!(target: "backend/player", "Locked onto new track ID: {}", best_track.track_id());
             return Some(best_track);
         }
 
-        // 默认返回当前目标
-        tracks.iter().find(|t| t.track_id() == current_track_id)
+        None
     }
-
-    // 【新增】辅助函数：更新连续低角度计数
-    fn update_low_angle_count(&mut self, tracks: &[STrack], bg_direction: Point2d) {
-        if let Some(current_id) = self.current_track_id
-            && let Some(current_track) = tracks.iter().find(|t| t.track_id() == current_id)
-            && let Some(angle) = track_background_degree(current_track, bg_direction)
-        {
-                    if angle < 30.0 {
-                        self.current_low_angle_frames += 1;
-                    } else {
-                        self.current_low_angle_frames = 0;
-                    }
-                }
-            }
 }
 
 impl Drop for TransparentShapeSolver {
@@ -249,7 +217,7 @@ fn debug_transparent_shapes(
     tracks: &[STrack],
     region: Rect,
     last_cursor: Point,
-    bg_direction: Point2d,
+    _bg_direction: Point2d, // 占位，保持函数签名兼容
 ) {
     use opencv::core::MatTraitConst;
 
@@ -259,7 +227,7 @@ fn debug_transparent_shapes(
         &detector.mat().roi(region).unwrap(),
         tracks.to_vec(),
         last_cursor,
-        bg_direction,
+        Point2d::default(),
     );
 }
 
@@ -287,109 +255,30 @@ fn predicted_center(track: &STrack) -> Point {
     )
 }
 
-fn track_background_score(  
-    track: &STrack,  
-    last_cursor: Point,  
-    bg_direction: Point2d,  
-    region: Rect,  
-    is_current_track: bool,  
-    // 【新增参数】需要在结构体中维护这个字段，记录当前目标连续低角度的帧数
-    current_low_angle_frames: u32, 
-) -> Option<f64> {  
-    let angle = track_background_degree(track, bg_direction)?;  
-  
-    // 1. 动态角度阈值：当前目标如果连续低角度，直接用严格阈值
-    let min_angle = if is_current_track {
-        if current_low_angle_frames >= 2 {
-            // 如果已经连续2帧角度小，不再宽容，直接用45度
-            45.0
-        } else {
-            // 只给1帧的缓冲期
-            25.0 
-        }
-    } else {
-        45.0
-    };
-    
-    if angle <= min_angle {  
-        return None;  
-    }  
-  
-    // 2. 角度分：保持原有逻辑
-    let angle_score = angle / 180.0;  
-  
-    // 3. 距离分：保持原有逻辑
-    let cursor_dir = mid_point(track.rect()) - last_cursor;  
-    let dist_squared = (cursor_dir.x.pow(2) + cursor_dir.y.pow(2)) as f64;  
-    let sigma = 0.3 * diag(region);  
-    let proximity_score = (-dist_squared / (2.0 * sigma.powi(2))).exp();  
-  
-    // 4. 综合评分：角度权重提高到0.6，更看重方向差异
-    let mut score = angle_score * 0.6 + proximity_score * 0.4;  
-  
-    // 修复：合并嵌套if，解决编译报错
-    if is_current_track && current_low_angle_frames < 1 {
-        score += 0.1; 
-    }
-  
-    // 6. 提高低分过滤阈值，筛选更严格
-    if score <= 0.2 {  
-        return None;  
-    }  
-  
-    Some(score)  
+// 【新增】纯稳定性评分函数，不涉及任何角度/背景逻辑
+fn track_stability_score(
+    track: &STrack,
+    last_cursor: Point,
+    region: Rect,
+) -> f64 {
+    // 1. 检测置信度分：越高越好
+    let det_score = track.score();
+
+    // 2. 轨迹长度分：活得越久越可信
+    let len_score = (track.tracklet_len() as f64).min(20.0) / 20.0;
+
+    // 3. 距离分：离上一帧光标越近越可能是目标
+    let cursor_dir = mid_point(track.rect()) - last_cursor;
+    let dist_squared = (cursor_dir.x.pow(2) + cursor_dir.y.pow(2)) as f64;
+    let sigma = 0.3 * diag(region);
+    let proximity_score = (-dist_squared / (2.0 * sigma.powi(2))).exp();
+
+    // 综合加权
+    det_score * 0.4 + len_score * 0.35 + proximity_score * 0.25
 }
 
-fn track_background_degree(track: &STrack, bg_direction: Point2d) -> Option<f64> {
-    let dir = unit(track.kalman_velocity())?;
-    let dot = dir.dot(bg_direction);
-    let det = dir.cross(bg_direction);
-    Some(det.atan2(dot).to_degrees().abs())
-}
-
-fn estimate_background_direction(last_cursor: Option<Point>, tracks: &[STrack]) -> Option<Point2d> {
-    let mut last_rect_contains_cursor = None;
-    let filtered = tracks
-        .iter()
-        .filter(|track| {
-            if track.tracklet_len() < 5 {
-                return false;
-            }
-
-            if last_rect_contains_cursor.is_some_and(|rect: Rect| (rect & track.rect()).area() > 0)
-            {
-                return false;
-            }
-
-            let Some(last_cursor) = last_cursor else {
-                return true;
-            };
-
-            let rect = track.rect();
-            if rect.contains(last_cursor) {
-                if last_rect_contains_cursor.is_none() {
-                    last_rect_contains_cursor = Some(rect);
-                }
-
-                return false;
-            }
-
-            let norm = (mid_point(track.rect()) - last_cursor).norm();
-            norm >= diag(track.rect())
-        })
-        .map(STrack::kalman_velocity)
-        .collect::<Vec<Point2d>>();
-    if filtered.len() < 3 {
-        return None;
-    }
-
-    let velocity_sum = filtered
-        .into_iter()
-        .fold(Point2d::default(), |acc, v| acc + v);
-    let velocity_unit = unit(velocity_sum)?;
-
-    Some(velocity_unit)
-}
+// 【移除】所有和背景方向、角度相关的辅助函数
+// 保留 diag 和 unit 供其他地方调用
 
 fn diag(rect: Rect) -> f64 {
     ((rect.width.pow(2) + rect.height.pow(2)) as f64).sqrt()
