@@ -82,6 +82,11 @@ macro_rules! convert_key {
                     $from::Ctrl => $to::Ctrl,
                     $from::Alt => $to::Alt,
                     $from::Backspace => $to::Backspace,
+                    $from::Minus => $to::Minus,  
+                    $from::Equal => $to::Equal,  
+                    $from::LeftBracket => $to::LeftBracket,  
+                    $from::RightBracket => $to::RightBracket,  
+                    $from::Backslash => $to::Backslash, 
                 }
             }
         }
@@ -226,6 +231,11 @@ pub enum KeyKind {
     Shift,
     Alt,
     Backspace,
+    Minus,  
+    Equal,  
+    LeftBracket,  
+    RightBracket,  
+    Backslash,  
 }
 
 convert_key!(KeyBinding, KeyKind);
