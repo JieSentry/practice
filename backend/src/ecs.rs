@@ -19,11 +19,13 @@ use crate::{debug::save_rune_for_training, run::FPS, solvers::SolvedArrow, utils
 
 #[derive(Debug)]
 #[cfg(debug_assertions)]
+#[allow(dead_code)]
 pub struct RecordingHandle {
     writer: VideoWriter,
 }
 
 #[cfg(debug_assertions)]
+#[allow(dead_code)]
 impl RecordingHandle {
     pub fn write(&mut self, detector: &dyn Detector) {
         self.writer.write(&detector.mat()).unwrap()
@@ -41,6 +43,7 @@ pub struct Debug {
 
 #[cfg(debug_assertions)]
 impl Debug {
+    #[allow(dead_code)]
     pub fn new_recording(&self, frame_size: Size) -> RecordingHandle {
         use rand::distr::SampleString;
         use rand_distr::Alphanumeric;
