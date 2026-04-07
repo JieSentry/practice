@@ -10,7 +10,6 @@ use opencv::core::{Point, Rect};
   
 use crate::{  
     bridge::MouseKind,  
-    detect::Detector,  
     ecs::Resources,  
     player::{  
         Player, PlayerAction, PlayerEntity, next_action,  
