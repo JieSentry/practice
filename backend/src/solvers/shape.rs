@@ -63,6 +63,24 @@ impl TransparentShapeSolver {
         match self.update_and_find_best_track(&tracks, region) {  
             Some(track) => {  
                 let next_cursor = predicted_center(track);  
+                  if let Some(last_v) = self.last_velocity {  
+        let current_v = track.kalman_velocity();  
+        let dot = last_v.dot(current_v);  
+        // dot < 0 意味着夹角 > 90°，速度方向几乎反转  
+        if last_v.norm() > 1e-3 && current_v.norm() > 1e-3 && dot < 0.0 {  
+            // 速度突变，疑似 ID swap，走惯性预测  
+            let last_cursor = self.last_cursor?;  
+            let inertial_v = last_v * 1.5;  
+            let inertial_cursor = last_cursor  
+                + Point::new(inertial_v.x.round() as i32, inertial_v.y.round() as i32);  
+            let absolute = region.tl() + inertial_cursor;  
+            if region.contains(absolute) {  
+                self.last_cursor = Some(inertial_cursor);  
+                // 注意：不更新 last_velocity，保持旧速度  
+                return Some(absolute);  
+            }  
+        }  
+    }  
                 if self.current_track_id != Some(track.track_id()) {  
                     debug!(target: "backend/player", "shape id switches from {:?} to {}", self.current_track_id, track.track_id());  
                 }  
