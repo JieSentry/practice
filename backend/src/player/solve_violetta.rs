@@ -62,8 +62,11 @@ impl Display for SolvingVioletta {
 /// Note: This state does not use any [`Task`], so all detections are blocking. But this should be  
 /// acceptable for this state.  
 pub fn update_solving_violetta_state(resources: &mut Resources, player: &mut PlayerEntity) {  
-    let Player::SolvingVioletta(mut solving_violetta) = player.state.clone() else {  
-        panic!("state is not solving violetta");  
+    let Player::SolvingShape(mut solving_violetta) =  
+        std::mem::replace(&mut player.state, Player::Idle) 
+    else {
+        panic!("state is not solving violetta");
+    };  
     };  
   
     match solving_violetta.state {  
