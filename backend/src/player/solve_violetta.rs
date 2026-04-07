@@ -67,7 +67,6 @@ pub fn update_solving_violetta_state(resources: &mut Resources, player: &mut Pla
     else {
         panic!("state is not solving violetta");
     };  
-    };  
   
     match solving_violetta.state {  
         State::Waiting => update_waiting(resources, &mut solving_violetta),  
