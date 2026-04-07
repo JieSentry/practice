@@ -85,6 +85,11 @@ pub enum KeyBinding {
     Ctrl,
     Alt,
     Backspace,
+    Minus,  
+    Equal,  
+    LeftBracket,  
+    RightBracket,  
+    Backslash,  
 }
 
 #[derive(
