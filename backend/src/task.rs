@@ -21,6 +21,7 @@ use crate::{detect::Detector, ecs::Resources};
 #[derive(Debug)]
 pub struct Task<T> {
     rx: Receiver<T>,
+    #[allow(dead_code)]
     handle: JoinHandle<()>,
 }
 
@@ -37,6 +38,7 @@ impl<T: Debug> Task<T> {
         Task { rx, handle }
     }
 
+    #[allow(dead_code)]
     pub fn spawn_blocking<F>(f: F) -> Task<T>
     where
         F: FnOnce() -> T + Send + 'static,
@@ -55,6 +57,7 @@ impl<T> Task<T> {
         self.rx.is_terminated()
     }
 
+    #[allow(dead_code)]
     pub fn abort(&mut self) {
         self.rx.close();
         self.handle.abort();
