@@ -18,7 +18,7 @@ pub struct TransparentShapeSolver {
     last_cursor: Option<Point>,  
     last_velocity: Option<Point2d>,  
     bg_direction: Point2d,  
-    // ← 移除了 current_low_angle_frames 字段  
+    current_low_angle_frames: u32,  
     #[cfg(debug_assertions)]  
     is_debugging: bool,  
 }  
@@ -26,14 +26,14 @@ pub struct TransparentShapeSolver {
 impl Default for TransparentShapeSolver {  
     fn default() -> Self {  
         Self {  
-            tracker: ByteTracker::new(FPS as u64, 0.25, 0.1, 0.25, IouGating::Position),
+            tracker: ByteTracker::new(FPS as u64, 0.25, 0.1, 0.25, IouGating::Position),  
             current_track_id: None,  
             candidate_track_id: None,  
             candidate_track_count: 0,  
             last_cursor: None,  
             last_velocity: None,  
             bg_direction: Point2d::default(),  
-            // ← 移除了 current_low_angle_frames 初始化  
+            current_low_angle_frames: 0,  
             #[cfg(debug_assertions)]  
             is_debugging: false,  
         }  
@@ -63,21 +63,21 @@ impl TransparentShapeSolver {
         match self.update_and_find_best_track(&tracks, region) {  
             Some(track) => {  
                 let next_cursor = predicted_center(track);  
-if let Some(last_v) = self.last_velocity {  
-    let current_v = track.kalman_velocity();  
-    let dot = last_v.dot(current_v);  
-    if last_v.norm() > 1e-3 && current_v.norm() > 1e-3 && dot < 0.0 {  
-        let last_cursor = self.last_cursor?;  
-        let inertial_v = last_v * 1.5;  
-        let inertial_cursor = last_cursor  
-            + Point::new(inertial_v.x.round() as i32, inertial_v.y.round() as i32);  
-        let absolute = region.tl() + inertial_cursor;  
-        if region.contains(absolute) {  
-            self.last_cursor = Some(inertial_cursor);  
-            return Some(absolute);  
-        }  
-    }  
-}
+                if let Some(last_v) = self.last_velocity {  
+                    let current_v = track.kalman_velocity();  
+                    let dot = last_v.dot(current_v);  
+                    if last_v.norm() > 1e-3 && current_v.norm() > 1e-3 && dot < 0.0 {  
+                        let last_cursor = self.last_cursor?;  
+                        let inertial_v = last_v * 1.5;  
+                        let inertial_cursor = last_cursor  
+                            + Point::new(inertial_v.x.round() as i32, inertial_v.y.round() as i32);  
+                        let absolute = region.tl() + inertial_cursor;  
+                        if region.contains(absolute) {  
+                            self.last_cursor = Some(inertial_cursor);  
+                            return Some(absolute);  
+                        }  
+                    }  
+                }  
                 if self.current_track_id != Some(track.track_id()) {  
                     debug!(target: "backend/player", "shape id switches from {:?} to {}", self.current_track_id, track.track_id());  
                 }  
@@ -148,6 +148,28 @@ if let Some(last_v) = self.last_velocity {
         }  
     }  
   
+    fn update_low_angle_count(&mut self, tracks: &[STrack], bg_direction: Point2d) {  
+        let current_id = match self.current_track_id {  
+            Some(id) => id,  
+            None => {  
+                self.current_low_angle_frames = 0;  
+                return;  
+            }  
+        };  
+  
+        if let Some(track) = tracks.iter().find(|t| t.track_id() == current_id) {  
+            if let Some(angle) = track_background_degree(track, bg_direction) {  
+                if angle <= 45.0 {  
+                    self.current_low_angle_frames += 1;  
+                } else {  
+                    self.current_low_angle_frames = 0;  
+                }  
+            }  
+        } else {  
+            self.current_low_angle_frames = 0;  
+        }  
+    }  
+  
     fn update_and_find_best_track<'a>(  
         &mut self,  
         tracks: &'a [STrack],  
@@ -157,24 +179,8 @@ if let Some(last_v) = self.last_velocity {
         let last_cursor = self.last_cursor?;  
         let bg_direction = self.bg_direction;  
   
-    // ===== 新增：重叠检测 =====  
-    if let Some(current) = tracks.iter().find(|t| t.track_id() == current_track_id) {  
-        let cr = current.rect();  
-        if cr.area() > 0 {  
-            let has_overlap = tracks.iter().any(|t| {  
-                if t.track_id() == current_track_id {  
-                    return false;  
-                }  
-                let or = t.rect();  
-                let inter = cr & or;  
-                let min_area = cr.area().min(or.area());  
-                min_area > 0 && inter.area() as f64 / min_area as f64 > 0.5  
-            });  
-            if has_overlap {  
-                return None; // 走惯性预测  
-            }  
-        }  
-    }  
+        self.update_low_angle_count(tracks, bg_direction);  
+        let low_angle_frames = self.current_low_angle_frames;  
   
         // 计算所有候选分数  
         let scored_tracks: Vec<_> = tracks  
@@ -189,7 +195,8 @@ if let Some(last_v) = self.last_velocity {
                     last_cursor,  
                     bg_direction,  
                     region,  
-                    is_current, // ← 移除了 current_low_angle_frames 参数  
+                    is_current,  
+                    low_angle_frames,  
                 )?;  
                 Some((track, score, is_current))  
             })  
@@ -227,24 +234,25 @@ if let Some(last_v) = self.last_velocity {
             .map(|(_, s, _)| *s)  
             .unwrap_or(0.0);  
   
-        // ← 简化切换条件：候选连续3帧最佳 + 分差 > 0.1  
-        //   移除了 current_low_angle_frames >= 3 的分支  
-        let should_switch =  
-            self.candidate_track_count >= 3 && best_score - current_score > 0.1;  
+        // 切换条件：当前目标表现像背景时放宽，否则保守  
+        let should_switch = if low_angle_frames >= 3 {  
+            self.candidate_track_count >= 2 && *best_score > current_score  
+        } else {  
+            self.candidate_track_count >= 3 && best_score - current_score > 0.1  
+        };  
   
         if should_switch {  
             debug!(target: "backend/player", "Switch from {:?} to {}", self.current_track_id, best_track.track_id());  
             self.current_track_id = Some(best_track.track_id());  
             self.candidate_track_id = None;  
             self.candidate_track_count = 0;  
+            self.current_low_angle_frames = 0;  
             return Some(best_track);  
         }  
   
         // 默认返回当前目标  
         tracks.iter().find(|t| t.track_id() == current_track_id)  
     }  
-  
-    // ← 移除了整个 update_low_angle_count 方法  
 }  
   
 impl Drop for TransparentShapeSolver {  
@@ -308,12 +316,17 @@ fn track_background_score(
     bg_direction: Point2d,  
     region: Rect,  
     is_current_track: bool,  
-    // ← 移除了 current_low_angle_frames 参数  
+    current_low_angle_frames: u32,  
 ) -> Option<f64> {  
     let angle = track_background_degree(track, bg_direction)?;  
   
-    // ← 统一使用 45° 阈值，移除了动态阈值逻辑  
-    if angle <= 35.0 {  
+    // 当前目标连续多帧低角度时，用更严格的阈值过滤它  
+    let threshold = if is_current_track && current_low_angle_frames >= 3 {  
+        45.0  
+    } else {  
+        35.0  
+    };  
+    if angle <= threshold {  
         return None;  
     }  
   
@@ -335,8 +348,8 @@ fn track_background_score(
   
     let mut score = angle_score * distance_penalty;  
   
-    // ← 当前目标加分简化：只要是当前目标就加 0.15（不再依赖 low_angle_frames）  
-    if is_current_track {  
+    // 当前目标加分：只有在非低角度状态时才加分  
+    if is_current_track && current_low_angle_frames < 3 {  
         score += 0.15;  
     }  
   
