@@ -36,7 +36,6 @@ jobs:
       # TODO: https://github.com/DioxusLabs/dioxus/issues/3433
       # TODO: Need to add dx fmt
       - run: cargo fmt
-      - run: cargo fmt --check
       - run: cargo clippy -- -D warnings
       - run: cargo test -- --no-capture
 
