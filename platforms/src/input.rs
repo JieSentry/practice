@@ -94,6 +94,11 @@ pub enum KeyKind {
     Shift,
     Alt,
     Backspace,
+    Minus,  
+    Equal,  
+    LeftBracket,  
+    RightBracket,  
+    Backslash, 
 }
 
 /// Kind of input to send.
