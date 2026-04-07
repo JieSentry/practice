@@ -215,6 +215,11 @@ impl Key {
             Self::Shift => "Shift",
             Self::Alt => "Alt",
             Self::Backspace => "Backspace",
+            Self::Minus => "Minus",  
+            Self::Equal => "Equal",  
+            Self::LeftBracket => "LeftBracket",  
+            Self::RightBracket => "RightBracket",  
+            Self::Backslash => "Backslash", 
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -291,6 +296,11 @@ impl Key {
             "Shift" => Some(Self::Shift),
             "Alt" => Some(Self::Alt),
             "Backspace" => Some(Self::Backspace),
+            "Minus" => Some(Self::Minus),  
+            "Equal" => Some(Self::Equal),  
+            "LeftBracket" => Some(Self::LeftBracket),  
+            "RightBracket" => Some(Self::RightBracket),  
+            "Backslash" => Some(Self::Backslash), 
             _ => None,
         }
     }
