@@ -131,6 +131,11 @@ pub enum Key {
     Shift = 68,
     Alt = 69,
     Backspace = 70,
+    Minus = 71,  
+    Equal = 72,  
+    LeftBracket = 73,  
+    RightBracket = 74,  
+    Backslash = 75,  
 }
 impl Key {
     /// String value of the enum field names used in the ProtoBuf definition.
