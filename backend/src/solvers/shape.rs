@@ -63,7 +63,6 @@ impl TransparentShapeSolver {
         match self.update_and_find_best_track(&tracks, region) {  
             Some(track) => {  
                 let next_cursor = predicted_center(track);  
-                  if let Some(last_v) = self.last_velocity {  
 if let Some(last_v) = self.last_velocity {  
     let current_v = track.kalman_velocity();  
     let dot = last_v.dot(current_v);  
