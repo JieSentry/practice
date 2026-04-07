@@ -31,7 +31,7 @@ use windows::{
                 VK_K, VK_L, VK_LEFT, VK_M, VK_MENU, VK_N, VK_NEXT, VK_O, VK_OEM_1, VK_OEM_2,
                 VK_OEM_3, VK_OEM_7, VK_OEM_COMMA, VK_OEM_PERIOD, VK_P, VK_PRIOR, VK_Q, VK_R,
                 VK_RETURN, VK_RIGHT, VK_S, VK_SHIFT, VK_SPACE, VK_T, VK_U, VK_UP, VK_V, VK_W, VK_X,
-                VK_Y, VK_Z,
+                VK_Y, VK_Z,VK_OEM_MINUS, VK_OEM_PLUS, VK_OEM_4, VK_OEM_5, VK_OEM_6,
             },
             WindowsAndMessaging::{
                 CallNextHookEx, GetForegroundWindow, GetSystemMetrics, GetWindowRect,
@@ -370,6 +370,11 @@ impl TryFrom<VIRTUAL_KEY> for KeyKind {
             VK_OEM_2 => KeyKind::Slash,
             VK_ESCAPE => KeyKind::Esc,
             VK_SHIFT => KeyKind::Shift,
+            VK_OEM_MINUS => KeyKind::Minus,  
+            VK_OEM_PLUS => KeyKind::Equal,  
+            VK_OEM_4 => KeyKind::LeftBracket,  
+            VK_OEM_6 => KeyKind::RightBracket,  
+            VK_OEM_5 => KeyKind::Backslash, 
             VK_MENU => KeyKind::Alt,
             _ => return Err(Error::KeyNotFound),
         })
@@ -450,6 +455,11 @@ impl From<KeyKind> for VIRTUAL_KEY {
             KeyKind::Shift => VK_SHIFT,
             KeyKind::Alt => VK_MENU,
             KeyKind::Backspace => VK_BACK,
+            KeyKind::Minus => VK_OEM_MINUS,  
+            KeyKind::Equal => VK_OEM_PLUS,  
+            KeyKind::LeftBracket => VK_OEM_4,  
+            KeyKind::RightBracket => VK_OEM_6,  
+            KeyKind::Backslash => VK_OEM_5,
         }
     }
 }
