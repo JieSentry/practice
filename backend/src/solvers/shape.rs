@@ -157,7 +157,24 @@ if let Some(last_v) = self.last_velocity {
         let last_cursor = self.last_cursor?;  
         let bg_direction = self.bg_direction;  
   
-        // ← 移除了 self.update_low_angle_count(tracks, bg_direction) 调用  
+    // ===== 新增：重叠检测 =====  
+    if let Some(current) = tracks.iter().find(|t| t.track_id() == current_track_id) {  
+        let cr = current.rect();  
+        if cr.area() > 0 {  
+            let has_overlap = tracks.iter().any(|t| {  
+                if t.track_id() == current_track_id {  
+                    return false;  
+                }  
+                let or = t.rect();  
+                let inter = cr & or;  
+                let min_area = cr.area().min(or.area());  
+                min_area > 0 && inter.area() as f64 / min_area as f64 > 0.5  
+            });  
+            if has_overlap {  
+                return None; // 走惯性预测  
+            }  
+        }  
+    }  
   
         // 计算所有候选分数  
         let scored_tracks: Vec<_> = tracks  
