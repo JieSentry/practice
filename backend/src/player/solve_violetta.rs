@@ -8,7 +8,6 @@ use std::{
 use anyhow::Result;
 use log::debug;
 use opencv::core::{Point, Rect};
-use tokio::sync::mpsc;
 
 #[cfg(debug_assertions)]
 use crate::ecs::RecordingHandle;
@@ -24,13 +23,6 @@ use crate::{
     task::{Task, Update, update_detection_task},
 };
 
-#[derive(Debug)]
-struct Solving {
-    task: Task<()>,
-    cursor_rx: mpsc::Receiver<Point>,
-    detector_tx: mpsc::Sender<Arc<dyn Detector>>,
-}
-
 /// Representing the current state of Violetta (e.g. lie detector) solving.
 #[derive(Debug, Clone, Copy, Default)]
 pub enum State {
@@ -40,11 +32,12 @@ pub enum State {
     Completed,
 }
 
-#[derive(Clone, Debug, Default)]
-pub struct SolvingVioletta {
-    state: State,
-    solving: Option<Rc<RefCell<Solving>>>,
-    lie_detector_task: Rc<RefCell<Option<Task<Result<bool>>>>>,
+#[derive(Debug, Default)]  
+pub struct SolvingVioletta {  
+    state: State,  
+    region: Rect,  
+    solver: ViolettaSolver,  
+    lie_detector_task: Rc<RefCell<Option<Task<Result<bool>>>>>,  
 }
 
 impl Display for SolvingVioletta {
@@ -57,46 +50,39 @@ impl Display for SolvingVioletta {
     }
 }
 
-impl Drop for SolvingVioletta {
-    fn drop(&mut self) {
-        if let Some(solving) = self.solving.as_mut() {
-            solving.borrow_mut().task.abort();
-        }
-    }
-}
-
 /// Updates the [`Player::SolvingVioletta`] contextual state.
 ///
 /// Note: This state does not use any [`Task`], so all detections are blocking. But this should be
 /// acceptable for this state.
-pub fn update_solving_violetta_state(resources: &mut Resources, player: &mut PlayerEntity) {
-    let Player::SolvingVioletta(mut solving_violetta) = player.state.clone() else {
-        panic!("state is not solving violetta");
-    };
-
-    match solving_violetta.state {
-        State::Waiting => update_waiting(resources, &mut solving_violetta),
-        State::Solving(_) => update_solving(resources, &mut solving_violetta),
-        State::Completed => unreachable!(),
-    }
-
-    let player_next_state = if matches!(solving_violetta.state, State::Completed) {
-        Player::Idle
-    } else {
-        Player::SolvingVioletta(solving_violetta)
-    };
-
-    match next_action(&player.context) {
-        Some(PlayerAction::SolveVioletta) => {
-            if matches!(player_next_state, Player::Idle) {
-                player.context.clear_action_completed();
-            }
-
-            player.state = player_next_state;
-        }
-        Some(_) => unreachable!(),
-        None => player.state = Player::Idle, // Force cancel if not from action
-    }
+pub fn update_solving_violetta_state(resources: &mut Resources, player: &mut PlayerEntity) {  
+    // 用 take() 获取所有权，而不是 clone()  
+    let mut solving_violetta = match std::mem::take(&mut player.state) {  
+        Player::SolvingVioletta(state) => state,  
+        _ => panic!("state is not solving violetta"),  
+    };  
+  
+    match solving_violetta.state {  
+        State::Waiting => update_waiting(resources, &mut solving_violetta),  
+        State::Solving(_) => update_solving(resources, &mut solving_violetta),  
+        State::Completed => unreachable!(),  
+    }  
+  
+    let player_next_state = if matches!(solving_violetta.state, State::Completed) {  
+        Player::Idle  
+    } else {  
+        Player::SolvingVioletta(solving_violetta)  
+    };  
+  
+    match next_action(&player.context) {  
+        Some(PlayerAction::SolveVioletta) => {  
+            if matches!(player_next_state, Player::Idle) {  
+                player.context.clear_action_completed();  
+            }  
+            player.state = player_next_state;  
+        }  
+        Some(_) => unreachable!(),  
+        None => player.state = Player::Idle,  
+    }  
 }
 
 fn update_waiting(resources: &mut Resources, solving_violetta: &mut SolvingVioletta) {
@@ -136,17 +122,12 @@ fn update_waiting(resources: &mut Resources, solving_violetta: &mut SolvingViole
         None
     };
 
-    let tl = title.tl() + Point::new(-180, 55);
-    let br = tl + Point::new(430, 250);
-    let region = Rect::from_points(tl, br);
-    let solving = start_solving_task(
-        region,
-        #[cfg(debug_assertions)]
-        handle,
-    );
-    debug!(target: "backend/player","lie detector violetta region: {region:?}");
-    solving_violetta.solving = Some(Rc::new(RefCell::new(solving)));
-    solving_violetta.state = State::Solving(Timeout::default());
+    let tl = title.tl() + Point::new(-180, 55);  
+    let br = tl + Point::new(430, 250);  
+    let region = Rect::from_points(tl, br);  
+    solving_violetta.region = region;  
+    solving_violetta.solver = ViolettaSolver::default();  
+    solving_violetta.state = State::Solving(Timeout::default());  
 }
 
 fn update_solving(resources: &mut Resources, solving_violetta: &mut SolvingVioletta) {
@@ -168,73 +149,17 @@ fn update_solving(resources: &mut Resources, solving_violetta: &mut SolvingViole
         return;
     }
 
-    match next_timeout_lifecycle(timeout, 1320) {
-        Lifecycle::Ended => {
-            solving_violetta.state = State::Completed;
-        }
-        Lifecycle::Started(timeout) | Lifecycle::Updated(timeout) => {
-            let mut solving = solving_violetta.solving.as_mut().unwrap().borrow_mut();
-            let _ = solving.detector_tx.try_send(resources.detector_cloned());
-            if let Ok(cursor) = solving.cursor_rx.try_recv() {
-                resources
-                    .input
-                    .send_mouse(cursor.x, cursor.y, MouseKind::Click);
-            }
-            solving_violetta.state = State::Solving(timeout);
-        }
-    }
-}
-
-fn start_solving_task(
-    region: Rect,
-    #[cfg(debug_assertions)] handle: Option<RecordingHandle>,
-) -> Solving {
-    let (cursor_tx, cursor_rx) = mpsc::channel(1);
-    let (detector_tx, mut detector_rx) = mpsc::channel::<Arc<dyn Detector>>(3);
-
-    #[cfg(debug_assertions)]
-    let (record_tx, mut record_rx) = mpsc::unbounded_channel::<Arc<dyn Detector>>();
-    #[cfg(debug_assertions)]
-    let recording = handle.is_some();
-
-    let task = Task::spawn_blocking(move || {
-        let mut solver = ViolettaSolver::default();
-
-        loop {
-            let detector = match detector_rx.blocking_recv() {  
-                Some(detector) => detector,  
-                None => break,  
-            };
-            if let Some(cursor) = solver.solve(&*detector, region) {
-                let _ = cursor_tx.try_send(cursor);
-            }
-
-            #[cfg(debug_assertions)]
-            if recording {
-                let _ = record_tx.send(detector.clone());
-            }
-        }
-    });
-
-    #[cfg(debug_assertions)]
-    if recording {
-        Task::spawn_blocking(move || {
-            let mut handle = handle.unwrap();
-
-            loop {
-                let detector = match record_rx.blocking_recv() {  
-                    Some(detector) => detector,  
-                    None => break, 
-                };
-
-                handle.write(detector.as_ref())
-            }
-        });
-    }
-
-    Solving {
-        task,
-        cursor_rx,
-        detector_tx,
-    }
+    match next_timeout_lifecycle(timeout, 1320) {  
+        Lifecycle::Ended => {  
+            solving_violetta.state = State::Completed;  
+        }  
+        Lifecycle::Started(timeout) | Lifecycle::Updated(timeout) => {  
+            // 直接同步调用  
+            let detector = resources.detector();  
+            if let Some(cursor) = solving_violetta.solver.solve(detector, solving_violetta.region) {  
+                resources.input.send_mouse(cursor.x, cursor.y, MouseKind::Click);  
+            }  
+            solving_violetta.state = State::Solving(timeout);  
+        }  
+    }  
 }
