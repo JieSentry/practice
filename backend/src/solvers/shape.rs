@@ -70,21 +70,52 @@ Some(track) => {
 }
 None => {  
     let last_cursor = self.last_cursor?;  
-    let last_velocity = self.last_velocity.expect("set if last_cursor set") * 1.5;  
-    let next_cursor = last_cursor  
-        + Point::new(  
-            last_velocity.x.round() as i32,  
-            last_velocity.y.round() as i32,  
-        );  
+    let last_velocity = self.last_velocity.unwrap_or_default();  
   
-    // Clamp to region bounds instead of returning None  
-    let clamped_cursor = Point::new(  
+    // 计算预测位置  
+    let predicted_pos = last_cursor + Point::new(  
+        last_velocity.x.round() as i32,  
+        last_velocity.y.round() as i32,  
+    );  
+  
+    // 尝试找到距离预测位置最近的 track（融合场景：合并体仍然存在）  
+    if let Some(nearest) = find_track_closest_to(predicted_pos, &tracks) {  
+        let nearest_center = mid_point(nearest.rect());  
+        let dist = (nearest_center - predicted_pos).norm();  
+        // 如果最近 track 在合理范围内（1.5 倍对角线），跟随它  
+        // 这在融合时保持光标在融合区域附近  
+        if dist <= diag(nearest.rect()) * 1.5 {  
+            let next_cursor = nearest_center;  
+            // 关键：只更新 last_cursor，不更新 last_velocity  
+            // 保留融合前的速度，分离后用于正确的位置预测  
+            self.last_cursor = Some(next_cursor);  
+  
+            #[cfg(debug_assertions)]  
+            if self.is_debugging {  
+                debug_transparent_shapes(  
+                    detector,  
+                    &tracks,  
+                    region,  
+                    next_cursor,  
+                    self.bg_direction,  
+                );  
+            }  
+  
+            return Some(region.tl() + next_cursor);  
+        }  
+    }  
+  
+    // 没有近距离 track：温和外推 + clamp 到边界  
+    let next_cursor = last_cursor + Point::new(  
+        last_velocity.x.round() as i32,  
+        last_velocity.y.round() as i32,  
+    );  
+    // Clamp 到 region 边界，而非返回 None  
+    let clamped = Point::new(  
         next_cursor.x.clamp(0, region.width - 1),  
         next_cursor.y.clamp(0, region.height - 1),  
     );  
-    let absolute_next_cursor = region.tl() + clamped_cursor;  
-  
-    self.last_cursor = Some(clamped_cursor);  
+    self.last_cursor = Some(clamped);  
   
     #[cfg(debug_assertions)]  
     if self.is_debugging {  
@@ -92,12 +123,12 @@ None => {
             detector,  
             &tracks,  
             region,  
-            clamped_cursor,  
+            clamped,  
             self.bg_direction,  
         );  
     }  
   
-    Some(absolute_next_cursor)  
+    Some(region.tl() + clamped)  
 }
         }  
     }  
