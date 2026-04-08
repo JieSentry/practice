@@ -163,16 +163,14 @@ fn update_and_find_best_track<'a>(
   
     // 4. 轻量 hysteresis：如果当前 track 的分数 >= 最高分的 85%，保持当前 track  
     //    这防止帧间抖动，但不会像旧机制那样阻止纠正（旧机制需要连续 2 帧 + 分差 > 0.1）  
-    if let Some(current_id) = current_track_id {  
-        if let Some((current_track, current_score)) = scored_tracks  
-            .iter()  
-            .find(|(t, _)| t.track_id() == current_id)  
-        {  
-            if *current_score >= best_score * 0.85 {  
-                return Some(current_track);  
-            }  
-        }  
-    }  
+if let Some(current_id) = current_track_id  
+    && let Some((current_track, current_score)) = scored_tracks  
+        .iter()  
+        .find(|(t, _)| t.track_id() == current_id)  
+    && *current_score >= best_score * 0.85  
+{  
+    return Some(current_track);  
+} 
   
     // 5. 切换到最高分 track  
     if Some(best_track.track_id()) != current_track_id {  
