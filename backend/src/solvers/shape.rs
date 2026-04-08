@@ -13,15 +13,14 @@ use crate::{
 pub struct TransparentShapeSolver {  
     tracker: ByteTracker,  
     current_track_id: Option<u64>,  
-    candidate_track_id: Option<u64>,  
-    candidate_track_count: u32,  
+    // 移除 candidate_track_id  
+    // 移除 candidate_track_count  
     last_cursor: Option<Point>,  
     last_velocity: Option<Point2d>,  
     bg_direction: Point2d,  
-    // ← 移除了 current_low_angle_frames 字段  
     #[cfg(debug_assertions)]  
     is_debugging: bool,  
-}  
+}
   
 impl Default for TransparentShapeSolver {  
     fn default() -> Self {  
@@ -33,7 +32,6 @@ impl Default for TransparentShapeSolver {
             last_cursor: None,  
             last_velocity: None,  
             bg_direction: Point2d::default(),  
-            // ← 移除了 current_low_angle_frames 初始化  
             #[cfg(debug_assertions)]  
             is_debugging: false,  
         }  
@@ -61,56 +59,48 @@ impl TransparentShapeSolver {
         self.update_background_direction(&tracks);  
   
         match self.update_and_find_best_track(&tracks, region) {  
-            Some(track) => {  
-                let next_cursor = predicted_center(track);  
-                if self.current_track_id != Some(track.track_id()) {  
-                    debug!(target: "backend/player", "shape id switches from {:?} to {}", self.current_track_id, track.track_id());  
-                }  
-                self.current_track_id = Some(track.track_id());  
-                self.last_cursor = Some(next_cursor);  
-                self.last_velocity = Some(track.kalman_velocity());  
+Some(track) => {  
+    let next_cursor = predicted_center(track);  
+    if self.current_track_id != Some(track.track_id()) {  
+        debug!(target: "backend/player", "shape id switches from {:?} to {}", self.current_track_id, track.track_id());  
+    }  
+    self.current_track_id = Some(track.track_id());  
+    self.last_cursor = Some(next_cursor);  
+    self.last_velocity = Some(track.kalman_velocity());  
+    // ... debug code unchanged ...  
+    Some(region.tl() + next_cursor)  
+}
+None => {  
+    let last_cursor = self.last_cursor?;  
+    let last_velocity = self.last_velocity.expect("set if last_cursor set") * 1.5;  
+    let next_cursor = last_cursor  
+        + Point::new(  
+            last_velocity.x.round() as i32,  
+            last_velocity.y.round() as i32,  
+        );  
   
-                #[cfg(debug_assertions)]  
-                if self.is_debugging {  
-                    debug_transparent_shapes(  
-                        detector,  
-                        &tracks,  
-                        region,  
-                        next_cursor,  
-                        self.bg_direction,  
-                    );  
-                }  
+    // Clamp to region bounds instead of returning None  
+    let clamped_cursor = Point::new(  
+        next_cursor.x.clamp(0, region.width - 1),  
+        next_cursor.y.clamp(0, region.height - 1),  
+    );  
+    let absolute_next_cursor = region.tl() + clamped_cursor;  
   
-                Some(region.tl() + next_cursor)  
-            }  
-            None => {  
-                let last_cursor = self.last_cursor?;  
-                let last_velocity = self.last_velocity.expect("set if last_cursor set") * 1.5;  
-                let next_cursor = last_cursor  
-                    + Point::new(  
-                        last_velocity.x.round() as i32,  
-                        last_velocity.y.round() as i32,  
-                    );  
-                let absolute_next_cursor = region.tl() + next_cursor;  
-                if !region.contains(absolute_next_cursor) {  
-                    return None;  
-                }  
+    self.last_cursor = Some(clamped_cursor);  
   
-                self.last_cursor = Some(next_cursor);  
+    #[cfg(debug_assertions)]  
+    if self.is_debugging {  
+        debug_transparent_shapes(  
+            detector,  
+            &tracks,  
+            region,  
+            clamped_cursor,  
+            self.bg_direction,  
+        );  
+    }  
   
-                #[cfg(debug_assertions)]  
-                if self.is_debugging {  
-                    debug_transparent_shapes(  
-                        detector,  
-                        &tracks,  
-                        region,  
-                        next_cursor,  
-                        self.bg_direction,  
-                    );  
-                }  
-  
-                Some(absolute_next_cursor)  
-            }  
+    Some(absolute_next_cursor)  
+}
         }  
     }  
   
@@ -133,84 +123,66 @@ impl TransparentShapeSolver {
         }  
     }  
   
-    fn update_and_find_best_track<'a>(  
-        &mut self,  
-        tracks: &'a [STrack],  
-        region: Rect,  
-    ) -> Option<&'a STrack> {  
-        let current_track_id = self.current_track_id?;  
-        let last_cursor = self.last_cursor?;  
-        let bg_direction = self.bg_direction;  
+fn update_and_find_best_track<'a>(  
+    &mut self,  
+    tracks: &'a [STrack],  
+    region: Rect,  
+) -> Option<&'a STrack> {  
+    let last_cursor = self.last_cursor?;  
+    let last_velocity = self.last_velocity.unwrap_or_default();  
+    let bg_direction = self.bg_direction;  
   
-        // ← 移除了 self.update_low_angle_count(tracks, bg_direction) 调用  
+    // 1. Solver 自己的位置预测（独立于 ByteTracker track ID）  
+    let predicted_pos = last_cursor + Point::new(  
+        last_velocity.x.round() as i32,  
+        last_velocity.y.round() as i32,  
+    );  
   
-        // 计算所有候选分数  
-        let scored_tracks: Vec<_> = tracks  
+    // 2. 对所有 track 计算组合评分  
+    let current_track_id = self.current_track_id;  
+    let scored_tracks: Vec<_> = tracks  
+        .iter()  
+        .filter(|track| {  
+            // 当前 track 或已跟踪 >= 2 帧的 track 都参与评分  
+            Some(track.track_id()) == current_track_id || track.tracklet_len() >= 2  
+        })  
+        .filter_map(|track| {  
+            let score = combined_score(  
+                track,  
+                predicted_pos,  
+                bg_direction,  
+                region,  
+            )?;  
+            Some((track, score))  
+        })  
+        .collect();  
+  
+    // 3. 找最高分 track  
+    let (best_track, best_score) = scored_tracks  
+        .iter()  
+        .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())  
+        .map(|(t, s)| (*t, *s))?;  
+  
+    // 4. 轻量 hysteresis：如果当前 track 的分数 >= 最高分的 85%，保持当前 track  
+    //    这防止帧间抖动，但不会像旧机制那样阻止纠正（旧机制需要连续 2 帧 + 分差 > 0.1）  
+    if let Some(current_id) = current_track_id {  
+        if let Some((current_track, current_score)) = scored_tracks  
             .iter()  
-            .filter(|track| {  
-                track.track_id() == current_track_id || track.tracklet_len() >= 3  
-            })  
-            .filter_map(|track| {  
-                let is_current = track.track_id() == current_track_id;  
-                let score = track_background_score(  
-                    track,  
-                    last_cursor,  
-                    bg_direction,  
-                    region,  
-                    is_current, // ← 移除了 current_low_angle_frames 参数  
-                )?;  
-                Some((track, score, is_current))  
-            })  
-            .collect();  
-  
-        // 找出最高分  
-        let best_track_info = scored_tracks  
-            .iter()  
-            .max_by(|(_, a, _), (_, b, _)| a.partial_cmp(b).unwrap());  
-        let (best_track, best_score, is_best_current) = match best_track_info {  
-            Some(info) => info,  
-            None => return tracks.iter().find(|t| t.track_id() == current_track_id),  
-        };  
-  
-        // 如果最佳仍是当前目标，重置候选  
-        if *is_best_current {  
-            self.candidate_track_id = None;  
-            self.candidate_track_count = 0;  
-            return Some(best_track);  
+            .find(|(t, _)| t.track_id() == current_id)  
+        {  
+            if *current_score >= best_score * 0.85 {  
+                return Some(current_track);  
+            }  
         }  
-  
-        // 更新候选计数  
-        let is_same_candidate = self.candidate_track_id == Some(best_track.track_id());  
-        if is_same_candidate {  
-            self.candidate_track_count += 1;  
-        } else {  
-            self.candidate_track_id = Some(best_track.track_id());  
-            self.candidate_track_count = 0;  
-        }  
-  
-        // 获取当前目标的分数  
-        let current_score = scored_tracks  
-            .iter()  
-            .find(|(_, _, is_cur)| *is_cur)  
-            .map(|(_, s, _)| *s)  
-            .unwrap_or(0.0);  
-  
-        // ← 简化切换条件：候选连续3帧最佳 + 分差 > 0.1  
-        //   移除了 current_low_angle_frames >= 3 的分支  
-        let should_switch =  
-            self.candidate_track_count >= 2 && best_score - current_score > 0.1;  
-  
-        if should_switch {  
-            debug!(target: "backend/player", "Switch from {:?} to {}", self.current_track_id, best_track.track_id());  
-            self.current_track_id = Some(best_track.track_id());  
-            self.candidate_track_id = None;  
-            self.candidate_track_count = 0;  
-            return Some(best_track);  
-        }  
-  
-        // 默认返回当前目标  
-        tracks.iter().find(|t| t.track_id() == current_track_id)  
     }  
+  
+    // 5. 切换到最高分 track  
+    if Some(best_track.track_id()) != current_track_id {  
+        debug!(target: "backend/player", "shape re-identified: {:?} -> {} (score: {:.3})",  
+            current_track_id, best_track.track_id(), best_score);  
+    }  
+    Some(best_track)  
+} 
   
     // ← 移除了整个 update_low_angle_count 方法  
 }  
@@ -270,50 +242,36 @@ fn predicted_center(track: &STrack) -> Point {
     )  
 }  
   
-fn track_background_score(  
+fn combined_score(  
     track: &STrack,  
-    last_cursor: Point,  
+    predicted_pos: Point,  
     bg_direction: Point2d,  
     region: Rect,  
-    is_current_track: bool,  
-    // ← 移除了 current_low_angle_frames 参数  
 ) -> Option<f64> {  
+    // 角度评分（与背景方向的夹角）  
     let angle = track_background_degree(track, bg_direction)?;  
-  
-    // ← 统一使用 45° 阈值，移除了动态阈值逻辑  
     if angle <= 45.0 {  
-        return None;  
+        return None; // 与背景同向，排除  
     }  
-  
     let angle_score = angle / 180.0;  
   
-    // 乘法评分：距离惩罚  
-    let distance_penalty = if angle >= 60.0 {  
-        1.0  
-    } else {  
-        let cursor_dir = mid_point(track.rect()) - last_cursor;  
-        let dist_squared = (cursor_dir.x.pow(2) + cursor_dir.y.pow(2)) as f64;  
-        let sigma = 0.25 * diag(region);  
-        (-dist_squared / (2.0 * sigma.powi(2))).exp()  
-    };  
+    // 位置接近度评分（与 Solver 预测位置的距离）  
+    let track_center = mid_point(track.rect());  
+    let diff = track_center - predicted_pos;  
+    let dist_squared = (diff.x.pow(2) + diff.y.pow(2)) as f64;  
+    let sigma = 0.3 * diag(region);  
+    let proximity_score = (-dist_squared / (2.0 * sigma.powi(2))).exp();  
   
-    if distance_penalty <= 0.3 {  
-        return None;  
-    }  
+    // 组合评分：角度是主要信号，位置接近度作为调制  
+    // proximity 范围 [0, 1]，映射到 [0.3, 1.0]，确保高角度但远距离的 track 仍有机会  
+    let score = angle_score * (0.3 + 0.7 * proximity_score);  
   
-    let mut score = angle_score * distance_penalty;  
-  
-    // ← 当前目标加分简化：只要是当前目标就加 0.15（不再依赖 low_angle_frames）  
-    if is_current_track {  
-        score += 0.15;  
-    }  
-  
-    if score <= 0.2 {  
+    if score <= 0.15 {  
         return None;  
     }  
   
     Some(score)  
-}  
+}
   
 fn track_background_degree(track: &STrack, bg_direction: Point2d) -> Option<f64> {  
     let dir = unit(track.kalman_velocity())?;  
