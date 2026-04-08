@@ -27,8 +27,6 @@ impl Default for TransparentShapeSolver {
         Self {  
             tracker: ByteTracker::new(FPS as u64, 0.25, 0.1, 0.25, IouGating::None),  
             current_track_id: None,  
-            candidate_track_id: None,  
-            candidate_track_count: 0,  
             last_cursor: None,  
             last_velocity: None,  
             bg_direction: Point2d::default(),  
@@ -36,7 +34,7 @@ impl Default for TransparentShapeSolver {
             is_debugging: false,  
         }  
     }  
-}  
+}
   
 impl TransparentShapeSolver {  
     #[cfg(debug_assertions)]  
