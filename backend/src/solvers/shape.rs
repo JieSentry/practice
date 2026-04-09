@@ -1,35 +1,61 @@
+use std::fmt;  
 use std::ops::Div;  
   
 use log::debug;  
-use opencv::core::{Point, Point_, Point2d, Rect};  
+use opencv::core::{Mat, MatTraitConst, Point, Point2d, Point2f, Point_, Rect, Size, TermCriteria, TermCriteria_Type};  
+use opencv::video::calc_optical_flow_pyr_lk;  
   
 use crate::{  
     detect::Detector,  
     run::FPS,  
     tracker::{ByteTracker, Detection, IouGating, STrack},  
-};  
+};
   
-#[derive(Debug)]  
 pub struct TransparentShapeSolver {  
     tracker: ByteTracker,  
     current_track_id: Option<u64>,  
-    // 移除 candidate_track_id  
-    // 移除 candidate_track_count  
+    candidate_track_id: Option<u64>,  
+    candidate_track_count: u32,  
     last_cursor: Option<Point>,  
     last_velocity: Option<Point2d>,  
     bg_direction: Point2d,  
+    // 光流相关字段  
+    prev_gray: Option<Mat>,         // 上一帧灰度 ROI  
+    merge_frames: u32,              // 融合模式持续帧数  
+    last_track_rect: Option<Rect>,  // 上一帧目标的 bounding box  
     #[cfg(debug_assertions)]  
     is_debugging: bool,  
 }
-  
+
+impl fmt::Debug for TransparentShapeSolver {  
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {  
+        f.debug_struct("TransparentShapeSolver")  
+            .field("current_track_id", &self.current_track_id)  
+            .field("candidate_track_id", &self.candidate_track_id)  
+            .field("candidate_track_count", &self.candidate_track_count)  
+            .field("last_cursor", &self.last_cursor)  
+            .field("last_velocity", &self.last_velocity)  
+            .field("bg_direction", &self.bg_direction)  
+            .field("merge_frames", &self.merge_frames)  
+            .field("last_track_rect", &self.last_track_rect)  
+            .field("prev_gray", &self.prev_gray.as_ref().map(|_| "Mat(...)"))  
+            .finish()  
+    }  
+}
+
 impl Default for TransparentShapeSolver {  
     fn default() -> Self {  
         Self {  
             tracker: ByteTracker::new(FPS as u64, 0.25, 0.1, 0.25, IouGating::None),  
             current_track_id: None,  
+            candidate_track_id: None,  
+            candidate_track_count: 0,  
             last_cursor: None,  
             last_velocity: None,  
             bg_direction: Point2d::default(),  
+            prev_gray: None,  
+            merge_frames: 0,  
+            last_track_rect: None,  
             #[cfg(debug_assertions)]  
             is_debugging: false,  
         }  
@@ -44,105 +70,173 @@ impl TransparentShapeSolver {
         default  
     }  
   
-    pub fn solve(&mut self, detector: &dyn Detector, region: Rect) -> Option<Point> {  
-        let shapes = detector.detect_transparent_shapes(region);  
-        let tracks = self.tracker.update(  
-            shapes  
-                .into_iter()  
-                .map(|(bbox, score)| Detection::new(bbox, score))  
-                .collect(),  
-        );  
+pub fn solve(&mut self, detector: &dyn Detector, region: Rect) -> Option<Point> {  
+    // 1. 捕获当前帧灰度 ROI（用于光流）  
+    let curr_gray = {  
+        let roi = detector.grayscale().roi(region).ok()?;  
+        let mut gray = Mat::default();  
+        roi.copy_to(&mut gray).ok()?;  
+        gray  
+    };  
   
-        self.update_initial_track_if_needed(region, &tracks);  
-        self.update_background_direction(&tracks);  
-  
-        match self.update_and_find_best_track(&tracks, region) {  
-Some(track) => {  
-    let next_cursor = predicted_center(track);  
-    if self.current_track_id != Some(track.track_id()) {  
-        debug!(target: "backend/player", "shape id switches from {:?} to {}", self.current_track_id, track.track_id());  
-    }  
-    self.current_track_id = Some(track.track_id());  
-    self.last_cursor = Some(next_cursor);  
-    self.last_velocity = Some(track.kalman_velocity());  
-    // ... debug code unchanged ...  
-    Some(region.tl() + next_cursor)  
-}
-None => {  
-    let last_cursor = self.last_cursor?;  
-    let last_velocity = self.last_velocity.unwrap_or_default();  
-  
-    // 计算预测位置  
-    let predicted_pos = last_cursor + Point::new(  
-        last_velocity.x.round() as i32,  
-        last_velocity.y.round() as i32,  
+    // 2. 运行 YOLO + ByteTracker（与原来完全一样）  
+    let shapes = detector.detect_transparent_shapes(region);  
+    let tracks = self.tracker.update(  
+        shapes  
+            .into_iter()  
+            .map(|(bbox, score)| Detection::new(bbox, score))  
+            .collect(),  
     );  
   
-    // 尝试找到距离预测位置最近的 track（融合场景：合并体仍然存在）  
-    if let Some(nearest) = find_track_closest_to(predicted_pos, &tracks) {  
-        let nearest_center = mid_point(nearest.rect());  
-        let dist = (nearest_center - predicted_pos).norm();  
-        // 如果最近 track 在合理范围内（1.5 倍对角线），跟随它  
-        // 这在融合时保持光标在融合区域附近  
-        if dist <= diag(nearest.rect()) * 1.5 {  
-            let next_cursor = nearest_center;  
-            // 关键：只更新 last_cursor，不更新 last_velocity  
-            // 保留融合前的速度，分离后用于正确的位置预测  
-            self.last_cursor = Some(next_cursor);  
+    self.update_initial_track_if_needed(region, &tracks);  
+    self.update_background_direction(&tracks);  
   
-            #[cfg(debug_assertions)]  
-            if self.is_debugging {  
-                debug_transparent_shapes(  
-                    detector,  
-                    &tracks,  
-                    region,  
-                    next_cursor,  
-                    self.bg_direction,  
-                );  
+    // 3. 检查当前 track 是否存活  
+    let current_track_alive = self  
+        .current_track_id  
+        .is_some_and(|id| tracks.iter().any(|t| t.track_id() == id));  
+  
+    if current_track_alive {  
+        // ===== 正常模式：与原始代码完全一致 =====  
+        self.merge_frames = 0;  
+  
+        let result = match self.update_and_find_best_track(&tracks, region) {  
+            Some(track) => {  
+                let next_cursor = predicted_center(track);  
+                if self.current_track_id != Some(track.track_id()) {  
+                    debug!(target: "backend/player", "shape id switches from {:?} to {}", self.current_track_id, track.track_id());  
+                }  
+                self.current_track_id = Some(track.track_id());  
+                self.last_cursor = Some(next_cursor);  
+                self.last_velocity = Some(track.kalman_velocity());  
+                self.last_track_rect = Some(track.rect());  
+  
+                #[cfg(debug_assertions)]  
+                if self.is_debugging {  
+                    debug_transparent_shapes(  
+                        detector, &tracks, region, next_cursor, self.bg_direction,  
+                    );  
+                }  
+  
+                Some(region.tl() + next_cursor)  
             }  
+            None => {  
+                let last_cursor = self.last_cursor?;  
+                let last_velocity =  
+                    self.last_velocity.expect("set if last_cursor set") * 1.5;  
+                let next_cursor = last_cursor  
+                    + Point::new(  
+                        last_velocity.x.round() as i32,  
+                        last_velocity.y.round() as i32,  
+                    );  
+                let absolute_next_cursor = region.tl() + next_cursor;  
+                if !region.contains(absolute_next_cursor) {  
+                    self.prev_gray = Some(curr_gray);  
+                    return None;  
+                }  
   
-            return Some(region.tl() + next_cursor);  
-        }  
+                self.last_cursor = Some(next_cursor);  
+  
+                #[cfg(debug_assertions)]  
+                if self.is_debugging {  
+                    debug_transparent_shapes(  
+                        detector, &tracks, region, next_cursor, self.bg_direction,  
+                    );  
+                }  
+  
+                Some(absolute_next_cursor)  
+            }  
+        };  
+  
+        self.prev_gray = Some(curr_gray);  
+        return result;  
     }  
   
-    // 没有近距离 track：温和外推 + clamp 到边界  
-    let next_cursor = last_cursor + Point::new(  
-        last_velocity.x.round() as i32,  
-        last_velocity.y.round() as i32,  
-    );  
-    // Clamp 到 region 边界，而非返回 None  
-    let clamped = Point::new(  
-        next_cursor.x.clamp(0, region.width - 1),  
-        next_cursor.y.clamp(0, region.height - 1),  
-    );  
-    self.last_cursor = Some(clamped);  
+    // ===== 融合模式：当前 track 丢失，用光流跟踪 =====  
+    self.merge_frames += 1;  
+  
+    // 超时：融合超过 0.5 秒，重置让 update_initial_track_if_needed 重新选择  
+    if self.merge_frames > FPS as u32 / 2 {  
+        debug!(target: "backend/player", "merge timeout after {} frames, resetting", self.merge_frames);  
+        self.current_track_id = None;  
+        self.last_cursor = None;  
+        self.last_velocity = None;  
+        self.candidate_track_id = None;  
+        self.candidate_track_count = 0;  
+        self.merge_frames = 0;  
+        self.last_track_rect = None;  
+        self.prev_gray = Some(curr_gray);  
+        return None;  
+    }  
+  
+    let last_cursor = match self.last_cursor {  
+        Some(c) => c,  
+        None => {  
+            self.prev_gray = Some(curr_gray);  
+            return None;  
+        }  
+    };  
+  
+    // 尝试用光流计算目标位移  
+    let displacement = self  
+        .prev_gray  
+        .as_ref()  
+        .and_then(|prev| {  
+            compute_target_displacement(prev, &curr_gray, last_cursor, self.last_track_rect)  
+        });  
+  
+    let next_cursor = if let Some(disp) = displacement {  
+        let nc = last_cursor  
+            + Point::new(disp.x.round() as i32, disp.y.round() as i32);  
+        Point::new(  
+            nc.x.clamp(0, region.width - 1),  
+            nc.y.clamp(0, region.height - 1),  
+        )  
+    } else {  
+        // 光流失败：用 last_velocity 温和外推（不乘 1.5）  
+        let v = self.last_velocity.unwrap_or_default();  
+        let nc = last_cursor + Point::new(v.x.round() as i32, v.y.round() as i32);  
+        Point::new(  
+            nc.x.clamp(0, region.width - 1),  
+            nc.y.clamp(0, region.height - 1),  
+        )  
+    };  
+  
+    debug!(target: "backend/player",  
+        "merge mode frame {}: cursor {:?} -> {:?}, displacement {:?}",  
+        self.merge_frames, last_cursor, next_cursor, displacement);  
+  
+    self.last_cursor = Some(next_cursor);  
+    // 关键：不更新 last_velocity，保留融合前的速度  
+    // 也不更新 last_track_rect，保留融合前的 bbox 大小用于光流采样  
+    self.prev_gray = Some(curr_gray);  
   
     #[cfg(debug_assertions)]  
     if self.is_debugging {  
         debug_transparent_shapes(  
-            detector,  
-            &tracks,  
-            region,  
-            clamped,  
-            self.bg_direction,  
+            detector, &tracks, region, next_cursor, self.bg_direction,  
         );  
     }  
   
-    Some(region.tl() + clamped)  
+    Some(region.tl() + next_cursor)  
 }
-        }  
-    }  
   
-    fn update_initial_track_if_needed(&mut self, region: Rect, tracks: &[STrack]) {  
-        if self.current_track_id.is_none() {  
-            let region_mid = mid_point(Rect::new(0, 0, region.width, region.height));  
-            if let Some(track) = find_track_closest_to(region_mid, tracks) {  
-                self.current_track_id = Some(track.track_id());  
-                self.last_cursor = Some(mid_point(track.rect()));  
-                self.last_velocity = Some(track.kalman_velocity());  
-            }  
+fn update_initial_track_if_needed(&mut self, region: Rect, tracks: &[STrack]) {  
+    if self.current_track_id.is_none() {  
+        // 优先用 last_cursor（光流维持的位置），否则用 region 中心  
+        let reference_point = self.last_cursor.unwrap_or_else(|| {  
+            mid_point(Rect::new(0, 0, region.width, region.height))  
+        });  
+        if let Some(track) = find_track_closest_to(reference_point, tracks) {  
+            self.current_track_id = Some(track.track_id());  
+            self.last_cursor = Some(mid_point(track.rect()));  
+            self.last_velocity = Some(track.kalman_velocity());  
+            self.last_track_rect = Some(track.rect());  
+            self.merge_frames = 0;  
+            debug!(target: "backend/player", "re-identified target as track {}", track.track_id());  
         }  
     }  
+}
   
     fn update_background_direction(&mut self, tracks: &[STrack]) {  
         if let Some(direction) = estimate_background_direction(self.last_cursor, tracks)  
@@ -367,4 +461,128 @@ where
     }  
   
     Some(point / norm)  
+}
+
+/// 使用稀疏光流计算目标在两帧之间的位移。  
+///  
+/// 在 `last_cursor` 附近（`last_rect` 范围内）生成网格点，  
+/// 用 Lucas-Kanade 光流跟踪到当前帧，通过中位数分离背景运动，  
+/// 返回目标的位移向量。  
+fn compute_target_displacement(  
+    prev_gray: &Mat,  
+    curr_gray: &Mat,  
+    last_cursor: Point,  
+    last_rect: Option<Rect>,  
+) -> Option<Point2d> {  
+    let img_size = prev_gray.size().ok()?;  
+  
+    // 确定采样区域：使用上一帧的 bbox，或 last_cursor 周围 60x60  
+    let sample_rect = last_rect.unwrap_or_else(|| {  
+        Rect::new(last_cursor.x - 30, last_cursor.y - 30, 60, 60)  
+    });  
+  
+    // Clamp 到图像边界  
+    let x0 = sample_rect.x.max(0);  
+    let y0 = sample_rect.y.max(0);  
+    let x1 = (sample_rect.x + sample_rect.width).min(img_size.width);  
+    let y1 = (sample_rect.y + sample_rect.height).min(img_size.height);  
+  
+    if x1 <= x0 || y1 <= y0 {  
+        return None;  
+    }  
+  
+    // 生成网格点（间距 5 像素）  
+    let step = 5;  
+    let mut prev_points = Vec::new();  
+    let mut y = y0;  
+    while y < y1 {  
+        let mut x = x0;  
+        while x < x1 {  
+            prev_points.push(Point2f::new(x as f32, y as f32));  
+            x += step;  
+        }  
+        y += step;  
+    }  
+  
+    if prev_points.len() < 4 {  
+        return None;  
+    }  
+  
+    // 转换为 Mat（Nx1 的 2 通道 Mat）  
+    let n = prev_points.len();  
+    let prev_pts = Mat::from_slice(&prev_points).ok()?;  
+    let mut next_pts = Mat::default();  
+    let mut status = Mat::default();  
+    let mut err = Mat::default();  
+  
+    let criteria = TermCriteria::new(  
+        TermCriteria_Type::COUNT as i32 + TermCriteria_Type::EPS as i32,  
+        30,  
+        0.01,  
+    )  
+    .ok()?;  
+  
+    calc_optical_flow_pyr_lk(  
+        prev_gray,  
+        curr_gray,  
+        &prev_pts,  
+        &mut next_pts,  
+        &mut status,  
+        &mut err,  
+        Size::new(21, 21), // 窗口大小  
+        3,                  // 金字塔层数  
+        criteria,  
+        0,    // flags  
+        1e-4, // minEigThreshold  
+    )  
+    .ok()?;  
+  
+    // 收集有效位移  
+    let mut displacements = Vec::with_capacity(n);  
+    for i in 0..n {  
+        let s: &u8 = status.at::<u8>(i as i32).ok()?;  
+        if *s == 0 {  
+            continue;  
+        }  
+        let next: &Point2f = next_pts.at::<Point2f>(i as i32).ok()?;  
+        let dx = (next.x - prev_points[i].x) as f64;  
+        let dy = (next.y - prev_points[i].y) as f64;  
+        displacements.push(Point2d::new(dx, dy));  
+    }  
+  
+    if displacements.len() < 4 {  
+        return None;  
+    }  
+  
+    // 计算中位数位移 = 背景运动估计  
+    // （采样区域在融合区域，多数像素属于背景形状 + 实际背景纹理）  
+    let mut dx_vals: Vec<f64> = displacements.iter().map(|d| d.x).collect();  
+    let mut dy_vals: Vec<f64> = displacements.iter().map(|d| d.y).collect();  
+    dx_vals.sort_by(|a, b| a.partial_cmp(b).unwrap());  
+    dy_vals.sort_by(|a, b| a.partial_cmp(b).unwrap());  
+    let median_dx = dx_vals[dx_vals.len() / 2];  
+    let median_dy = dy_vals[dy_vals.len() / 2];  
+  
+    // 找到位移与中位数显著不同的点 = 目标像素  
+    let threshold = 1.5; // 像素，残差超过此值认为是目标运动  
+    let target_disps: Vec<&Point2d> = displacements  
+        .iter()  
+        .filter(|d| {  
+            let rx = d.x - median_dx;  
+            let ry = d.y - median_dy;  
+            (rx * rx + ry * ry).sqrt() > threshold  
+        })  
+        .collect();  
+  
+    if target_disps.is_empty() {  
+        // 没有异常运动：目标可能完全被遮挡或静止  
+        // 返回中位数位移（跟随融合体，保持在附近）  
+        return Some(Point2d::new(median_dx, median_dy));  
+    }  
+  
+    // 目标像素的平均位移  
+    let sum = target_disps  
+        .iter()  
+        .fold(Point2d::default(), |acc, d| acc + **d);  
+    Some(sum / target_disps.len() as f64)  
 }
