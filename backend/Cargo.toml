@@ -24,6 +24,7 @@ opencv = { version = "0.97.2", default-features = false, features = [
     "imgproc",
     "highgui",
     "videoio",
+    "video", 
 ] }
 anyhow = "1.0.98"
 log = { workspace = true }
