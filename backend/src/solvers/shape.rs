@@ -156,7 +156,7 @@ pub fn solve(&mut self, detector: &dyn Detector, region: Rect) -> Option<Point> 
     self.merge_frames += 1;  
   
     // 超时：融合超过 0.5 秒，重置让 update_initial_track_if_needed 重新选择  
-    if self.merge_frames > FPS as u32 / 2 {  
+if self.merge_frames > FPS / 2 { 
         debug!(target: "backend/player", "merge timeout after {} frames, resetting", self.merge_frames);  
         self.current_track_id = None;  
         self.last_cursor = None;  
@@ -539,16 +539,15 @@ fn compute_target_displacement(
   
     // 收集有效位移  
     let mut displacements = Vec::with_capacity(n);  
-    for i in 0..n {  
-        let s: &u8 = status.at::<u8>(i as i32).ok()?;  
-        if *s == 0 {  
-            continue;  
-        }  
-        let next: &Point2f = next_pts.at::<Point2f>(i as i32).ok()?;  
-        let dx = (next.x - prev_points[i].x) as f64;  
-        let dy = (next.y - prev_points[i].y) as f64;  
-        displacements.push(Point2d::new(dx, dy));  
+for (i, prev_pt) in prev_points.iter().enumerate().take(n) {  
+    if *status.at::<u8>(i as i32)? != 1 {  
+        continue;  
     }  
+    let next = *next_pts.at::<Point2f>(i as i32)?;  
+    let dx = (next.x - prev_pt.x) as f64;  
+    let dy = (next.y - prev_pt.y) as f64;  
+    displacements.push(Point2d::new(dx, dy));  
+}
   
     if displacements.len() < 4 {  
         return None;  
