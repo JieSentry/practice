@@ -540,10 +540,10 @@ fn compute_target_displacement(
     // 收集有效位移  
     let mut displacements = Vec::with_capacity(n);  
 for (i, prev_pt) in prev_points.iter().enumerate().take(n) {  
-    if *status.at::<u8>(i as i32)? != 1 {  
+if *status.at::<u8>(i as i32).ok()? != 1 {
         continue;  
     }  
-    let next = *next_pts.at::<Point2f>(i as i32)?;  
+let next = *next_pts.at::<Point2f>(i as i32).ok()?;
     let dx = (next.x - prev_pt.x) as f64;  
     let dy = (next.y - prev_pt.y) as f64;  
     displacements.push(Point2d::new(dx, dy));  
