@@ -251,59 +251,69 @@ fn update_and_find_best_track<'a>(
     tracks: &'a [STrack],  
     region: Rect,  
 ) -> Option<&'a STrack> {  
+    let current_track_id = self.current_track_id?;  
     let last_cursor = self.last_cursor?;  
-    let last_velocity = self.last_velocity.unwrap_or_default();  
     let bg_direction = self.bg_direction;  
   
-    // 1. Solver 自己的位置预测（独立于 ByteTracker track ID）  
-    let predicted_pos = last_cursor + Point::new(  
-        last_velocity.x.round() as i32,  
-        last_velocity.y.round() as i32,  
-    );  
-  
-    // 2. 对所有 track 计算组合评分  
-    let current_track_id = self.current_track_id;  
     let scored_tracks: Vec<_> = tracks  
         .iter()  
         .filter(|track| {  
-            // 当前 track 或已跟踪 >= 2 帧的 track 都参与评分  
-            Some(track.track_id()) == current_track_id || track.tracklet_len() >= 2  
+            track.track_id() == current_track_id || track.tracklet_len() >= 3  
         })  
         .filter_map(|track| {  
-            let score = combined_score(  
+            let is_current = track.track_id() == current_track_id;  
+            let score = track_background_score(  
                 track,  
-                predicted_pos,  
+                last_cursor,  
                 bg_direction,  
                 region,  
+                is_current,  
             )?;  
-            Some((track, score))  
+            Some((track, score, is_current))  
         })  
         .collect();  
   
-    // 3. 找最高分 track  
-    let (best_track, best_score) = scored_tracks  
+    let best_track_info = scored_tracks  
         .iter()  
-        .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())  
-        .map(|(t, s)| (*t, *s))?;  
+        .max_by(|(_, a, _), (_, b, _)| a.partial_cmp(b).unwrap());  
+    let (best_track, best_score, is_best_current) = match best_track_info {  
+        Some(info) => info,  
+        None => return tracks.iter().find(|t| t.track_id() == current_track_id),  
+    };  
   
-    // 4. 轻量 hysteresis：如果当前 track 的分数 >= 最高分的 85%，保持当前 track  
-    //    这防止帧间抖动，但不会像旧机制那样阻止纠正（旧机制需要连续 2 帧 + 分差 > 0.1）  
-if let Some(current_id) = current_track_id  
-    && let Some((current_track, current_score)) = scored_tracks  
-        .iter()  
-        .find(|(t, _)| t.track_id() == current_id)  
-    && *current_score >= best_score * 0.85  
-{  
-    return Some(current_track);  
-} 
-  
-    // 5. 切换到最高分 track  
-    if Some(best_track.track_id()) != current_track_id {  
-        debug!(target: "backend/player", "shape re-identified: {:?} -> {} (score: {:.3})",  
-            current_track_id, best_track.track_id(), best_score);  
+    if *is_best_current {  
+        self.candidate_track_id = None;  
+        self.candidate_track_count = 0;  
+        return Some(best_track);  
     }  
-    Some(best_track)  
-} 
+  
+    let is_same_candidate = self.candidate_track_id == Some(best_track.track_id());  
+    if is_same_candidate {  
+        self.candidate_track_count += 1;  
+    } else {  
+        self.candidate_track_id = Some(best_track.track_id());  
+        self.candidate_track_count = 0;  
+    }  
+  
+    let current_score = scored_tracks  
+        .iter()  
+        .find(|(_, _, is_cur)| *is_cur)  
+        .map(|(_, s, _)| *s)  
+        .unwrap_or(0.0);  
+  
+    let should_switch =  
+        self.candidate_track_count >= 2 && best_score - current_score > 0.1;  
+  
+    if should_switch {  
+        debug!(target: "backend/player", "Switch from {:?} to {}", self.current_track_id, best_track.track_id());  
+        self.current_track_id = Some(best_track.track_id());  
+        self.candidate_track_id = None;  
+        self.candidate_track_count = 0;  
+        return Some(best_track);  
+    }  
+  
+    tracks.iter().find(|t| t.track_id() == current_track_id)  
+}
   
     // ← 移除了整个 update_low_angle_count 方法  
 }  
@@ -363,34 +373,36 @@ fn predicted_center(track: &STrack) -> Point {
     )  
 }  
   
-fn combined_score(  
+fn track_background_score(  
     track: &STrack,  
-    predicted_pos: Point,  
+    last_cursor: Point,  
     bg_direction: Point2d,  
     region: Rect,  
+    is_current_track: bool,  
 ) -> Option<f64> {  
-    // 角度评分（与背景方向的夹角）  
     let angle = track_background_degree(track, bg_direction)?;  
     if angle <= 45.0 {  
-        return None; // 与背景同向，排除  
-    }  
-    let angle_score = angle / 180.0;  
-  
-    // 位置接近度评分（与 Solver 预测位置的距离）  
-    let track_center = mid_point(track.rect());  
-    let diff = track_center - predicted_pos;  
-    let dist_squared = (diff.x.pow(2) + diff.y.pow(2)) as f64;  
-    let sigma = 0.3 * diag(region);  
-    let proximity_score = (-dist_squared / (2.0 * sigma.powi(2))).exp();  
-  
-    // 组合评分：角度是主要信号，位置接近度作为调制  
-    // proximity 范围 [0, 1]，映射到 [0.3, 1.0]，确保高角度但远距离的 track 仍有机会  
-    let score = angle_score * (0.3 + 0.7 * proximity_score);  
-  
-    if score <= 0.15 {  
         return None;  
     }  
-  
+    let angle_score = angle / 180.0;  
+    let distance_penalty = if angle >= 60.0 {  
+        1.0  
+    } else {  
+        let cursor_dir = mid_point(track.rect()) - last_cursor;  
+        let dist_squared = (cursor_dir.x.pow(2) + cursor_dir.y.pow(2)) as f64;  
+        let sigma = 0.25 * diag(region);  
+        (-dist_squared / (2.0 * sigma.powi(2))).exp()  
+    };  
+    if distance_penalty <= 0.3 {  
+        return None;  
+    }  
+    let mut score = angle_score * distance_penalty;  
+    if is_current_track {  
+        score += 0.15;  
+    }  
+    if score <= 0.2 {  
+        return None;  
+    }  
     Some(score)  
 }
   
