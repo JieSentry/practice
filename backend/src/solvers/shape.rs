@@ -91,12 +91,39 @@ pub fn solve(&mut self, detector: &dyn Detector, region: Rect) -> Option<Point> 
     self.update_initial_track_if_needed(region, &tracks);  
     self.update_background_direction(&tracks);  
   
-    // 3. 检查当前 track 是否存活  
-    let current_track_alive = self  
-        .current_track_id  
-        .is_some_and(|id| tracks.iter().any(|t| t.track_id() == id));  
+// 3. 检查当前 track 是否存活且位置合理  
+let current_track_alive = self  
+    .current_track_id  
+    .is_some_and(|id| tracks.iter().any(|t| t.track_id() == id));  
   
-    if current_track_alive {  
+let track_position_valid = if current_track_alive {  
+    if let (Some(id), Some(last_cursor), Some(last_velocity)) =  
+        (self.current_track_id, self.last_cursor, self.last_velocity)  
+    {  
+        let track = tracks.iter().find(|t| t.track_id() == id).unwrap();  
+        let track_center = mid_point(track.rect());  
+        // 预期位置 = 上一帧光标 + 上一帧速度  
+        let expected = last_cursor  
+            + Point::new(  
+                last_velocity.x.round() as i32,  
+                last_velocity.y.round() as i32,  
+            );  
+        let distance = (track_center - expected).norm();  
+        // 阈值：上一帧 bbox 对角线的 2 倍（允许一定偏差）  
+        let threshold = self  
+            .last_track_rect  
+            .map(|r| diag(r) * 2.0)  
+            .unwrap_or(120.0);  
+        distance <= threshold  
+    } else {  
+        true // 没有历史数据，信任 track  
+    }  
+} else {  
+    false  
+};  
+  
+if current_track_alive && track_position_valid {  
+    // ===== 正常模式 =====
         // ===== 正常模式：与原始代码完全一致 =====  
         self.merge_frames = 0;  
   
@@ -223,17 +250,32 @@ if self.merge_frames > FPS / 2 {
   
 fn update_initial_track_if_needed(&mut self, region: Rect, tracks: &[STrack]) {  
     if self.current_track_id.is_none() {  
-        // 优先用 last_cursor（光流维持的位置），否则用 region 中心  
-        let reference_point = self.last_cursor.unwrap_or_else(|| {  
-            mid_point(Rect::new(0, 0, region.width, region.height))  
-        });  
-        if let Some(track) = find_track_closest_to(reference_point, tracks) {  
+        let reference = self.last_cursor  
+            .unwrap_or_else(|| mid_point(Rect::new(0, 0, region.width, region.height)));  
+        let bg = self.bg_direction;  
+  
+        // 优先选：角度 > 45°（与背景运动方向不同）且离 reference 最近的 track  
+        let best = tracks  
+            .iter()  
+            .filter(|t| t.tracklet_len() >= 3)  
+            .filter(|t| {  
+                track_background_degree(t, bg)  
+                    .map(|angle| angle > 45.0)  
+                    .unwrap_or(false)  
+            })  
+            .min_by(|a, b| {  
+                let da = (mid_point(a.rect()) - reference).norm();  
+                let db = (mid_point(b.rect()) - reference).norm();  
+                da.partial_cmp(&db).unwrap()  
+            });  
+  
+        // 如果没有满足角度条件的 track，退回到选最近的  
+        let chosen = best.or_else(|| find_track_closest_to(reference, tracks));  
+  
+        if let Some(track) = chosen {  
             self.current_track_id = Some(track.track_id());  
             self.last_cursor = Some(mid_point(track.rect()));  
             self.last_velocity = Some(track.kalman_velocity());  
-            self.last_track_rect = Some(track.rect());  
-            self.merge_frames = 0;  
-            debug!(target: "backend/player", "re-identified target as track {}", track.track_id());  
         }  
     }  
 }
