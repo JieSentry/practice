@@ -46,7 +46,7 @@ impl fmt::Debug for TransparentShapeSolver {
 impl Default for TransparentShapeSolver {  
     fn default() -> Self {  
         Self {  
-            tracker: ByteTracker::new(FPS as u64, 0.25, 0.1, 0.25, IouGating::None),  
+            tracker: ByteTracker::new(FPS as u64, 0.25, 0.1, 0.25, IouGating::Position),
             current_track_id: None,  
             candidate_track_id: None,  
             candidate_track_count: 0,  
