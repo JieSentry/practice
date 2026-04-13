@@ -57,6 +57,10 @@ impl STrack {
         self.tracklet_len
     }
 
+    pub fn score(&self) -> f32 {  
+    self.score  
+}
+
     pub(super) fn activate(&mut self, frame_id: u64, score: f32) {
         self.track_id = TRACK_ID_COUNTER.fetch_add(1, Ordering::Relaxed);
         self.tracklet_len = 0;
