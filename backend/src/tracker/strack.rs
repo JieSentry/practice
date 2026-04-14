@@ -57,7 +57,8 @@ impl STrack {
         self.tracklet_len
     }
 
-    pub fn score(&self) -> f32 {  
+#[allow(dead_code)]  
+pub fn score(&self) -> f32 {  
     self.score  
 }
 
