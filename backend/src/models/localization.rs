@@ -29,6 +29,10 @@ pub struct Localization {
     pub lie_detector_old_base64: Option<String>,
     #[serde(default)]  
     pub lie_detector_shape_prepare_base64: Option<String>,
+    #[serde(default)]  
+pub tof_fate_character_base64: Option<String>,  
+#[serde(default)]  
+pub tof_ask_button_base64: Option<String>,
 }
 
 impl_identifiable!(Localization);
