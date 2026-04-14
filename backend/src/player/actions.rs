@@ -261,6 +261,8 @@ pub enum PlayerAction {
     /// Exchange HEXA booster action.
     ExchangeBooster(ExchangeBooster),
     /// Unstucking by pressing ESC.
+    ThreadsOfFate（ThreadsOfFate）,
+    /// Threads of Fate action.
     Unstuck,
 }
 
