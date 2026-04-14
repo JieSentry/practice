@@ -153,6 +153,7 @@ pub fn CharactersScreen() -> Element {
         div { class: "flex flex-col pb-15 h-full overflow-y-auto",
             SectionKeyBindings {}
             SectionUsePotionAndFeedPet {}
+            SectionThreadsOfFate {}
             SectionUseBooster {}
             SectionMovement {}
             SectionFamiliars {}
@@ -353,6 +354,53 @@ fn UsePotion() -> Element {
             }
         }
     }
+}
+
+#[component]  
+fn SectionThreadsOfFate() -> Element {  
+    let context = use_context::<CharactersContext>();  
+    let character = context.character;  
+    let save_character = context.save_character;  
+  
+    rsx! {  
+        Section { title: "Threads of Fate",  
+            div { class: "grid grid-cols-3 gap-4",  
+                CharactersNumberU32Input {  
+                    label: "Count",  
+                    disabled: character().id.is_none(),  
+                    on_value: move |threads_of_fate_count| {  
+                        save_character(Character {  
+                            threads_of_fate_count,  
+                            ..character.peek().clone()  
+                        });  
+                    },  
+                    value: character().threads_of_fate_count,  
+                }  
+                CharactersDurationInput {  
+                    label: "Every (mm:ss)",  
+                    disabled: character().id.is_none(),  
+                    on_value: move |threads_of_fate_millis| {  
+                        save_character(Character {  
+                            threads_of_fate_millis,  
+                            ..character.peek().clone()  
+                        });  
+                    },  
+                    value: character().threads_of_fate_millis,  
+                }  
+                CharactersCheckbox {  
+                    label: "Enabled",  
+                    disabled: character().id.is_none(),  
+                    on_checked: move |threads_of_fate_enabled| {  
+                        save_character(Character {  
+                            threads_of_fate_enabled,  
+                            ..character.peek().clone()  
+                        });  
+                    },  
+                    checked: character().threads_of_fate_enabled,  
+                }  
+            }  
+        }  
+    }  
 }
 
 #[component]
