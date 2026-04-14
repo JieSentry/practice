@@ -274,63 +274,51 @@ fn update_interact_complete(resources: &mut Resources, tof: &mut ThreadsOfFateSt
     }  
 }  
   
-/// Step 5: Find unravelling.png, scrolling down if needed  
+/// Step 5: Find unravelling.png (with scrolling)  
 fn update_find_unravelling(resources: &mut Resources, tof: &mut ThreadsOfFateState) {  
     let State::FindUnravelling(timeout, scroll_cycle) = tof.state else {  
         panic!("threads of fate state is not find unravelling")  
     };  
   
-    let total_timeout = DOWN_PRESSES_PER_CYCLE * INTERACT_PRESS_INTERVAL + 15;  
-  
-    match next_timeout_lifecycle(timeout, total_timeout) {  
+    match next_timeout_lifecycle(timeout, 30) {  
         Lifecycle::Started(timeout) => {  
-            // First check if unravelling is already visible  
+            // First check if unravelling is visible  
+            if let Ok(bbox) = resources.detector().detect_tof_unravelling() {  
+                let (x, y) = bbox_click_point(bbox);  
+                resources.input.send_mouse(x, y, MouseKind::Click);  
+                tof.state = State::ClickUnravelling(Timeout::default());  
+                return;  
+            }  
+            tof.state = State::FindUnravelling(timeout, scroll_cycle);  
+        }  
+        Lifecycle::Ended => {  
+            // Try to find unravelling after scrolling  
             match resources.detector().detect_tof_unravelling() {  
                 Ok(bbox) => {  
                     let (x, y) = bbox_click_point(bbox);  
                     resources.input.send_mouse(x, y, MouseKind::Click);  
                     tof.state = State::ClickUnravelling(Timeout::default());  
-                    return;  
                 }  
-                Err(_) => {}  
-            }  
-            tof.state = State::FindUnravelling(timeout, scroll_cycle);  
-        }  
-        Lifecycle::Ended => {  
-            // Check one more time after scrolling  
-if let Ok(bbox) = resources.detector().detect_tof_unravelling() {  
-    let (x, y) = bbox_click_point(bbox);  
-    resources.input.send_mouse(x, y, MouseKind::Click);  
-    tof.state = State::ClickUnravelling(Timeout::default());  
-    return;  
-}
                 Err(_) => {  
-                    let next_cycle = scroll_cycle + 1;  
-                    if next_cycle >= MAX_SCROLL_CYCLES {  
-                        // Failed to find unravelling after all scroll cycles  
-                        info!(target: "backend/player", "threads of fate: failed to find unravelling after scrolling");  
-                        // ESC to close, permanently block  
+                    let new_cycle = scroll_cycle + 1;  
+                    if new_cycle >= MAX_SCROLL_CYCLES {  
+                        info!(target: "backend/player", "threads of fate: unravelling not found after {} scroll cycles", MAX_SCROLL_CYCLES);  
                         resources.input.send_key(KeyKind::Esc);  
                         tof.state = State::Completing(Timeout::default(), false);  
                     } else {  
-                        tof.state = State::FindUnravelling(Timeout::default(), next_cycle);  
+                        for _ in 0..DOWN_PRESSES_PER_CYCLE {  
+                            resources.input.send_key(KeyKind::Down);  
+                        }  
+                        tof.state = State::FindUnravelling(Timeout::default(), new_cycle);  
                     }  
                 }  
             }  
         }  
         Lifecycle::Updated(timeout) => {  
-            // Press down arrow keys at intervals  
-            let tick = timeout.current;  
-            if tick > 0 && tick % INTERACT_PRESS_INTERVAL == 0 {  
-                let press_index = tick / INTERACT_PRESS_INTERVAL;  
-                if press_index <= DOWN_PRESSES_PER_CYCLE {  
-                    resources.input.send_key(KeyKind::Down);  
-                }  
-            }  
             tof.state = State::FindUnravelling(timeout, scroll_cycle);  
         }  
     }  
-}  
+}
   
 /// Step 6: After clicking unravelling, wait briefly  
 fn update_click_unravelling(_resources: &mut Resources, tof: &mut ThreadsOfFateState) {
