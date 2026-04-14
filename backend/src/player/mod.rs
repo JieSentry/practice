@@ -284,7 +284,6 @@ fn update_non_positional_state(
         | Player::Grappling(_)
         | Player::Jumping(_)
         | Player::UpJumping(_)
-        | Player::ThreadsOfFate(_)
         | Player::Falling(_) => return false,
     }
 
@@ -318,6 +317,7 @@ fn update_positional_state(
         | Player::ExchangingBooster(_)
         | Player::SolvingShape(_)
         | Player::SolvingVioletta(_)
-        | Player::CashShopThenExit(_) => unreachable!(),
+        | Player::CashShopThenExit(_) 
+        | Player::ThreadsOfFate(_) => unreachable!(),
     }
 }
