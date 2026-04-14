@@ -224,6 +224,10 @@ pub struct PlayerConfiguration {
     pub generic_booster_key: KeyKind,
     /// HEXA Booster key.
     pub hexa_booster_key: KeyKind,
+    /// Threads of Fate chat count.  
+    pub threads_of_fate_count: u32,  
+    /// Threads of Fate interval in ticks between cycles.  
+    pub threads_of_fate_interval_ticks: u32,
 }
 
 impl Default for PlayerConfiguration {
@@ -243,6 +247,8 @@ impl Default for PlayerConfiguration {
             auto_mob_platforms_pathing_up_jump_only: false,
             auto_mob_use_key_when_pathing: false,
             auto_mob_use_key_when_pathing_update_millis: 0,
+            threads_of_fate_count: 7,  
+            threads_of_fate_interval_ticks: 0,
             interact_key: KeyKind::A,
             grappling_key: None,
             teleport_key: None,
@@ -392,6 +398,8 @@ pub struct PlayerContext {
     generic_booster_failed_count: u32,
     /// The number of times [`Player::UsingBooster`] for HEXA Booster failed.
     hexa_booster_failed_count: u32,
+    /// The number of times Threads of Fate failed.  
+    threads_of_fate_failed_count: u32,
 
     /// The number of times [`Player::FamiliarsSwapping`] failed.
     familiars_swap_failed_count: u32,
@@ -405,6 +413,25 @@ impl PlayerContext {
     /// Resets the player state except for configuration.
     ///
     /// Used whenever minimap data or configuration changes.
+    const MAX_THREADS_OF_FATE_FAIL_COUNT: u32 = 1;  
+  
+    #[inline]  
+    pub fn is_threads_of_fate_fail_count_limit_reached(&self) -> bool {  
+        self.threads_of_fate_failed_count >= MAX_THREADS_OF_FATE_FAIL_COUNT  
+    }  
+  
+    #[inline]  
+    pub(super) fn track_threads_of_fate_fail_count(&mut self) {  
+        if self.threads_of_fate_failed_count < MAX_THREADS_OF_FATE_FAIL_COUNT {  
+            self.threads_of_fate_failed_count += 1;  
+        }  
+    }  
+  
+    #[inline]  
+    pub(super) fn clear_threads_of_fate_fail_count(&mut self) {  
+        self.threads_of_fate_failed_count = 0;  
+    }
+    
     #[inline]
     pub fn reset(&mut self) {
         *self = PlayerContext {
