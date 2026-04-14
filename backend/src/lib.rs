@@ -190,6 +190,8 @@ pub enum DetectionTemplate {
     LieDetectorShapePrepare,
     LieDetectorNew,
     LieDetectorOld,
+    TofFateCharacter,  
+    TofAskButton,
 }
 
 /// The four quads of a bound.
