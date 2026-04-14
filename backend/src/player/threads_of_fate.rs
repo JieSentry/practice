@@ -48,7 +48,7 @@ enum State {
     /// Step 10: Press interact key to finish dialog  
     InteractDialog(Timeout, u32),  
     /// Step 11: Wait interval before next cycle (mm:ss)  
-    WaitInterval(Timeout, u32),  
+    WaitInterval(Timeout),
     /// Terminal state  
     Completing(Timeout, bool),  
 }  
@@ -84,7 +84,7 @@ impl Display for ThreadsOfFateState {
             State::ClickFateCharacter(_) => write!(f, "ClickFateCharacter"),  
             State::ClickAsk(_, _) => write!(f, "ClickAsk"),  
             State::InteractDialog(_, _) => write!(f, "InteractDialog"),  
-            State::WaitInterval(_, _) => write!(f, "WaitInterval"),  
+            State::WaitInterval(_) => write!(f, "WaitInterval"),  
             State::Completing(_, _) => write!(f, "Completing"),  
         }  
     }  
@@ -121,7 +121,7 @@ pub fn update_threads_of_fate_state(resources: &mut Resources, player: &mut Play
         State::ClickFateCharacter(_) => update_click_fate_character(resources, &mut tof),  
         State::ClickAsk(_, _) => update_click_ask(resources, &mut tof),  
         State::InteractDialog(_, _) => update_interact_dialog(resources, &mut tof),  
-        State::WaitInterval(_, _) => update_wait_interval(resources, &mut tof),  
+        State::WaitInterval(_) => update_wait_interval(resources, &mut tof),  
         State::Completing(_, _) => update_completing(resources, &mut tof),  
     }  
   
@@ -426,12 +426,12 @@ fn update_click_ask(resources: &mut Resources, tof: &mut ThreadsOfFateState) {
             }  
         }  
         Lifecycle::Updated(timeout) => {  
-            if timeout.current == 15 {  
-                if let Ok(bbox) = resources.detector().detect_tof_ask_button() {  
-                    let (x, y) = bbox_click_point(bbox);  
-                    resources.input.send_mouse(x, y, MouseKind::Click);  
-                }  
-            }  
+if timeout.current == 15  
+    && let Ok(bbox) = resources.detector().detect_tof_ask_button()  
+{  
+    let (x, y) = bbox_click_point(bbox);  
+    resources.input.send_mouse(x, y, MouseKind::Click);  
+}
             tof.state = State::ClickAsk(timeout, retry_count);  
         }  
     }  
@@ -457,7 +457,7 @@ fn update_interact_dialog(resources: &mut Resources, tof: &mut ThreadsOfFateStat
                     tof.success = true;  
                     tof.state = State::Completing(Timeout::default(), false);  
                 } else {  
-                    tof.state = State::WaitInterval(Timeout::default(), 0);  
+                    tof.state = State::WaitInterval(Timeout::default());  
                 }  
             } else {  
                 // Check if dialog is still visible  
@@ -475,7 +475,7 @@ fn update_interact_dialog(resources: &mut Resources, tof: &mut ThreadsOfFateStat
                         tof.success = true;  
                         tof.state = State::Completing(Timeout::default(), false);  
                     } else {  
-                        tof.state = State::WaitInterval(Timeout::default(), 0);  
+                        tof.state = State::WaitInterval(Timeout::default());  
                     }  
                 }  
             }  
@@ -488,13 +488,13 @@ fn update_interact_dialog(resources: &mut Resources, tof: &mut ThreadsOfFateStat
   
 /// Step 11: Wait interval before next cycle  
 fn update_wait_interval(_resources: &mut Resources, tof: &mut ThreadsOfFateState) {  
-    let State::WaitInterval(timeout, _) = tof.state else {  
+    let State::WaitInterval(timeout) = tof.state else {  
         panic!("threads of fate state is not wait interval")  
     };  
   
     match next_timeout_lifecycle(timeout, tof.wait_interval_ticks.max(1)) {  
         Lifecycle::Started(timeout) | Lifecycle::Updated(timeout) => {  
-            tof.state = State::WaitInterval(timeout, 0);  
+            tof.state = State::WaitInterval(timeout);  
         }  
         Lifecycle::Ended => {  
             // Go back to step 1: click bulb  
