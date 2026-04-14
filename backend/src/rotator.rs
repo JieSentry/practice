@@ -836,6 +836,8 @@ impl Rotator for DefaultRotator {
             enable_reset_normal_actions_on_erda,
             enable_using_generic_booster,
             enable_using_hexa_booster,
+            enable_threads_of_fate,  
+threads_of_fate_millis,
         } = args;
         self.reset_queue();
         self.normal_actions.clear();
@@ -855,6 +857,13 @@ impl Rotator for DefaultRotator {
             self.priority_actions
                 .insert(next_action_id(), use_booster_priority_action(Booster::Hexa));
         }
+
+        if enable_threads_of_fate {  
+    self.priority_actions.insert(  
+        next_action_id(),  
+        threads_of_fate_priority_action(threads_of_fate_millis),  
+    );  
+}
 
         if !matches!(
             hexa_booster_exchange_condition,
@@ -1157,6 +1166,32 @@ fn familiar_essence_replenish_priority_action(key: KeyKind) -> PriorityAction {
         queue_to_front: true,
         queue_info: PriorityActionQueueInfo::default(),
     }
+}
+
+#[inline]  
+fn threads_of_fate_priority_action(millis: u64) -> PriorityAction {  
+    PriorityAction {  
+        condition: Condition(Box::new(move |_, world, info| {  
+            if world  
+                .player  
+                .context  
+                .is_threads_of_fate_fail_count_limit_reached()  
+            {  
+                return ConditionResult::Ignore;  
+            }  
+  
+            if !at_least_millis_passed_since(info.last_queued_time, millis.into()) {  
+                return ConditionResult::Skip;  
+            }  
+  
+            ConditionResult::Queue  
+        })),  
+        condition_kind: None,  
+        metadata: None,  
+        inner: RotatorAction::Single(PlayerAction::ThreadsOfFate),  
+        queue_to_front: false,  
+        queue_info: PriorityActionQueueInfo::default(),  
+    }  
 }
 
 #[inline]
