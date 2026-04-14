@@ -417,12 +417,12 @@ impl PlayerContext {
   
     #[inline]  
     pub fn is_threads_of_fate_fail_count_limit_reached(&self) -> bool {  
-        self.threads_of_fate_failed_count >= MAX_THREADS_OF_FATE_FAIL_COUNT  
+        self.threads_of_fate_failed_count >= Self::MAX_THREADS_OF_FATE_FAIL_COUNT
     }  
   
     #[inline]  
     pub(super) fn track_threads_of_fate_fail_count(&mut self) {  
-        if self.threads_of_fate_failed_count < MAX_THREADS_OF_FATE_FAIL_COUNT {  
+        if self.threads_of_fate_failed_count < Self::MAX_THREADS_OF_FATE_FAIL_COUNT {
             self.threads_of_fate_failed_count += 1;  
         }  
     }  
