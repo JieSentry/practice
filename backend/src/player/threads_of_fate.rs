@@ -298,12 +298,12 @@ fn update_find_unravelling(resources: &mut Resources, tof: &mut ThreadsOfFateSta
         }  
         Lifecycle::Ended => {  
             // Check one more time after scrolling  
-            match resources.detector().detect_tof_unravelling() {  
-                Ok(bbox) => {  
-                    let (x, y) = bbox_click_point(bbox);  
-                    resources.input.send_mouse(x, y, MouseKind::Click);  
-                    tof.state = State::ClickUnravelling(Timeout::default());  
-                }  
+if let Ok(bbox) = resources.detector().detect_tof_unravelling() {  
+    let (x, y) = bbox_click_point(bbox);  
+    resources.input.send_mouse(x, y, MouseKind::Click);  
+    tof.state = State::ClickUnravelling(Timeout::default());  
+    return;  
+}
                 Err(_) => {  
                     let next_cycle = scroll_cycle + 1;  
                     if next_cycle >= MAX_SCROLL_CYCLES {  
@@ -436,11 +436,10 @@ fn update_click_ask(resources: &mut Resources, tof: &mut ThreadsOfFateState) {
         }  
         Lifecycle::Updated(timeout) => {  
             if timeout.current == 15 {  
-                match resources.detector().detect_tof_ask_button() {  
-                    Ok(bbox) => {  
-                        let (x, y) = bbox_click_point(bbox);  
-                        resources.input.send_mouse(x, y, MouseKind::Click);  
-                    }  
+if let Ok(bbox) = resources.detector().detect_tof_ask_button() {  
+    let (x, y) = bbox_click_point(bbox);  
+    resources.input.send_mouse(x, y, MouseKind::Click);  
+}
                     Err(_) => {}  
                 }  
             }  
@@ -514,7 +513,7 @@ fn update_wait_interval(_resources: &mut Resources, tof: &mut ThreadsOfFateState
         }  
     }  
 }  
-        /// Terminal state  
+/// Terminal state  
 fn update_completing(_resources: &mut Resources, tof: &mut ThreadsOfFateState) {  
     let State::Completing(timeout, completed) = tof.state else {  
         panic!("threads of fate state is not completing")  
