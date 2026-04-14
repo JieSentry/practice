@@ -62,6 +62,9 @@ impl CharacterService for DefaultCharacterService {
             player_context.config.update_health_millis = Some(character.health_update_millis);
             player_context.config.generic_booster_key = character.generic_booster_key.key.into();
             player_context.config.hexa_booster_key = character.hexa_booster_key.key.into();
+            player_context.config.threads_of_fate_count = character.threads_of_fate_count;  
+            player_context.config.threads_of_fate_interval_ticks =  
+            (character.threads_of_fate_millis / crate::run::MS_PER_TICK) as u32;
         }
     }
 }
