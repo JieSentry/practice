@@ -123,6 +123,16 @@ fn main() {
     let hp_separator = resources_dir.join("hp_separator_ideal_ratio.png");
     let hp_shield = resources_dir.join("hp_shield_ideal_ratio.png");
 
+    // Threads of Fate templates  
+let tof_bulb = resources_dir.join("tof_bulb_ideal_ratio.png");  
+let tof_maple_mailbox = resources_dir.join("tof_maple_mailbox_ideal_ratio.png");  
+let tof_complete = resources_dir.join("tof_complete_ideal_ratio.png");  
+let tof_unravelling = resources_dir.join("tof_unravelling_ideal_ratio.png");  
+let tof_fate_character_ui = resources_dir.join("tof_fate_character_ui_ideal_ratio.png");  
+let tof_fate_character = resources_dir.join("tof_fate_character_ideal_ratio.png");  
+let tof_ask_button = resources_dir.join("tof_ask_button_ideal_ratio.png");  
+let tof_fate_dialogue = resources_dir.join("tof_fate_dialogue_ideal_ratio.png");
+
     let familiar_button_save = resources_dir.join("familiar_button_save_ideal_ratio.png");
     let familiar_button_setup = resources_dir.join("familiar_button_setup_ideal_ratio.png");
     let familiar_button_level = resources_dir.join("familiar_button_level_ideal_ratio.png");
@@ -162,6 +172,16 @@ fn main() {
         .build_server(false)
         .compile_protos(&[proto_file], &[proto_dir])
         .unwrap();
+
+    // Threads of Fate  
+println!("cargo:rustc-env=TOF_BULB_TEMPLATE={}", tof_bulb.to_str().unwrap());  
+println!("cargo:rustc-env=TOF_MAPLE_MAILBOX_TEMPLATE={}", tof_maple_mailbox.to_str().unwrap());  
+println!("cargo:rustc-env=TOF_COMPLETE_TEMPLATE={}", tof_complete.to_str().unwrap());  
+println!("cargo:rustc-env=TOF_UNRAVELLING_TEMPLATE={}", tof_unravelling.to_str().unwrap());  
+println!("cargo:rustc-env=TOF_FATE_CHARACTER_UI_TEMPLATE={}", tof_fate_character_ui.to_str().unwrap());  
+println!("cargo:rustc-env=TOF_FATE_CHARACTER_TEMPLATE={}", tof_fate_character.to_str().unwrap());  
+println!("cargo:rustc-env=TOF_ASK_BUTTON_TEMPLATE={}", tof_ask_button.to_str().unwrap());  
+println!("cargo:rustc-env=TOF_FATE_DIALOGUE_TEMPLATE={}", tof_fate_dialogue.to_str().unwrap());
 
     println!(
         "cargo:rustc-env=POPUP_YES_TEMPLATE={}",
