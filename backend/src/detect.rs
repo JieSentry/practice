@@ -297,6 +297,33 @@ pub trait Detector: Debug + Send + Sync {
 
     /// Detects violetta's number boxes.
     fn detect_violetta_numbers(&self, region: Rect) -> Vec<Rect>;
+
+    /// Detects the Threads of Fate bulb icon.  
+    fn detect_tof_bulb(&self) -> Result<Rect>;  
+  
+    /// Detects the Maple Mailbox UI.  
+    fn detect_tof_maple_mailbox(&self) -> bool;  
+  
+    /// Detects the Threads of Fate Complete entry.  
+    fn detect_tof_complete(&self) -> Result<Rect>;  
+  
+    /// Detects the Unravelling entry.  
+    fn detect_tof_unravelling(&self) -> Result<Rect>;  
+  
+    /// Detects the Fate Character UI.  
+    fn detect_tof_fate_character_ui(&self) -> bool;  
+  
+    /// Detects the Fate Character (user-customizable via localization).  
+    fn detect_tof_fate_character(&self) -> Result<Rect>;  
+  
+    /// Detects whether a fate character dialog is visible.  
+    fn detect_tof_fate_character_dialog(&self) -> bool;  
+  
+    /// Detects the Ask button (user-customizable via localization).  
+    fn detect_tof_ask_button(&self) -> Result<Rect>;  
+  
+    /// Detects the Next button during Threads of Fate dialog.  
+    fn detect_tof_next_button(&self) -> Result<Rect>;
 }
 
 type MatFn = Box<dyn FnOnce() -> Mat + Send>;
@@ -445,6 +472,42 @@ impl Detector for DefaultDetector {
         detect_player_buff(mat, kind)
     }
 
+fn detect_tof_bulb(&self) -> Result<Rect> {  
+    detect_tof_bulb(self.grayscale())  
+}  
+  
+fn detect_tof_maple_mailbox(&self) -> bool {  
+    detect_tof_maple_mailbox(self.grayscale())  
+}  
+  
+fn detect_tof_complete(&self) -> Result<Rect> {  
+    detect_tof_complete(self.grayscale())  
+}  
+  
+fn detect_tof_unravelling(&self) -> Result<Rect> {  
+    detect_tof_unravelling(self.grayscale())  
+}  
+  
+fn detect_tof_fate_character_ui(&self) -> bool {  
+    detect_tof_fate_character_ui(self.grayscale())  
+}  
+  
+fn detect_tof_fate_character(&self) -> Result<Rect> {  
+    detect_tof_fate_character(self.grayscale(), &self.localization)  
+}  
+  
+fn detect_tof_fate_character_dialog(&self) -> bool {  
+    detect_tof_fate_character_dialog(self.grayscale())  
+}  
+  
+fn detect_tof_ask_button(&self) -> Result<Rect> {  
+    detect_tof_ask_button(self.grayscale(), &self.localization)  
+}  
+  
+fn detect_tof_next_button(&self) -> Result<Rect> {  
+    detect_tof_next_button(self.grayscale())  
+}
+    
     fn detect_rune_arrows(&self, ignore: Vec<Rect>) -> Vec<Arrow> {
         detect_rune_arrows(self.bgr(), ignore).unwrap_or_default()
     }
@@ -3367,6 +3430,97 @@ fn to_input_value(mat: &impl MatTraitConst) -> SessionInputValue<'static> {
     let input = (shape.to_vec(), mat_t.data_typed::<f32>().unwrap());
     let tensor = TensorRef::from_array_view(input).unwrap();
     SessionInputValue::Owned(tensor.clone().into_dyn())
+}
+
+// --- Threads of Fate detection functions ---  
+  
+static TOF_BULB_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {  
+    imgcodecs::imdecode(include_bytes!(env!("TOF_BULB_TEMPLATE")), IMREAD_GRAYSCALE).unwrap()  
+});  
+  
+static TOF_MAPLE_MAILBOX_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {  
+    imgcodecs::imdecode(include_bytes!(env!("TOF_MAPLE_MAILBOX_TEMPLATE")), IMREAD_GRAYSCALE).unwrap()  
+});  
+  
+static TOF_COMPLETE_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {  
+    imgcodecs::imdecode(include_bytes!(env!("TOF_COMPLETE_TEMPLATE")), IMREAD_GRAYSCALE).unwrap()  
+});  
+  
+static TOF_UNRAVELLING_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {  
+    imgcodecs::imdecode(include_bytes!(env!("TOF_UNRAVELLING_TEMPLATE")), IMREAD_GRAYSCALE).unwrap()  
+});  
+  
+static TOF_FATE_CHARACTER_UI_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {  
+    imgcodecs::imdecode(include_bytes!(env!("TOF_FATE_CHARACTER_UI_TEMPLATE")), IMREAD_GRAYSCALE).unwrap()  
+});  
+  
+static TOF_FATE_CHARACTER_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {  
+    imgcodecs::imdecode(include_bytes!(env!("TOF_FATE_CHARACTER_TEMPLATE")), IMREAD_GRAYSCALE).unwrap()  
+});  
+  
+static TOF_ASK_BUTTON_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {  
+    imgcodecs::imdecode(include_bytes!(env!("TOF_ASK_BUTTON_TEMPLATE")), IMREAD_GRAYSCALE).unwrap()  
+});  
+  
+static TOF_FATE_DIALOGUE_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {  
+    imgcodecs::imdecode(include_bytes!(env!("TOF_FATE_DIALOGUE_TEMPLATE")), IMREAD_GRAYSCALE).unwrap()  
+});  
+  
+fn detect_tof_bulb(grayscale: &impl ToInputArray) -> Result<Rect> {  
+    detect_template(grayscale, &*TOF_BULB_TEMPLATE, Point::default(), 0.75)  
+}  
+  
+fn detect_tof_maple_mailbox(grayscale: &impl ToInputArray) -> bool {  
+    detect_template(grayscale, &*TOF_MAPLE_MAILBOX_TEMPLATE, Point::default(), 0.75).is_ok()  
+}  
+  
+fn detect_tof_complete(grayscale: &impl ToInputArray) -> Result<Rect> {  
+    detect_template(grayscale, &*TOF_COMPLETE_TEMPLATE, Point::default(), 0.75)  
+}  
+  
+fn detect_tof_unravelling(grayscale: &impl ToInputArray) -> Result<Rect> {  
+    detect_template(grayscale, &*TOF_UNRAVELLING_TEMPLATE, Point::default(), 0.75)  
+}  
+  
+fn detect_tof_fate_character_ui(grayscale: &impl ToInputArray) -> bool {  
+    detect_template(grayscale, &*TOF_FATE_CHARACTER_UI_TEMPLATE, Point::default(), 0.75).is_ok()  
+}  
+  
+fn detect_tof_fate_character(grayscale: &impl ToInputArray, localization: &Localization) -> Result<Rect> {  
+    let template = localization  
+        .tof_fate_character_base64  
+        .as_ref()  
+        .and_then(|base64| to_mat_from_base64(base64, true).ok());  
+  
+    detect_template(  
+        grayscale,  
+        template.as_ref().unwrap_or(&*TOF_FATE_CHARACTER_TEMPLATE),  
+        Point::default(),  
+        0.75,  
+    )  
+}  
+  
+fn detect_tof_fate_character_dialog(grayscale: &impl ToInputArray) -> bool {  
+    detect_template(grayscale, &*TOF_FATE_DIALOGUE_TEMPLATE, Point::default(), 0.75).is_ok()  
+}  
+  
+fn detect_tof_ask_button(grayscale: &impl ToInputArray, localization: &Localization) -> Result<Rect> {  
+    let template = localization  
+        .tof_ask_button_base64  
+        .as_ref()  
+        .and_then(|base64| to_mat_from_base64(base64, true).ok());  
+  
+    detect_template(  
+        grayscale,  
+        template.as_ref().unwrap_or(&*TOF_ASK_BUTTON_TEMPLATE),  
+        Point::default(),  
+        0.75,  
+    )  
+}  
+  
+fn detect_tof_next_button(grayscale: &impl ToInputArray) -> Result<Rect> {  
+    // Reuse the existing POPUP_NEXT_TEMPLATE for next button detection  
+    detect_template(grayscale, &*POPUP_NEXT_TEMPLATE, Point::default(), 0.75)  
 }
 
 #[inline]
