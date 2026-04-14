@@ -826,6 +826,9 @@ fn detect_esc_settings(
     if detect_hexa_menu(grayscale) {
         return true;
     }
+    if detect_familiar_menu_opened(grayscale) {  
+        return true;  
+    } 
 
     false
 }
