@@ -514,18 +514,6 @@ fn update_wait_interval(_resources: &mut Resources, tof: &mut ThreadsOfFateState
         }  
     }  
 }  
-  
-/// Terminal state  
-fn update_completing(_resources: &mut Resources, tof: &mut ThreadsOfFateState) {  
-    let State::Completing(timeout, completed) = tof.state else {  
-        panic!("threads of fate state is not completing")  
-    };  
-  
-    match next_timeout_lifecycle(timeout, 20) {  
-        Lifecycle::Started(timeout) | Lifecycle::Updated(timeout) => {  
-            tof.state = State::Completing(timeout, completed);  
-        }
-
         /// Terminal state  
 fn update_completing(_resources: &mut Resources, tof: &mut ThreadsOfFateState) {  
     let State::Completing(timeout, completed) = tof.state else {  
