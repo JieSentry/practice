@@ -159,6 +159,8 @@ pub struct RotatorBuildArgs {
     pub enable_reset_normal_actions_on_erda: bool,
     pub enable_using_generic_booster: bool,
     pub enable_using_hexa_booster: bool,
+    pub enable_threads_of_fate: bool,  
+pub threads_of_fate_millis: u64,
 }
 
 /// Handles rotating provided [`PlayerAction`]s.
