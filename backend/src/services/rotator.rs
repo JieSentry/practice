@@ -76,6 +76,12 @@ impl RotatorService for DefaultRotatorService {
         self.args.enable_using_hexa_booster = character
             .map(|character| character.hexa_booster_key.enabled)
             .unwrap_or_default();
+        self.args.enable_threads_of_fate = character  
+            .map(|character| character.threads_of_fate_enabled)  
+            .unwrap_or_default();  
+        self.args.threads_of_fate_millis = character  
+            .map(|character| character.threads_of_fate_millis)  
+            .unwrap_or_default();
     }
 
     fn update_from_settings(&mut self, settings: &Settings) {
