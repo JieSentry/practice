@@ -64,6 +64,7 @@ pub fn LocalizationScreen() -> Element {
             SectionPopups {}
             SectionFamiliars {}
             SectionHexa {}
+            SectionThreadsOfFate {}
             SectionOthers {}
         }
     }
@@ -374,6 +375,42 @@ fn SectionFamiliars() -> Element {
             }
         }
     }
+}
+
+#[component]  
+fn SectionThreadsOfFate() -> Element {  
+    let context = use_context::<LocalizationContext>();  
+    let localization = context.localization;  
+    let save_localization = context.save_localization;  
+  
+    rsx! {  
+        Section { title: "Threads of Fate",  
+            div { class: "grid grid-cols-2 gap-4",  
+                LocalizationTemplateInput {  
+                    label: "Fate character",  
+                    template: DetectionTemplate::TofFateCharacter,  
+                    on_value: move |image: Option<Vec<u8>>| async move {  
+                        save_localization(Localization {  
+                            tof_fate_character_base64: to_base64(image, false).await,  
+                            ..localization()  
+                        });  
+                    },  
+                    value: localization().tof_fate_character_base64,  
+                }  
+                LocalizationTemplateInput {  
+                    label: "Ask button",  
+                    template: DetectionTemplate::TofAskButton,  
+                    on_value: move |image: Option<Vec<u8>>| async move {  
+                        save_localization(Localization {  
+                            tof_ask_button_base64: to_base64(image, false).await,  
+                            ..localization()  
+                        });  
+                    },  
+                    value: localization().tof_ask_button_base64,  
+                }  
+            }  
+        }  
+    }  
 }
 
 #[component]
