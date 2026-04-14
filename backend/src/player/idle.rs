@@ -18,6 +18,7 @@ use crate::{
     player::{
         PlayerEntity, SolvingShape, exchange_booster::ExchangingBooster,
         solve_violetta::SolvingVioletta, unstuck::Unstucking, use_booster::UsingBooster,
+        threads_of_fate::ThreadsOfFateState,
     },
     rng::Rng,
 };
@@ -224,6 +225,15 @@ fn update_from_action(
             player.state = Player::Unstucking(Unstucking::new_esc());
         }
 
+        Some(PlayerAction::ThreadsOfFate) => {  
+            let config = &player.context.config;  
+            player.state = Player::ThreadsOfFate(ThreadsOfFateState::new(  
+            config.threads_of_fate_count,  
+            config.threads_of_fate_interval_ticks,  
+            config.interact_key,  
+            ));  
+        }
+        
         Some(PlayerAction::SolveShape) => {
             player.state = Player::SolvingShape(SolvingShape::default());
         }
