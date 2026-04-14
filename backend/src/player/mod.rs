@@ -18,6 +18,7 @@ use timeout::Timeout;
 use unstuck::update_unstucking_state;
 use up_jump::{UpJumping, update_up_jumping_state};
 use use_key::{UseKey, update_use_key_state};
+use crate::player::threads_of_fate::{ThreadsOfFateState, update_threads_of_fate_state};
 
 use crate::{
     bridge::KeyKind,
@@ -57,6 +58,7 @@ mod timeout;
 mod unstuck;
 mod up_jump;
 mod use_booster;
+mod threads_of_fate;  
 mod use_key;
 
 pub use actions::*;
@@ -114,6 +116,8 @@ pub enum Player {
     CashShopThenExit(CashShop),
     #[strum(to_string = "FamiliarsSwapping({0})")]
     FamiliarsSwapping(FamiliarsSwapping),
+    #[strum(to_string = "ThreadsOfFate({0})")]  
+    ThreadsOfFate(ThreadsOfFateState),
     Panicking(Panicking),
     UsingBooster(UsingBooster),
     ExchangingBooster(ExchangingBooster),
@@ -154,6 +158,7 @@ impl Player {
             | Player::UseKey(_)
             | Player::FamiliarsSwapping(_)
             | Player::Panicking(_)
+            | Player::ThreadsOfFate(_)
             | Player::UsingBooster(_)
             | Player::ExchangingBooster(_)
             | Player::SolvingShape(_)
@@ -270,6 +275,7 @@ fn update_non_positional_state(
         }
         Player::UsingBooster(_) => update_using_booster_state(resources, player),
         Player::ExchangingBooster(_) => update_exchanging_booster_state(resources, player),
+        Player::ThreadsOfFate(_) => update_threads_of_fate_state(resources, player),
         Player::Detecting
         | Player::Idle
         | Player::Moving(_, _, _)
@@ -278,6 +284,7 @@ fn update_non_positional_state(
         | Player::Grappling(_)
         | Player::Jumping(_)
         | Player::UpJumping(_)
+        | Player::ThreadsOfFate(_)
         | Player::Falling(_) => return false,
     }
 
