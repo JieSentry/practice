@@ -395,46 +395,47 @@ fn update_click_fate_character(resources: &mut Resources, tof: &mut ThreadsOfFat
     }  
 }  
   
-/// Step 9: Click ask.png (user-customizable via localization)  
+/// Step 9: Click ask.png  
 fn update_click_ask(resources: &mut Resources, tof: &mut ThreadsOfFateState) {  
     let State::ClickAsk(timeout, retry_count) = tof.state else {  
         panic!("threads of fate state is not click ask")  
     };  
   
-    match next_timeout_lifecycle(timeout, 60) {  
+    match next_timeout_lifecycle(timeout, 30) {  
         Lifecycle::Started(timeout) => {  
-            tof.state = State::ClickAsk(timeout, retry_count);  
+            match resources.detector().detect_tof_ask_button() {  
+                Ok(bbox) => {  
+                    let (x, y) = bbox_click_point(bbox);  
+                    resources.input.send_mouse(x, y, MouseKind::Click);  
+                    tof.state = State::InteractDialog(Timeout::default(), 0);  
+                }  
+                Err(_) => {  
+                    tof.state = State::ClickAsk(timeout, retry_count);  
+                }  
+            }  
         }  
         Lifecycle::Ended => {  
-            // After timeout, check if dialog appeared  
-            if resources.detector().detect_tof_fate_character_dialog() {  
-                tof.ask_fail_count = 0;  
-                tof.state = State::InteractDialog(Timeout::default(), 0);  
+            let new_retry = retry_count + 1;  
+            if new_retry >= MAX_ASK_FAIL_COUNT {  
+                info!(target: "backend/player", "threads of fate: ask failed {} times, stopping", MAX_ASK_FAIL_COUNT);  
+                tof.ask_fail_count = new_retry;  
+                resources.input.send_key(KeyKind::Esc);  
+                tof.state = State::Completing(Timeout::default(), false);  
             } else {  
-                let new_retry = retry_count + 1;  
-                if new_retry >= MAX_ASK_FAIL_COUNT {  
-                    // 3 consecutive ask failures - permanently stop  
-                    info!(target: "backend/player", "threads of fate: ask failed {} times, stopping", MAX_ASK_FAIL_COUNT);  
-                    resources.input.send_key(KeyKind::Esc);  
-                    tof.state = State::Completing(Timeout::default(), false);  
-                } else {  
-                    tof.state = State::ClickAsk(Timeout::default(), new_retry);  
-                }  
+                tof.state = State::ClickAsk(Timeout::default(), new_retry);  
             }  
         }  
         Lifecycle::Updated(timeout) => {  
             if timeout.current == 15 {  
-if let Ok(bbox) = resources.detector().detect_tof_ask_button() {  
-    let (x, y) = bbox_click_point(bbox);  
-    resources.input.send_mouse(x, y, MouseKind::Click);  
-}
-                    Err(_) => {}  
+                if let Ok(bbox) = resources.detector().detect_tof_ask_button() {  
+                    let (x, y) = bbox_click_point(bbox);  
+                    resources.input.send_mouse(x, y, MouseKind::Click);  
                 }  
             }  
             tof.state = State::ClickAsk(timeout, retry_count);  
         }  
     }  
-}  
+}
   
 /// Step 10: Press interact key to finish dialog  
 fn update_interact_dialog(resources: &mut Resources, tof: &mut ThreadsOfFateState) {  
