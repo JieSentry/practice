@@ -1814,6 +1814,8 @@ mod tests {
             enable_reset_normal_actions_on_erda: false,
             enable_using_generic_booster: false,
             enable_using_hexa_booster: false,
+            enable_threads_of_fate: false,  
+            threads_of_fate_millis: 0,
         };
 
         rotator.build_actions(args);
