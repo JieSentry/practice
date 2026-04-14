@@ -90,6 +90,12 @@ pub struct Character {
     pub elite_boss_behavior: EliteBossBehavior,
     #[serde(default)]
     pub elite_boss_behavior_key: KeyBinding,
+    #[serde(default)]  
+pub threads_of_fate_enabled: bool,  
+#[serde(default = "threads_of_fate_count_default")]  
+pub threads_of_fate_count: u32,  
+#[serde(default)]  
+pub threads_of_fate_millis: u64,
 }
 
 impl_identifiable!(Character);
@@ -151,8 +157,15 @@ impl Default for Character {
             actions: vec![],
             elite_boss_behavior_key: KeyBinding::default(),
             elite_boss_behavior: EliteBossBehavior::default(),
+            threads_of_fate_enabled: false,  
+threads_of_fate_count: 7,  
+threads_of_fate_millis: 0,
         }
     }
+}
+
+fn threads_of_fate_count_default() -> u32 {  
+    7  
 }
 
 fn feed_pet_count_default() -> u32 {
