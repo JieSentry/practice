@@ -3454,11 +3454,11 @@ static TOF_FATE_CHARACTER_UI_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {
     imgcodecs::imdecode(include_bytes!(env!("TOF_FATE_CHARACTER_UI_TEMPLATE")), IMREAD_GRAYSCALE).unwrap()  
 });  
   
-static TOF_FATE_CHARACTER_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {  
+pub static TOF_FATE_CHARACTER_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {  
     imgcodecs::imdecode(include_bytes!(env!("TOF_FATE_CHARACTER_TEMPLATE")), IMREAD_GRAYSCALE).unwrap()  
 });  
   
-static TOF_ASK_BUTTON_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {  
+pub static TOF_ASK_BUTTON_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {  
     imgcodecs::imdecode(include_bytes!(env!("TOF_ASK_BUTTON_TEMPLATE")), IMREAD_GRAYSCALE).unwrap()  
 });  
   
