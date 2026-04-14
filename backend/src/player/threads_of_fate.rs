@@ -333,7 +333,7 @@ fn update_find_unravelling(resources: &mut Resources, tof: &mut ThreadsOfFateSta
 }  
   
 /// Step 6: After clicking unravelling, wait briefly  
-fn update_click_unravelling(resources: &mut Resources, tof: &mut ThreadsOfFateState) {  
+fn update_click_unravelling(_resources: &mut Resources, tof: &mut ThreadsOfFateState) {
     let State::ClickUnravelling(timeout) = tof.state else {  
         panic!("threads of fate state is not click unravelling")  
     };  
