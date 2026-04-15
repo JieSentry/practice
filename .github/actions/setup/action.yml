@@ -1,4 +1,5 @@
 name: Setup
+description: "Setup build environment for CI" 
 runs:
   using: composite
   steps:
