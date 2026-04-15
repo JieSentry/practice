@@ -158,16 +158,17 @@ fn update_click_bulb(resources: &mut Resources, tof: &mut ThreadsOfFateState) {
         Lifecycle::Started(timeout) => {    
             tof.state = State::ClickBulb(timeout);    
         }    
-        Lifecycle::Ended => {    
-            info!(target: "backend/player", "threads of fate: failed to find bulb");    
-            tof.state = State::Completing(Timeout::default(), false);    
-        }    
+Lifecycle::Ended => {  
+    info!(target: "backend/player", "threads of fate: mailbox did not appear after clicking bulb");  
+    tof.state = State::Completing(Timeout::default(), false);  
+}
         Lifecycle::Updated(timeout) => {    
             // 每 10 tick 检查邮箱是否已出现（说明之前的点击成功了）  
-            if timeout.current % 10 == 0 && resources.detector().detect_tof_maple_mailbox() {    
-                tof.state = State::FindComplete(Timeout::default());    
-                return;    
-            }    
+if timeout.current % 10 == 0 && resources.detector().detect_tof_maple_mailbox() {  
+    info!(target: "backend/player", "threads of fate: mailbox detected, looking for complete");  
+    tof.state = State::FindComplete(Timeout::default());  
+    return;  
+}
             // 每 15 tick 重试检测并点击灯泡  
 if timeout.current % 15 == 0  
     && let Ok(bbox) = resources.detector().detect_tof_bulb()  
