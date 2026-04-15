@@ -476,9 +476,9 @@ fn detect_tof_bulb(&self) -> Result<Rect> {
     detect_tof_bulb(self.bgr())  // grayscale → bgr  
 }    
   
-fn detect_tof_maple_mailbox(&self) -> bool {    
-    detect_tof_maple_mailbox(self.grayscale())  // 保持不变  
-}    
+fn detect_tof_maple_mailbox(&self) -> bool {  
+    detect_tof_maple_mailbox(self.bgr())  // grayscale → bgr  
+}
   
 fn detect_tof_complete(&self) -> Result<Rect> {    
     detect_tof_complete(self.bgr())  // grayscale → bgr  
@@ -3439,10 +3439,10 @@ static TOF_BULB_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {
     imgcodecs::imdecode(include_bytes!(env!("TOF_BULB_TEMPLATE")), IMREAD_COLOR).unwrap()    
 });    
   
-// 保持 IMREAD_GRAYSCALE（邮箱图标灰度对比度足够，且当前能正常工作）  
-static TOF_MAPLE_MAILBOX_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {    
-    imgcodecs::imdecode(include_bytes!(env!("TOF_MAPLE_MAILBOX_TEMPLATE")), IMREAD_GRAYSCALE).unwrap()    
-});    
+// 改为 IMREAD_COLOR  
+static TOF_MAPLE_MAILBOX_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {  
+    imgcodecs::imdecode(include_bytes!(env!("TOF_MAPLE_MAILBOX_TEMPLATE")), IMREAD_COLOR).unwrap()  
+});
   
 // 改为 IMREAD_COLOR  
 static TOF_COMPLETE_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {    
@@ -3479,10 +3479,10 @@ fn detect_tof_bulb(bgr: &impl ToInputArray) -> Result<Rect> {
     detect_template(bgr, &*TOF_BULB_TEMPLATE, Point::default(), 0.75)    
 }    
   
-// 保持不变  
-fn detect_tof_maple_mailbox(grayscale: &impl ToInputArray) -> bool {    
-    detect_template(grayscale, &*TOF_MAPLE_MAILBOX_TEMPLATE, Point::default(), 0.75).is_ok()    
-}    
+// grayscale → bgr  
+fn detect_tof_maple_mailbox(bgr: &impl ToInputArray) -> bool {  
+    detect_template(bgr, &*TOF_MAPLE_MAILBOX_TEMPLATE, Point::default(), 0.75).is_ok()  
+}
   
 // 参数名 grayscale → bgr  
 fn detect_tof_complete(bgr: &impl ToInputArray) -> Result<Rect> {    
