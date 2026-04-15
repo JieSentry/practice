@@ -148,39 +148,37 @@ pub fn update_threads_of_fate_state(resources: &mut Resources, player: &mut Play
     }  
 }  
   
-/// Step 1: Find bulb.png and click it  
-fn update_click_bulb(resources: &mut Resources, tof: &mut ThreadsOfFateState) {  
-    let State::ClickBulb(timeout) = tof.state else {  
-        panic!("threads of fate state is not click bulb")  
-    };  
+/// Step 1: Find bulb.png and click it    
+fn update_click_bulb(resources: &mut Resources, tof: &mut ThreadsOfFateState) {    
+    let State::ClickBulb(timeout) = tof.state else {    
+        panic!("threads of fate state is not click bulb")    
+    };    
   
-    match next_timeout_lifecycle(timeout, 90) {  
-        Lifecycle::Started(timeout) => {  
-            tof.state = State::ClickBulb(timeout);  
-        }  
-        Lifecycle::Ended => {  
-            // Failed to find bulb after timeout  
-            info!(target: "backend/player", "threads of fate: failed to find bulb");  
-            tof.state = State::Completing(Timeout::default(), false);  
-        }  
-        Lifecycle::Updated(timeout) => {  
-            if timeout.current == 30 {  
-                match resources.detector().detect_tof_bulb() {  
-                    Ok(bbox) => {  
-                        let (x, y) = bbox_click_point(bbox);  
-                        resources.input.send_mouse(x, y, MouseKind::Click);  
-                        tof.state = State::WaitMailbox(Timeout::default());  
-                    }  
-                    Err(_) => {  
-                        tof.state = State::ClickBulb(timeout);  
-                    }  
-                }  
-            } else {  
-                tof.state = State::ClickBulb(timeout);  
-            }  
-        }  
-    }  
-}  
+    match next_timeout_lifecycle(timeout, 90) {    
+        Lifecycle::Started(timeout) => {    
+            tof.state = State::ClickBulb(timeout);    
+        }    
+        Lifecycle::Ended => {    
+            info!(target: "backend/player", "threads of fate: failed to find bulb");    
+            tof.state = State::Completing(Timeout::default(), false);    
+        }    
+        Lifecycle::Updated(timeout) => {    
+            // 每 10 tick 检查邮箱是否已出现（说明之前的点击成功了）  
+            if timeout.current % 10 == 0 && resources.detector().detect_tof_maple_mailbox() {    
+                tof.state = State::FindComplete(Timeout::default());    
+                return;    
+            }    
+            // 每 15 tick 重试检测并点击灯泡  
+            if timeout.current % 15 == 0 {    
+                if let Ok(bbox) = resources.detector().detect_tof_bulb() {    
+                    let (x, y) = bbox_click_point(bbox);    
+                    resources.input.send_mouse(x, y, MouseKind::Click);    
+                }    
+            }    
+            tof.state = State::ClickBulb(timeout);    
+        }    
+    }    
+}
   
 /// Step 2: Wait for maple_mailbox.png to appear  
 fn update_wait_mailbox(resources: &mut Resources, tof: &mut ThreadsOfFateState) {  
@@ -206,40 +204,41 @@ fn update_wait_mailbox(resources: &mut Resources, tof: &mut ThreadsOfFateState) 
     }  
 }  
   
-/// Step 3: Look for threads_of_fate_complete  
-fn update_find_complete(resources: &mut Resources, tof: &mut ThreadsOfFateState) {  
-    let State::FindComplete(timeout) = tof.state else {  
-        panic!("threads of fate state is not find complete")  
-    };  
+/// Step 3: Look for threads_of_fate_complete    
+fn update_find_complete(resources: &mut Resources, tof: &mut ThreadsOfFateState) {    
+    let State::FindComplete(timeout) = tof.state else {    
+        panic!("threads of fate state is not find complete")    
+    };    
   
-    match next_timeout_lifecycle(timeout, 30) {  
-        Lifecycle::Started(timeout) => {  
-            tof.state = State::FindComplete(timeout);  
-        }  
-        Lifecycle::Ended => {  
-            // No complete quest found, look for unravelling  
-            tof.found_complete = false;  
-            tof.state = State::FindUnravelling(Timeout::default(), 0);  
-        }  
-        Lifecycle::Updated(timeout) => {  
-            if timeout.current == 15 {  
-                match resources.detector().detect_tof_complete() {  
-                    Ok(bbox) => {  
-                        let (x, y) = bbox_click_point(bbox);  
-                        resources.input.send_mouse(x, y, MouseKind::Click);  
-                        tof.found_complete = true;  
-                        tof.state = State::InteractComplete(Timeout::default(), 0);  
-                    }  
-                    Err(_) => {  
-                        tof.state = State::FindComplete(timeout);  
-                    }  
-                }  
-            } else {  
-                tof.state = State::FindComplete(timeout);  
-            }  
-        }  
-    }  
-}  
+    match next_timeout_lifecycle(timeout, 30) {    
+        Lifecycle::Started(timeout) => {    
+            tof.state = State::FindComplete(timeout);    
+        }    
+        Lifecycle::Ended => {    
+            // No complete quest found, look for unravelling    
+            tof.found_complete = false;    
+            tof.state = State::FindUnravelling(Timeout::default(), 0);    
+        }    
+        Lifecycle::Updated(timeout) => {    
+            // 每 10 tick 重试检测（30 tick 内有 3 次机会）  
+            if timeout.current % 10 == 0 {    
+                match resources.detector().detect_tof_complete() {    
+                    Ok(bbox) => {    
+                        let (x, y) = bbox_click_point(bbox);    
+                        resources.input.send_mouse(x, y, MouseKind::Click);    
+                        tof.found_complete = true;    
+                        tof.state = State::InteractComplete(Timeout::default(), 0);    
+                    }    
+                    Err(_) => {    
+                        tof.state = State::FindComplete(timeout);    
+                    }    
+                }    
+            } else {    
+                tof.state = State::FindComplete(timeout);    
+            }    
+        }    
+    }    
+}
   
 /// Step 4: Press interact key multiple times to finish complete quest dialog  
 fn update_interact_complete(resources: &mut Resources, tof: &mut ThreadsOfFateState) {  
@@ -361,80 +360,89 @@ fn update_wait_fate_character_ui(resources: &mut Resources, tof: &mut ThreadsOfF
     }  
 }  
   
-/// Step 8: Click fate_character.png (user-customizable via localization)  
-fn update_click_fate_character(resources: &mut Resources, tof: &mut ThreadsOfFateState) {  
-    let State::ClickFateCharacter(timeout) = tof.state else {  
-        panic!("threads of fate state is not click fate character")  
-    };  
+/// Step 8: Click fate_character.png (user-customizable via localization)    
+fn update_click_fate_character(resources: &mut Resources, tof: &mut ThreadsOfFateState) {    
+    let State::ClickFateCharacter(timeout) = tof.state else {    
+        panic!("threads of fate state is not click fate character")    
+    };    
   
-    match next_timeout_lifecycle(timeout, 60) {  
-        Lifecycle::Started(timeout) => {  
-            tof.state = State::ClickFateCharacter(timeout);  
-        }  
-        Lifecycle::Ended => {  
-            info!(target: "backend/player", "threads of fate: failed to find fate character");  
-            resources.input.send_key(KeyKind::Esc);  
-            tof.state = State::Completing(Timeout::default(), false);  
-        }  
-        Lifecycle::Updated(timeout) => {  
-            if timeout.current == 15 {  
-                match resources.detector().detect_tof_fate_character() {  
-                    Ok(bbox) => {  
-                        let (x, y) = bbox_click_point(bbox);  
-                        resources.input.send_mouse(x, y, MouseKind::Click);  
-                        tof.state = State::ClickAsk(Timeout::default(), 0);  
-                    }  
-                    Err(_) => {  
-                        tof.state = State::ClickFateCharacter(timeout);  
-                    }  
-                }  
-            } else {  
-                tof.state = State::ClickFateCharacter(timeout);  
-            }  
-        }  
-    }  
-}  
-  
-/// Step 9: Click ask.png  
-fn update_click_ask(resources: &mut Resources, tof: &mut ThreadsOfFateState) {  
-    let State::ClickAsk(timeout, retry_count) = tof.state else {  
-        panic!("threads of fate state is not click ask")  
-    };  
-  
-    match next_timeout_lifecycle(timeout, 30) {  
-        Lifecycle::Started(timeout) => {  
-            match resources.detector().detect_tof_ask_button() {  
-                Ok(bbox) => {  
-                    let (x, y) = bbox_click_point(bbox);  
-                    resources.input.send_mouse(x, y, MouseKind::Click);  
-                    tof.state = State::InteractDialog(Timeout::default(), 0);  
-                }  
-                Err(_) => {  
-                    tof.state = State::ClickAsk(timeout, retry_count);  
-                }  
-            }  
-        }  
-        Lifecycle::Ended => {  
-            let new_retry = retry_count + 1;  
-            if new_retry >= MAX_ASK_FAIL_COUNT {  
-                info!(target: "backend/player", "threads of fate: ask failed {} times, stopping", MAX_ASK_FAIL_COUNT);  
-                tof.ask_fail_count = new_retry;  
-                resources.input.send_key(KeyKind::Esc);  
-                tof.state = State::Completing(Timeout::default(), false);  
-            } else {  
-                tof.state = State::ClickAsk(Timeout::default(), new_retry);  
-            }  
-        }  
-        Lifecycle::Updated(timeout) => {  
-if timeout.current == 15  
-    && let Ok(bbox) = resources.detector().detect_tof_ask_button()  
-{  
-    let (x, y) = bbox_click_point(bbox);  
-    resources.input.send_mouse(x, y, MouseKind::Click);  
+    match next_timeout_lifecycle(timeout, 60) {    
+        Lifecycle::Started(timeout) => {    
+            tof.state = State::ClickFateCharacter(timeout);    
+        }    
+        Lifecycle::Ended => {    
+            info!(target: "backend/player", "threads of fate: failed to find fate character");    
+            resources.input.send_key(KeyKind::Esc);    
+            tof.state = State::Completing(Timeout::default(), false);    
+        }    
+        Lifecycle::Updated(timeout) => {    
+            // 每 15 tick 重试检测并点击（60 tick 内有 4 次机会）  
+            if timeout.current % 15 == 0 {    
+                match resources.detector().detect_tof_fate_character() {    
+                    Ok(bbox) => {    
+                        let (x, y) = bbox_click_point(bbox);    
+                        resources.input.send_mouse(x, y, MouseKind::Click);    
+                        tof.state = State::ClickAsk(Timeout::default(), 0);    
+                    }    
+                    Err(_) => {    
+                        tof.state = State::ClickFateCharacter(timeout);    
+                    }    
+                }    
+            } else {    
+                tof.state = State::ClickFateCharacter(timeout);    
+            }    
+        }    
+    }    
 }
-            tof.state = State::ClickAsk(timeout, retry_count);  
-        }  
-    }  
+  
+/// Step 9: Click ask.png    
+fn update_click_ask(resources: &mut Resources, tof: &mut ThreadsOfFateState) {    
+    let State::ClickAsk(timeout, retry_count) = tof.state else {    
+        panic!("threads of fate state is not click ask")    
+    };    
+  
+    match next_timeout_lifecycle(timeout, 30) {    
+        Lifecycle::Started(timeout) => {    
+            // 首次进入时检测并点击  
+            if let Ok(bbox) = resources.detector().detect_tof_ask_button() {    
+                let (x, y) = bbox_click_point(bbox);    
+                resources.input.send_mouse(x, y, MouseKind::Click);    
+            }    
+            tof.state = State::ClickAsk(timeout, retry_count);    
+        }    
+        Lifecycle::Ended => {    
+            // 检查对话框是否出现（说明 ask 点击成功了）  
+            if resources.detector().detect_tof_fate_character_dialog() {    
+                tof.state = State::InteractDialog(Timeout::default(), 0);    
+                return;    
+            }    
+            // 对话框未出现，重试  
+            let new_retry = retry_count + 1;    
+            if new_retry >= MAX_ASK_FAIL_COUNT {    
+                info!(target: "backend/player", "threads of fate: ask failed {} times, stopping", MAX_ASK_FAIL_COUNT);    
+                tof.ask_fail_count = new_retry;    
+                resources.input.send_key(KeyKind::Esc);    
+                tof.state = State::Completing(Timeout::default(), false);    
+            } else {    
+                tof.state = State::ClickAsk(Timeout::default(), new_retry);    
+            }    
+        }    
+        Lifecycle::Updated(timeout) => {    
+            // 每 10 tick 检查对话框是否已出现  
+            if timeout.current % 10 == 0 && resources.detector().detect_tof_fate_character_dialog() {    
+                tof.state = State::InteractDialog(Timeout::default(), 0);    
+                return;    
+            }    
+            // 每 15 tick 重试点击 ask 按钮  
+            if timeout.current % 15 == 0 {    
+                if let Ok(bbox) = resources.detector().detect_tof_ask_button() {    
+                    let (x, y) = bbox_click_point(bbox);    
+                    resources.input.send_mouse(x, y, MouseKind::Click);    
+                }    
+            }    
+            tof.state = State::ClickAsk(timeout, retry_count);    
+        }    
+    }    
 }
   
 /// Step 10: Press interact key to finish dialog  
