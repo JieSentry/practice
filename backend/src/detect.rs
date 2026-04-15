@@ -472,40 +472,40 @@ impl Detector for DefaultDetector {
         detect_player_buff(mat, kind)
     }
 
-fn detect_tof_bulb(&self) -> Result<Rect> {  
-    detect_tof_bulb(self.bgr())  
-}
+fn detect_tof_bulb(&self) -> Result<Rect> {    
+    detect_tof_bulb(self.bgr())  // grayscale → bgr  
+}    
   
-fn detect_tof_maple_mailbox(&self) -> bool {  
-    detect_tof_maple_mailbox(self.grayscale())  
-}  
+fn detect_tof_maple_mailbox(&self) -> bool {    
+    detect_tof_maple_mailbox(self.grayscale())  // 保持不变  
+}    
   
-fn detect_tof_complete(&self) -> Result<Rect> {  
-    detect_tof_complete(self.grayscale())  
-}  
+fn detect_tof_complete(&self) -> Result<Rect> {    
+    detect_tof_complete(self.bgr())  // grayscale → bgr  
+}    
   
-fn detect_tof_unravelling(&self) -> Result<Rect> {  
-    detect_tof_unravelling(self.grayscale())  
-}  
+fn detect_tof_unravelling(&self) -> Result<Rect> {    
+    detect_tof_unravelling(self.bgr())  // grayscale → bgr  
+}    
   
-fn detect_tof_fate_character_ui(&self) -> bool {  
-    detect_tof_fate_character_ui(self.grayscale())  
-}  
+fn detect_tof_fate_character_ui(&self) -> bool {    
+    detect_tof_fate_character_ui(self.grayscale())  // 保持不变  
+}    
   
-fn detect_tof_fate_character(&self) -> Result<Rect> {  
-    detect_tof_fate_character(self.grayscale(), &self.localization)  
-}  
+fn detect_tof_fate_character(&self) -> Result<Rect> {    
+    detect_tof_fate_character(self.bgr(), &self.localization)  // grayscale → bgr  
+}    
   
-fn detect_tof_fate_character_dialog(&self) -> bool {  
-    detect_tof_fate_character_dialog(self.grayscale())  
-}  
+fn detect_tof_fate_character_dialog(&self) -> bool {    
+    detect_tof_fate_character_dialog(self.grayscale())  // 保持不变  
+}    
   
-fn detect_tof_ask_button(&self) -> Result<Rect> {  
-    detect_tof_ask_button(self.grayscale(), &self.localization)  
-}  
+fn detect_tof_ask_button(&self) -> Result<Rect> {    
+    detect_tof_ask_button(self.bgr(), &self.localization)  // grayscale → bgr  
+}    
   
-fn detect_tof_next_button(&self) -> Result<Rect> {  
-    detect_tof_next_button(self.grayscale())  
+fn detect_tof_next_button(&self) -> Result<Rect> {    
+    detect_tof_next_button(self.grayscale())  // 保持不变  
 }
     
     fn detect_rune_arrows(&self, ignore: Vec<Rect>) -> Vec<Arrow> {
@@ -3432,95 +3432,111 @@ fn to_input_value(mat: &impl MatTraitConst) -> SessionInputValue<'static> {
     SessionInputValue::Owned(tensor.clone().into_dyn())
 }
 
-// --- Threads of Fate detection functions ---  
+// --- Threads of Fate detection functions ---    
   
-static TOF_BULB_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {  
-    imgcodecs::imdecode(include_bytes!(env!("TOF_BULB_TEMPLATE")), IMREAD_COLOR).unwrap()  
-});
+// 改为 IMREAD_COLOR  
+static TOF_BULB_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {    
+    imgcodecs::imdecode(include_bytes!(env!("TOF_BULB_TEMPLATE")), IMREAD_COLOR).unwrap()    
+});    
   
-static TOF_MAPLE_MAILBOX_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {  
-    imgcodecs::imdecode(include_bytes!(env!("TOF_MAPLE_MAILBOX_TEMPLATE")), IMREAD_GRAYSCALE).unwrap()  
-});  
+// 保持 IMREAD_GRAYSCALE（邮箱图标灰度对比度足够，且当前能正常工作）  
+static TOF_MAPLE_MAILBOX_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {    
+    imgcodecs::imdecode(include_bytes!(env!("TOF_MAPLE_MAILBOX_TEMPLATE")), IMREAD_GRAYSCALE).unwrap()    
+});    
   
-static TOF_COMPLETE_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {  
-    imgcodecs::imdecode(include_bytes!(env!("TOF_COMPLETE_TEMPLATE")), IMREAD_GRAYSCALE).unwrap()  
-});  
+// 改为 IMREAD_COLOR  
+static TOF_COMPLETE_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {    
+    imgcodecs::imdecode(include_bytes!(env!("TOF_COMPLETE_TEMPLATE")), IMREAD_COLOR).unwrap()    
+});    
   
-static TOF_UNRAVELLING_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {  
-    imgcodecs::imdecode(include_bytes!(env!("TOF_UNRAVELLING_TEMPLATE")), IMREAD_GRAYSCALE).unwrap()  
-});  
+// 改为 IMREAD_COLOR  
+static TOF_UNRAVELLING_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {    
+    imgcodecs::imdecode(include_bytes!(env!("TOF_UNRAVELLING_TEMPLATE")), IMREAD_COLOR).unwrap()    
+});    
   
-static TOF_FATE_CHARACTER_UI_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {  
-    imgcodecs::imdecode(include_bytes!(env!("TOF_FATE_CHARACTER_UI_TEMPLATE")), IMREAD_GRAYSCALE).unwrap()  
-});  
+// 保持 IMREAD_GRAYSCALE（简单 UI 框架）  
+static TOF_FATE_CHARACTER_UI_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {    
+    imgcodecs::imdecode(include_bytes!(env!("TOF_FATE_CHARACTER_UI_TEMPLATE")), IMREAD_GRAYSCALE).unwrap()    
+});    
   
-pub static TOF_FATE_CHARACTER_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {  
-    imgcodecs::imdecode(include_bytes!(env!("TOF_FATE_CHARACTER_TEMPLATE")), IMREAD_GRAYSCALE).unwrap()  
-});  
+// 改为 IMREAD_COLOR  
+pub static TOF_FATE_CHARACTER_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {    
+    imgcodecs::imdecode(include_bytes!(env!("TOF_FATE_CHARACTER_TEMPLATE")), IMREAD_COLOR).unwrap()    
+});    
   
-pub static TOF_ASK_BUTTON_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {  
-    imgcodecs::imdecode(include_bytes!(env!("TOF_ASK_BUTTON_TEMPLATE")), IMREAD_GRAYSCALE).unwrap()  
-});  
+// 改为 IMREAD_COLOR  
+pub static TOF_ASK_BUTTON_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {    
+    imgcodecs::imdecode(include_bytes!(env!("TOF_ASK_BUTTON_TEMPLATE")), IMREAD_COLOR).unwrap()    
+});    
   
-static TOF_FATE_DIALOGUE_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {  
-    imgcodecs::imdecode(include_bytes!(env!("TOF_FATE_DIALOGUE_TEMPLATE")), IMREAD_GRAYSCALE).unwrap()  
-});  
+// 保持 IMREAD_GRAYSCALE（对话框检测，简单 UI 元素）  
+static TOF_FATE_DIALOGUE_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {    
+    imgcodecs::imdecode(include_bytes!(env!("TOF_FATE_DIALOGUE_TEMPLATE")), IMREAD_GRAYSCALE).unwrap()    
+});    
   
-fn detect_tof_bulb(bgr: &impl ToInputArray) -> Result<Rect> {  
-    detect_template(bgr, &*TOF_BULB_TEMPLATE, Point::default(), 0.75)  
-}
+// 参数名 grayscale → bgr  
+fn detect_tof_bulb(bgr: &impl ToInputArray) -> Result<Rect> {    
+    detect_template(bgr, &*TOF_BULB_TEMPLATE, Point::default(), 0.75)    
+}    
   
-fn detect_tof_maple_mailbox(grayscale: &impl ToInputArray) -> bool {  
-    detect_template(grayscale, &*TOF_MAPLE_MAILBOX_TEMPLATE, Point::default(), 0.75).is_ok()  
-}  
+// 保持不变  
+fn detect_tof_maple_mailbox(grayscale: &impl ToInputArray) -> bool {    
+    detect_template(grayscale, &*TOF_MAPLE_MAILBOX_TEMPLATE, Point::default(), 0.75).is_ok()    
+}    
   
-fn detect_tof_complete(grayscale: &impl ToInputArray) -> Result<Rect> {  
-    detect_template(grayscale, &*TOF_COMPLETE_TEMPLATE, Point::default(), 0.75)  
-}  
+// 参数名 grayscale → bgr  
+fn detect_tof_complete(bgr: &impl ToInputArray) -> Result<Rect> {    
+    detect_template(bgr, &*TOF_COMPLETE_TEMPLATE, Point::default(), 0.75)    
+}    
   
-fn detect_tof_unravelling(grayscale: &impl ToInputArray) -> Result<Rect> {  
-    detect_template(grayscale, &*TOF_UNRAVELLING_TEMPLATE, Point::default(), 0.75)  
-}  
+// 参数名 grayscale → bgr  
+fn detect_tof_unravelling(bgr: &impl ToInputArray) -> Result<Rect> {    
+    detect_template(bgr, &*TOF_UNRAVELLING_TEMPLATE, Point::default(), 0.75)    
+}    
   
-fn detect_tof_fate_character_ui(grayscale: &impl ToInputArray) -> bool {  
-    detect_template(grayscale, &*TOF_FATE_CHARACTER_UI_TEMPLATE, Point::default(), 0.75).is_ok()  
-}  
+// 保持不变  
+fn detect_tof_fate_character_ui(grayscale: &impl ToInputArray) -> bool {    
+    detect_template(grayscale, &*TOF_FATE_CHARACTER_UI_TEMPLATE, Point::default(), 0.75).is_ok()    
+}    
   
-fn detect_tof_fate_character(grayscale: &impl ToInputArray, localization: &Localization) -> Result<Rect> {  
-    let template = localization  
-        .tof_fate_character_base64  
-        .as_ref()  
-        .and_then(|base64| to_mat_from_base64(base64, true).ok());  
+// 参数名 grayscale → bgr，to_mat_from_base64 第二个参数 true → false  
+fn detect_tof_fate_character(bgr: &impl ToInputArray, localization: &Localization) -> Result<Rect> {    
+    let template = localization    
+        .tof_fate_character_base64    
+        .as_ref()    
+        .and_then(|base64| to_mat_from_base64(base64, false).ok());    
   
-    detect_template(  
-        grayscale,  
-        template.as_ref().unwrap_or(&*TOF_FATE_CHARACTER_TEMPLATE),  
-        Point::default(),  
-        0.75,  
-    )  
-}  
+    detect_template(    
+        bgr,    
+        template.as_ref().unwrap_or(&*TOF_FATE_CHARACTER_TEMPLATE),    
+        Point::default(),    
+        0.75,    
+    )    
+}    
   
-fn detect_tof_fate_character_dialog(grayscale: &impl ToInputArray) -> bool {  
-    detect_template(grayscale, &*TOF_FATE_DIALOGUE_TEMPLATE, Point::default(), 0.75).is_ok()  
-}  
+// 保持不变  
+fn detect_tof_fate_character_dialog(grayscale: &impl ToInputArray) -> bool {    
+    detect_template(grayscale, &*TOF_FATE_DIALOGUE_TEMPLATE, Point::default(), 0.75).is_ok()    
+}    
   
-fn detect_tof_ask_button(grayscale: &impl ToInputArray, localization: &Localization) -> Result<Rect> {  
-    let template = localization  
-        .tof_ask_button_base64  
-        .as_ref()  
-        .and_then(|base64| to_mat_from_base64(base64, true).ok());  
+// 参数名 grayscale → bgr，to_mat_from_base64 第二个参数 true → false  
+fn detect_tof_ask_button(bgr: &impl ToInputArray, localization: &Localization) -> Result<Rect> {    
+    let template = localization    
+        .tof_ask_button_base64    
+        .as_ref()    
+        .and_then(|base64| to_mat_from_base64(base64, false).ok());    
   
-    detect_template(  
-        grayscale,  
-        template.as_ref().unwrap_or(&*TOF_ASK_BUTTON_TEMPLATE),  
-        Point::default(),  
-        0.75,  
-    )  
-}  
+    detect_template(    
+        bgr,    
+        template.as_ref().unwrap_or(&*TOF_ASK_BUTTON_TEMPLATE),    
+        Point::default(),    
+        0.75,    
+    )    
+}    
   
-fn detect_tof_next_button(grayscale: &impl ToInputArray) -> Result<Rect> {  
-    // Reuse the existing POPUP_NEXT_TEMPLATE for next button detection  
-    detect_template(grayscale, &*POPUP_NEXT_TEMPLATE, Point::default(), 0.75)  
+// 保持不变（复用 POPUP_NEXT_TEMPLATE，本身就是灰度）  
+fn detect_tof_next_button(grayscale: &impl ToInputArray) -> Result<Rect> {    
+    detect_template(grayscale, &*POPUP_NEXT_TEMPLATE, Point::default(), 0.75)    
 }
 
 #[inline]
