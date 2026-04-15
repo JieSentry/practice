@@ -3442,8 +3442,12 @@ static TOF_BULB_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {
 // 改为 IMREAD_COLOR  
 static TOF_MAPLE_MAILBOX_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {  
     imgcodecs::imdecode(include_bytes!(env!("TOF_MAPLE_MAILBOX_TEMPLATE")), IMREAD_COLOR).unwrap()  
+});  
+
+static TOF_MAPLE_MAILBOX_MASK: LazyLock<Mat> = LazyLock::new(|| {  
+    imgcodecs::imdecode(include_bytes!(env!("TOF_MAPLE_MAILBOX_MASK_TEMPLATE")), IMREAD_GRAYSCALE).unwrap()  
 });
-  
+
 // 改为 IMREAD_COLOR  
 static TOF_COMPLETE_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {    
     imgcodecs::imdecode(include_bytes!(env!("TOF_COMPLETE_TEMPLATE")), IMREAD_COLOR).unwrap()    
@@ -3478,10 +3482,10 @@ static TOF_FATE_DIALOGUE_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {
 fn detect_tof_bulb(bgr: &impl ToInputArray) -> Result<Rect> {    
     detect_template(bgr, &*TOF_BULB_TEMPLATE, Point::default(), 0.75)    
 }    
-  
+
 // grayscale → bgr  
 fn detect_tof_maple_mailbox(bgr: &impl ToInputArray) -> bool {  
-    detect_template(bgr, &*TOF_MAPLE_MAILBOX_TEMPLATE, Point::default(), 0.45).is_ok()  
+    detect_template(bgr, &*TOF_MAPLE_MAILBOX_TEMPLATE, Point::default(), 0.65).is_ok()  
 }
   
 // 参数名 grayscale → bgr  
