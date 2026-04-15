@@ -3481,7 +3481,7 @@ fn detect_tof_bulb(bgr: &impl ToInputArray) -> Result<Rect> {
   
 // grayscale → bgr  
 fn detect_tof_maple_mailbox(bgr: &impl ToInputArray) -> bool {  
-    detect_template(bgr, &*TOF_MAPLE_MAILBOX_TEMPLATE, Point::default(), 0.75).is_ok()  
+    detect_template(bgr, &*TOF_MAPLE_MAILBOX_TEMPLATE, Point::default(), 0.45).is_ok()  
 }
   
 // 参数名 grayscale → bgr  
