@@ -473,8 +473,8 @@ impl Detector for DefaultDetector {
     }
 
 fn detect_tof_bulb(&self) -> Result<Rect> {  
-    detect_tof_bulb(self.grayscale())  
-}  
+    detect_tof_bulb(self.bgr())  
+}
   
 fn detect_tof_maple_mailbox(&self) -> bool {  
     detect_tof_maple_mailbox(self.grayscale())  
@@ -3435,8 +3435,8 @@ fn to_input_value(mat: &impl MatTraitConst) -> SessionInputValue<'static> {
 // --- Threads of Fate detection functions ---  
   
 static TOF_BULB_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {  
-    imgcodecs::imdecode(include_bytes!(env!("TOF_BULB_TEMPLATE")), IMREAD_GRAYSCALE).unwrap()  
-});  
+    imgcodecs::imdecode(include_bytes!(env!("TOF_BULB_TEMPLATE")), IMREAD_COLOR).unwrap()  
+});
   
 static TOF_MAPLE_MAILBOX_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {  
     imgcodecs::imdecode(include_bytes!(env!("TOF_MAPLE_MAILBOX_TEMPLATE")), IMREAD_GRAYSCALE).unwrap()  
@@ -3466,9 +3466,9 @@ static TOF_FATE_DIALOGUE_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {
     imgcodecs::imdecode(include_bytes!(env!("TOF_FATE_DIALOGUE_TEMPLATE")), IMREAD_GRAYSCALE).unwrap()  
 });  
   
-fn detect_tof_bulb(grayscale: &impl ToInputArray) -> Result<Rect> {  
-    detect_template(grayscale, &*TOF_BULB_TEMPLATE, Point::default(), 0.75)  
-}  
+fn detect_tof_bulb(bgr: &impl ToInputArray) -> Result<Rect> {  
+    detect_template(bgr, &*TOF_BULB_TEMPLATE, Point::default(), 0.75)  
+}
   
 fn detect_tof_maple_mailbox(grayscale: &impl ToInputArray) -> bool {  
     detect_template(grayscale, &*TOF_MAPLE_MAILBOX_TEMPLATE, Point::default(), 0.75).is_ok()  
