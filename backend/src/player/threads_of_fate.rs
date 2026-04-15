@@ -169,12 +169,12 @@ fn update_click_bulb(resources: &mut Resources, tof: &mut ThreadsOfFateState) {
                 return;    
             }    
             // 每 15 tick 重试检测并点击灯泡  
-            if timeout.current % 15 == 0 {    
-                if let Ok(bbox) = resources.detector().detect_tof_bulb() {    
-                    let (x, y) = bbox_click_point(bbox);    
-                    resources.input.send_mouse(x, y, MouseKind::Click);    
-                }    
-            }    
+if timeout.current % 15 == 0  
+    && let Ok(bbox) = resources.detector().detect_tof_bulb()  
+{  
+    let (x, y) = bbox_click_point(bbox);  
+    resources.input.send_mouse(x, y, MouseKind::Click);  
+}  
             tof.state = State::ClickBulb(timeout);    
         }    
     }    
@@ -434,12 +434,12 @@ fn update_click_ask(resources: &mut Resources, tof: &mut ThreadsOfFateState) {
                 return;    
             }    
             // 每 15 tick 重试点击 ask 按钮  
-            if timeout.current % 15 == 0 {    
-                if let Ok(bbox) = resources.detector().detect_tof_ask_button() {    
-                    let (x, y) = bbox_click_point(bbox);    
-                    resources.input.send_mouse(x, y, MouseKind::Click);    
-                }    
-            }    
+if timeout.current % 15 == 0  
+    && let Ok(bbox) = resources.detector().detect_tof_ask_button()  
+{  
+    let (x, y) = bbox_click_point(bbox);  
+    resources.input.send_mouse(x, y, MouseKind::Click);  
+}
             tof.state = State::ClickAsk(timeout, retry_count);    
         }    
     }    
