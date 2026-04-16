@@ -456,7 +456,7 @@ fn update_click_ask(resources: &mut Resources, tof: &mut ThreadsOfFateState) {
         }    
      } 
 } 
-
+  
 /// Step 10: Press interact key to finish dialog  
 fn update_interact_dialog(resources: &mut Resources, tof: &mut ThreadsOfFateState) {  
     let State::InteractDialog(timeout, press_count) = tof.state else {  
@@ -482,14 +482,12 @@ fn update_interact_dialog(resources: &mut Resources, tof: &mut ThreadsOfFateStat
             } else {  
                 // Check if dialog is still visible  
                 // During ThreadsOfFate, next.png detection should press interact instead of ESC  
-                if resources.detector().detect_tof_dialog_visible() {  
-    resources.input.send_key(tof.interact_key);  
-    tof.state = State::InteractDialog(Timeout::default(), new_count);  
-} else {   
+                if resources.detector().detect_tof_next_button().is_ok() {  
                     // Next button visible - press interact key instead of ESC  
                     resources.input.send_key(tof.interact_key);  
                     tof.state = State::InteractDialog(Timeout::default(), new_count);  
-                } else if resources.detector().detect_tof_fate_character_dialog() {  
+                }
+                 else if resources.detector().detect_tof_fate_character_dialog().is_ok() {
                     tof.state = State::InteractDialog(Timeout::default(), new_count);  
                 } else {  
                     // Dialog ended  
