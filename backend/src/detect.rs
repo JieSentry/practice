@@ -3468,10 +3468,17 @@ pub static TOF_ASK_BUTTON_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {
     imgcodecs::imdecode(include_bytes!(env!("TOF_ASK_BUTTON_TEMPLATE")), IMREAD_COLOR).unwrap()    
 });    
   
-// 保持 IMREAD_GRAYSCALE（对话框检测，简单 UI 元素）  
-static TOF_FATE_DIALOGUE_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {    
-    imgcodecs::imdecode(include_bytes!(env!("TOF_FATE_DIALOGUE_TEMPLATE")), IMREAD_GRAYSCALE).unwrap()    
-});    
+pub static TOF_YES_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {  
+    imgcodecs::imdecode(include_bytes!(env!("TOF_YES_TEMPLATE")), IMREAD_COLOR).unwrap()  
+});  
+  
+pub static TOF_NEXT_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {  
+    imgcodecs::imdecode(include_bytes!(env!("TOF_NEXT_TEMPLATE")), IMREAD_COLOR).unwrap()  
+});  
+  
+static TOF_BULE_POTION_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {  
+    imgcodecs::imdecode(include_bytes!(env!("TOF_BULE_POTION_TEMPLATE")), IMREAD_COLOR).unwrap()  
+});
   
 // 参数名 grayscale → bgr  
 fn detect_tof_bulb(bgr: &impl ToInputArray) -> Result<Rect> {    
