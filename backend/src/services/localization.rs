@@ -11,7 +11,7 @@ use crate::{
         POPUP_CANCEL_NEW_TEMPLATE, POPUP_CANCEL_OLD_TEMPLATE, POPUP_CONFIRM_TEMPLATE,
         POPUP_END_CHAT_TEMPLATE, POPUP_NEXT_TEMPLATE, POPUP_OK_NEW_TEMPLATE, POPUP_OK_OLD_TEMPLATE,
         POPUP_YES_TEMPLATE, TIMER_TEMPLATE, to_base64_from_mat,TOF_FATE_CHARACTER_TEMPLATE,
-        TOF_ASK_BUTTON_TEMPLATE,
+        TOF_ASK_BUTTON_TEMPLATE,TOF_YES_TEMPLATE, TOF_NEXT_TEMPLATE,
     },
     ecs::Resources,
     utils::{self, DatasetDir},
@@ -65,6 +65,9 @@ impl LocalizationService for DefaultLocalizationService {
             DetectionTemplate::LieDetectorShapePrepare => &LIE_DETECTOR_SHAPE_PREPARE_TEMPLATE,
             DetectionTemplate::TofFateCharacter => &TOF_FATE_CHARACTER_TEMPLATE,  
             DetectionTemplate::TofAskButton => &TOF_ASK_BUTTON_TEMPLATE,
+            DetectionTemplate::TofAskButton => &TOF_ASK_BUTTON_TEMPLATE,  
+            DetectionTemplate::TofYes => &TOF_YES_TEMPLATE,  
+            DetectionTemplate::TofNext => &TOF_NEXT_TEMPLATE,
         };
 
         to_base64_from_mat(template).expect("convert successfully")
