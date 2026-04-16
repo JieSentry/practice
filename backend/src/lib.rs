@@ -191,8 +191,7 @@ pub enum DetectionTemplate {
     LieDetectorNew,
     LieDetectorOld,
     TofFateCharacter,  
-    TofAskButton,
-    TofAskButton,  
+    TofAskButton, 
     TofYes,  
     TofNext,
 }
