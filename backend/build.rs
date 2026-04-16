@@ -131,7 +131,9 @@ let tof_unravelling = resources_dir.join("tof_unravelling_ideal_ratio.png");
 let tof_fate_character_ui = resources_dir.join("tof_fate_character_ui_ideal_ratio.png");  
 let tof_fate_character = resources_dir.join("tof_fate_character_ideal_ratio.png");  
 let tof_ask_button = resources_dir.join("tof_ask_button_ideal_ratio.png");  
-let tof_fate_dialogue = resources_dir.join("tof_fate_dialogue_ideal_ratio.png");
+let tof_yes = resources_dir.join("tof_yes_ideal_ratio.png");  
+let tof_next = resources_dir.join("tof_next_ideal_ratio.png");  
+let tof_bule_potion = resources_dir.join("tof_bule_potion_ideal_ratio.png");
 
     let familiar_button_save = resources_dir.join("familiar_button_save_ideal_ratio.png");
     let familiar_button_setup = resources_dir.join("familiar_button_setup_ideal_ratio.png");
@@ -181,7 +183,9 @@ println!("cargo:rustc-env=TOF_UNRAVELLING_TEMPLATE={}", tof_unravelling.to_str()
 println!("cargo:rustc-env=TOF_FATE_CHARACTER_UI_TEMPLATE={}", tof_fate_character_ui.to_str().unwrap());  
 println!("cargo:rustc-env=TOF_FATE_CHARACTER_TEMPLATE={}", tof_fate_character.to_str().unwrap());  
 println!("cargo:rustc-env=TOF_ASK_BUTTON_TEMPLATE={}", tof_ask_button.to_str().unwrap());  
-println!("cargo:rustc-env=TOF_FATE_DIALOGUE_TEMPLATE={}", tof_fate_dialogue.to_str().unwrap());
+println!("cargo:rustc-env=TOF_YES_TEMPLATE={}", tof_yes.to_str().unwrap());  
+println!("cargo:rustc-env=TOF_NEXT_TEMPLATE={}", tof_next.to_str().unwrap());  
+println!("cargo:rustc-env=TOF_BULE_POTION_TEMPLATE={}", tof_bule_potion.to_str().unwrap());
 
     println!(
         "cargo:rustc-env=POPUP_YES_TEMPLATE={}",
