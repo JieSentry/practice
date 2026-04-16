@@ -3590,11 +3590,6 @@ fn detect_tof_ask_button(bgr: &impl ToInputArray, localization: &Localization) -
         0.75,    
     )    
 }    
-  
-// 保持不变（复用 POPUP_NEXT_TEMPLATE，本身就是灰度）  
-fn detect_tof_next_button(grayscale: &impl ToInputArray) -> Result<Rect> {    
-    detect_template(grayscale, &*POPUP_NEXT_TEMPLATE, Point::default(), 0.75)    
-}
 
 #[inline]
 fn build_session(model: &[u8]) -> Result<Session> {
