@@ -37,8 +37,6 @@ pub tof_ask_button_base64: Option<String>,
 pub tof_yes_base64: Option<String>,  
 #[serde(default)]  
 pub tof_next_base64: Option<String>,
-#[serde(default)]  
-pub tof_ask_button_base64: Option<String>,
 }
 
 impl_identifiable!(Localization);
