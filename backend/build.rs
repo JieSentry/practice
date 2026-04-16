@@ -125,7 +125,6 @@ fn main() {
 
     // Threads of Fate templates  
 let tof_bulb = resources_dir.join("tof_bulb_ideal_ratio.png");  
-let tof_maple_mailbox_mask = resources_dir.join("tof_maple_mailbox_mask_ideal_ratio.png");
 let tof_maple_mailbox = resources_dir.join("tof_maple_mailbox_ideal_ratio.png");  
 let tof_complete = resources_dir.join("tof_complete_ideal_ratio.png");  
 let tof_unravelling = resources_dir.join("tof_unravelling_ideal_ratio.png");  
@@ -176,7 +175,6 @@ let tof_fate_dialogue = resources_dir.join("tof_fate_dialogue_ideal_ratio.png");
 
     // Threads of Fate  
 println!("cargo:rustc-env=TOF_BULB_TEMPLATE={}", tof_bulb.to_str().unwrap());  
-println!("cargo:rustc-env=TOF_MAPLE_MAILBOX_MASK_TEMPLATE={}", tof_maple_mailbox_mask.display());
 println!("cargo:rustc-env=TOF_MAPLE_MAILBOX_TEMPLATE={}", tof_maple_mailbox.to_str().unwrap());  
 println!("cargo:rustc-env=TOF_COMPLETE_TEMPLATE={}", tof_complete.to_str().unwrap());  
 println!("cargo:rustc-env=TOF_UNRAVELLING_TEMPLATE={}", tof_unravelling.to_str().unwrap());  
