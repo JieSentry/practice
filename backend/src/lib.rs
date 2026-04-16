@@ -192,6 +192,9 @@ pub enum DetectionTemplate {
     LieDetectorOld,
     TofFateCharacter,  
     TofAskButton,
+    TofAskButton,  
+    TofYes,  
+    TofNext,
 }
 
 /// The four quads of a bound.
