@@ -212,8 +212,19 @@ fn update_find_complete(resources: &mut Resources, tof: &mut ThreadsOfFateState)
     };    
   
     match next_timeout_lifecycle(timeout, 30) {    
-        Lifecycle::Started(timeout) => {    
-            tof.state = State::FindComplete(timeout);    
+          Lifecycle::Started(timeout) => {
+     // 立即检测 complete
+     match resources.detector().detect_tof_complete() {
+         Ok(bbox) => {
+             let (x, y) = bbox_click_point(bbox);
+             resources.input.send_mouse(x, y, MouseKind::Click);
+            tof.found_complete = true;
+             tof.state = State::InteractComplete(Timeout::default(), 0);
+         }
+         Err(_) => {
+             tof.state = State::FindComplete(timeout);
+         }
+     }
         }    
         Lifecycle::Ended => {    
             // No complete quest found, look for unravelling    
