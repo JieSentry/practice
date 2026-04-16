@@ -407,6 +407,28 @@ fn SectionThreadsOfFate() -> Element {
                         });  
                     },  
                     value: localization().tof_ask_button_base64,  
+                    LocalizationTemplateInput {  
+                    label: "Tof Yes",  
+                    template: DetectionTemplate::TofYes,  
+                    on_value: move |image: Option<Vec<u8>>| async move {  
+                        save_localization(Localization {  
+                            tof_yes_base64: to_base64(image, false).await,  
+                            ..localization()  
+                        });  
+                    },  
+                    value: localization().tof_yes_base64,  
+                }  
+                LocalizationTemplateInput {  
+                    label: "Tof next",  
+                    template: DetectionTemplate::TofNext,  
+                    on_value: move |image: Option<Vec<u8>>| async move {  
+                        save_localization(Localization {  
+                            tof_next_base64: to_base64(image, false).await,  
+                            ..localization()  
+                        });  
+                    },  
+                    value: localization().tof_next_base64,  
+                }
                 }  
             }  
         }  
