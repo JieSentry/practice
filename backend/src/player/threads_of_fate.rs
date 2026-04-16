@@ -462,7 +462,7 @@ fn update_interact_dialog(resources: &mut Resources, tof: &mut ThreadsOfFateStat
     let State::InteractDialog(timeout, press_count) = tof.state else {  
         panic!("threads of fate state is not interact dialog")  
     };  
-  
+
     match next_timeout_lifecycle(timeout, INTERACT_PRESS_INTERVAL) {  
         Lifecycle::Started(timeout) => {  
             resources.input.send_key(tof.interact_key);  
@@ -482,12 +482,15 @@ fn update_interact_dialog(resources: &mut Resources, tof: &mut ThreadsOfFateStat
             } else {  
                 // Check if dialog is still visible  
                 // During ThreadsOfFate, next.png detection should press interact instead of ESC  
-                if resources.detector().detect_tof_next_button().is_ok() {  
+                if resources.detector().detect_tof_dialog_visible() {  
+    resources.input.send_key(tof.interact_key);  
+    tof.state = State::InteractDialog(Timeout::default(), new_count);  
+} else {   
                     // Next button visible - press interact key instead of ESC  
                     resources.input.send_key(tof.interact_key);  
                     tof.state = State::InteractDialog(Timeout::default(), new_count);  
-                }
-                 else if resources.detector().detect_tof_fate_character_dialog().is_ok() {
+                } else if resources.detector().detect_tof_fate_character_dialog() {  
+
                     tof.state = State::InteractDialog(Timeout::default(), new_count);  
                 } else {  
                     // Dialog ended  
