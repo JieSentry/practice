@@ -454,7 +454,9 @@ fn update_click_ask(resources: &mut Resources, tof: &mut ThreadsOfFateState) {
             }
             tof.state = State::ClickAsk(timeout, retry_count);    
         }    
-  
+     } 
+} 
+
 /// Step 10: Press interact key to finish dialog  
 fn update_interact_dialog(resources: &mut Resources, tof: &mut ThreadsOfFateState) {  
     let State::InteractDialog(timeout, press_count) = tof.state else {  
