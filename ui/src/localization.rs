@@ -406,7 +406,8 @@ fn SectionThreadsOfFate() -> Element {
                             ..localization()  
                         });  
                     },  
-                    value: localization().tof_ask_button_base64,  
+                    value: localization().tof_ask_button_base64,
+                }
                     LocalizationTemplateInput {  
                     label: "Tof Yes",  
                     template: DetectionTemplate::TofYes,  
@@ -428,7 +429,6 @@ fn SectionThreadsOfFate() -> Element {
                         });  
                     },  
                     value: localization().tof_next_base64,  
-                }
                 }  
             }  
         }  
