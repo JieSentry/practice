@@ -3495,8 +3495,8 @@ pub static TOF_NEXT_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {
     imgcodecs::imdecode(include_bytes!(env!("TOF_NEXT_TEMPLATE")), IMREAD_COLOR).unwrap()  
 });  
   
-static TOF_BULE_POTION_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {  
-    imgcodecs::imdecode(include_bytes!(env!("TOF_BULE_POTION_TEMPLATE")), IMREAD_COLOR).unwrap()  
+static TOF_BLUE_POSITION_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {  
+    imgcodecs::imdecode(include_bytes!(env!("TOF_BLUE_POSITION_TEMPLATE")), IMREAD_COLOR).unwrap()  
 });
   
 // 参数名 grayscale → bgr  
