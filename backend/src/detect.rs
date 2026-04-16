@@ -322,11 +322,11 @@ pub trait Detector: Debug + Send + Sync {
     /// Detects the Yes button during Threads of Fate dialog (user-customizable via localization).  
     fn detect_tof_yes_button(&self) -> Result<Rect>;  
   
-    /// Detects the blue potion frame during Threads of Fate dialog.  
+    /// Detects the blue position frame during Threads of Fate dialog.  
     #[allow(dead_code)]
     fn detect_tof_blue_position(&self) -> bool;  
   
-    /// Detects whether any ToF dialog element is visible (Yes, Next, or blue potion frame).  
+    /// Detects whether any ToF dialog element is visible (Yes, Next, or blue position frame).  
     #[allow(dead_code)]
     fn detect_tof_dialog_visible(&self) -> bool;
   
@@ -3572,7 +3572,7 @@ fn detect_tof_blue_position(bgr: &impl ToInputArray) -> bool {
     detect_template(bgr, &*TOF_BLUE_POSITION_TEMPLATE, Point::default(), 0.75).is_ok()  
 }  
   
-/// Returns true if any ToF dialog element (Yes button, Next button, or blue potion frame) is visible.  
+/// Returns true if any ToF dialog element (Yes button, Next button, or blue position frame) is visible.  
 fn detect_tof_dialog_visible(bgr: &impl ToInputArray, localization: &Localization) -> bool {  
     detect_tof_yes_button(bgr, localization).is_ok()  
         || detect_tof_next_button(bgr, localization).is_ok()  
