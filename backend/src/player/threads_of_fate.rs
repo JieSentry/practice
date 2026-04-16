@@ -446,16 +446,14 @@ fn update_click_ask(resources: &mut Resources, tof: &mut ThreadsOfFateState) {
                 return;    
             }    
             // 每 15 tick 重试点击 ask 按钮  
-if timeout.current % 15 == 0  
-    && let Ok(bbox) = resources.detector().detect_tof_ask_button()  
-{  
-    let (x, y) = bbox_click_point(bbox);  
-    resources.input.send_mouse(x, y, MouseKind::Click);  
-}
+            if timeout.current % 15 == 0  
+                && let Ok(bbox) = resources.detector().detect_tof_ask_button()  
+            {  
+                let (x, y) = bbox_click_point(bbox);  
+                resources.input.send_mouse(x, y, MouseKind::Click);  
+            }
             tof.state = State::ClickAsk(timeout, retry_count);    
         }    
-    }    
-}
   
 /// Step 10: Press interact key to finish dialog  
 fn update_interact_dialog(resources: &mut Resources, tof: &mut ThreadsOfFateState) {  
