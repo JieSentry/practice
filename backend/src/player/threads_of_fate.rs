@@ -186,7 +186,7 @@ fn update_wait_mailbox(resources: &mut Resources, tof: &mut ThreadsOfFateState) 
     let State::WaitMailbox(timeout) = tof.state else {  
         panic!("threads of fate state is not wait mailbox")  
     };  
-  
+
     match next_timeout_lifecycle(timeout, 60) {  
         Lifecycle::Started(timeout) => {  
             tof.state = State::WaitMailbox(timeout);  
@@ -204,13 +204,13 @@ fn update_wait_mailbox(resources: &mut Resources, tof: &mut ThreadsOfFateState) 
         }  
     }  
 }  
-  
+
 /// Step 3: Look for threads_of_fate_complete    
 fn update_find_complete(resources: &mut Resources, tof: &mut ThreadsOfFateState) {    
     let State::FindComplete(timeout) = tof.state else {    
         panic!("threads of fate state is not find complete")    
     };    
-  
+
     match next_timeout_lifecycle(timeout, 30) {    
           Lifecycle::Started(timeout) => {
      // 立即检测 complete
@@ -251,13 +251,13 @@ fn update_find_complete(resources: &mut Resources, tof: &mut ThreadsOfFateState)
         }    
     }    
 }
-  
+
 /// Step 4: Press interact key multiple times to finish complete quest dialog  
 fn update_interact_complete(resources: &mut Resources, tof: &mut ThreadsOfFateState) {  
     let State::InteractComplete(timeout, press_count) = tof.state else {  
         panic!("threads of fate state is not interact complete")  
     };  
-  
+
     match next_timeout_lifecycle(timeout, INTERACT_PRESS_INTERVAL) {  
         Lifecycle::Started(timeout) => {  
             resources.input.send_key(tof.interact_key);  
@@ -284,13 +284,13 @@ fn update_interact_complete(resources: &mut Resources, tof: &mut ThreadsOfFateSt
         }  
     }  
 }  
-  
+
 /// Step 5: Find unravelling.png (with scrolling)  
 fn update_find_unravelling(resources: &mut Resources, tof: &mut ThreadsOfFateState) {  
     let State::FindUnravelling(timeout, scroll_cycle) = tof.state else {  
         panic!("threads of fate state is not find unravelling")  
     };  
-  
+
     match next_timeout_lifecycle(timeout, 30) {  
         Lifecycle::Started(timeout) => {  
             // First check if unravelling is visible  
@@ -330,13 +330,13 @@ fn update_find_unravelling(resources: &mut Resources, tof: &mut ThreadsOfFateSta
         }  
     }  
 }
-  
+
 /// Step 6: After clicking unravelling, wait briefly  
 fn update_click_unravelling(_resources: &mut Resources, tof: &mut ThreadsOfFateState) {
     let State::ClickUnravelling(timeout) = tof.state else {  
         panic!("threads of fate state is not click unravelling")  
     };  
-  
+
     match next_timeout_lifecycle(timeout, 30) {  
         Lifecycle::Started(timeout) | Lifecycle::Updated(timeout) => {  
             tof.state = State::ClickUnravelling(timeout);  
@@ -346,13 +346,13 @@ fn update_click_unravelling(_resources: &mut Resources, tof: &mut ThreadsOfFateS
         }  
     }  
 }  
-  
+
 /// Step 7: Wait for fate_character_ui.png  
 fn update_wait_fate_character_ui(resources: &mut Resources, tof: &mut ThreadsOfFateState) {  
     let State::WaitFateCharacterUI(timeout) = tof.state else {  
         panic!("threads of fate state is not wait fate character ui")  
     };  
-  
+
     match next_timeout_lifecycle(timeout, 60) {  
         Lifecycle::Started(timeout) => {  
             tof.state = State::WaitFateCharacterUI(timeout);  
@@ -371,13 +371,13 @@ fn update_wait_fate_character_ui(resources: &mut Resources, tof: &mut ThreadsOfF
         }  
     }  
 }  
-  
+
 /// Step 8: Click fate_character.png (user-customizable via localization)    
 fn update_click_fate_character(resources: &mut Resources, tof: &mut ThreadsOfFateState) {    
     let State::ClickFateCharacter(timeout) = tof.state else {    
         panic!("threads of fate state is not click fate character")    
     };    
-  
+
     match next_timeout_lifecycle(timeout, 60) {    
         Lifecycle::Started(timeout) => {    
             tof.state = State::ClickFateCharacter(timeout);    
@@ -406,13 +406,13 @@ fn update_click_fate_character(resources: &mut Resources, tof: &mut ThreadsOfFat
         }    
     }    
 }
-  
+
 /// Step 9: Click ask.png    
 fn update_click_ask(resources: &mut Resources, tof: &mut ThreadsOfFateState) {    
     let State::ClickAsk(timeout, retry_count) = tof.state else {    
         panic!("threads of fate state is not click ask")    
     };    
-  
+
     match next_timeout_lifecycle(timeout, 30) {    
         Lifecycle::Started(timeout) => {    
             // 首次进入时检测并点击  
@@ -446,17 +446,17 @@ fn update_click_ask(resources: &mut Resources, tof: &mut ThreadsOfFateState) {
                 return;    
             }    
             // 每 15 tick 重试点击 ask 按钮  
-            if timeout.current % 15 == 0  
-                && let Ok(bbox) = resources.detector().detect_tof_ask_button()  
-            {  
-                let (x, y) = bbox_click_point(bbox);  
-                resources.input.send_mouse(x, y, MouseKind::Click);  
-            }
+if timeout.current % 15 == 0  
+    && let Ok(bbox) = resources.detector().detect_tof_ask_button()  
+{  
+    let (x, y) = bbox_click_point(bbox);  
+    resources.input.send_mouse(x, y, MouseKind::Click);  
+}
             tof.state = State::ClickAsk(timeout, retry_count);    
         }    
-     } 
-} 
-  
+    }    
+}
+
 /// Step 10: Press interact key to finish dialog  
 fn update_interact_dialog(resources: &mut Resources, tof: &mut ThreadsOfFateState) {  
     let State::InteractDialog(timeout, press_count) = tof.state else {  
@@ -482,21 +482,25 @@ fn update_interact_dialog(resources: &mut Resources, tof: &mut ThreadsOfFateStat
             } else {  
                 // Check if dialog is still visible  
                 // During ThreadsOfFate, next.png detection should press interact instead of ESC  
-if resources.detector().detect_tof_dialog_visible() {    
-    resources.input.send_key(tof.interact_key);    
-    tof.state = State::InteractDialog(Timeout::default(), new_count);    
-} else if resources.detector().detect_tof_fate_character_dialog() {    
-    tof.state = State::InteractDialog(Timeout::default(), new_count);    
-} else {    
-    // Dialog ended    
-    tof.remaining_count = tof.remaining_count.saturating_sub(1);    
-    if tof.remaining_count == 0 {    
-        tof.success = true;    
-        tof.state = State::Completing(Timeout::default(), false);    
-    } else {    
-        tof.state = State::WaitInterval(Timeout::default());    
-    }    
-}
+                if resources.detector().detect_tof_dialog_visible() {  
+    resources.input.send_key(tof.interact_key);  
+    tof.state = State::InteractDialog(Timeout::default(), new_count);  
+} else {   
+                    // Next button visible - press interact key instead of ESC  
+                    resources.input.send_key(tof.interact_key);  
+                    tof.state = State::InteractDialog(Timeout::default(), new_count);  
+                } else if resources.detector().detect_tof_fate_character_dialog() {  
+                    tof.state = State::InteractDialog(Timeout::default(), new_count);  
+                } else {  
+                    // Dialog ended  
+                    tof.remaining_count = tof.remaining_count.saturating_sub(1);  
+                    if tof.remaining_count == 0 {  
+                        tof.success = true;  
+                        tof.state = State::Completing(Timeout::default(), false);  
+                    } else {  
+                        tof.state = State::WaitInterval(Timeout::default());  
+                    }  
+                }  
             }  
         }  
         Lifecycle::Updated(timeout) => {  
@@ -504,13 +508,13 @@ if resources.detector().detect_tof_dialog_visible() {
         }  
     }  
 }  
-  
+
 /// Step 11: Wait interval before next cycle  
 fn update_wait_interval(_resources: &mut Resources, tof: &mut ThreadsOfFateState) {  
     let State::WaitInterval(timeout) = tof.state else {  
         panic!("threads of fate state is not wait interval")  
     };  
-  
+
     match next_timeout_lifecycle(timeout, tof.wait_interval_ticks.max(1)) {  
         Lifecycle::Started(timeout) | Lifecycle::Updated(timeout) => {  
             tof.state = State::WaitInterval(timeout);  
@@ -526,7 +530,7 @@ fn update_completing(_resources: &mut Resources, tof: &mut ThreadsOfFateState) {
     let State::Completing(timeout, completed) = tof.state else {  
         panic!("threads of fate state is not completing")  
     };  
-  
+
     match next_timeout_lifecycle(timeout, 20) {  
         Lifecycle::Started(timeout) | Lifecycle::Updated(timeout) => {  
             tof.state = State::Completing(timeout, completed);  
@@ -536,7 +540,7 @@ fn update_completing(_resources: &mut Resources, tof: &mut ThreadsOfFateState) {
         }  
     }  
 }  
-  
+
 /// Computes the click point (center) of a bounding box.  
 #[inline]  
 fn bbox_click_point(bbox: Rect) -> (i32, i32) {  
