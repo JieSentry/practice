@@ -3439,8 +3439,8 @@ static TOF_BULB_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {
     imgcodecs::imdecode(include_bytes!(env!("TOF_BULB_TEMPLATE")), IMREAD_COLOR).unwrap()    
 });    
 
-static TOF_MAPLE_MAILBOX_MASK: LazyLock<Mat> = LazyLock::new(|| {  
-    imgcodecs::imdecode(include_bytes!(env!("TOF_MAPLE_MAILBOX_MASK_TEMPLATE")), IMREAD_GRAYSCALE).unwrap()  
+static TOF_MAPLE_MAILBOX_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {
+    imgcodecs::imdecode(include_bytes!(env!("TOF_MAPLE_MAILBOX_TEMPLATE")), IMREAD_COLOR).unwrap()
 });
 
 // 改为 IMREAD_COLOR  
