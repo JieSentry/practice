@@ -316,11 +316,17 @@ pub trait Detector: Debug + Send + Sync {
     /// Detects the Fate Character (user-customizable via localization).  
     fn detect_tof_fate_character(&self) -> Result<Rect>;  
   
-    /// Detects whether a fate character dialog is visible.  
-    fn detect_tof_fate_character_dialog(&self) -> bool;  
-  
     /// Detects the Ask button (user-customizable via localization).  
     fn detect_tof_ask_button(&self) -> Result<Rect>;  
+
+    /// Detects the Yes button during Threads of Fate dialog (user-customizable via localization).  
+fn detect_tof_yes_button(&self) -> Result<Rect>;  
+  
+/// Detects the blue potion frame during Threads of Fate dialog.  
+fn detect_tof_bule_potion(&self) -> bool;  
+  
+/// Detects whether any ToF dialog element is visible (Yes, Next, or blue potion frame).  
+fn detect_tof_dialog_visible(&self) -> bool;
   
     /// Detects the Next button during Threads of Fate dialog.  
     fn detect_tof_next_button(&self) -> Result<Rect>;
@@ -496,16 +502,26 @@ fn detect_tof_fate_character(&self) -> Result<Rect> {
     detect_tof_fate_character(self.bgr(), &self.localization)  // grayscale → bgr  
 }    
   
-fn detect_tof_fate_character_dialog(&self) -> bool {    
-    detect_tof_fate_character_dialog(self.grayscale())  // 保持不变  
-}    
+
   
 fn detect_tof_ask_button(&self) -> Result<Rect> {    
     detect_tof_ask_button(self.bgr(), &self.localization)  // grayscale → bgr  
 }    
   
-fn detect_tof_next_button(&self) -> Result<Rect> {    
-    detect_tof_next_button(self.grayscale())  // 保持不变  
+fn detect_tof_next_button(&self) -> Result<Rect> {  
+    detect_tof_next_button(self.bgr(), &self.localization)  
+}
+
+    fn detect_tof_yes_button(&self) -> Result<Rect> {  
+    detect_tof_yes_button(self.bgr(), &self.localization)  
+}  
+  
+fn detect_tof_bule_potion(&self) -> bool {  
+    detect_tof_bule_potion(self.bgr())  
+}  
+  
+fn detect_tof_dialog_visible(&self) -> bool {  
+    detect_tof_dialog_visible(self.bgr(), &self.localization)  
 }
     
     fn detect_rune_arrows(&self, ignore: Vec<Rect>) -> Vec<Arrow> {
@@ -3521,9 +3537,44 @@ fn detect_tof_fate_character(bgr: &impl ToInputArray, localization: &Localizatio
 }    
   
 // 保持不变  
-fn detect_tof_fate_character_dialog(grayscale: &impl ToInputArray) -> bool {    
-    detect_template(grayscale, &*TOF_FATE_DIALOGUE_TEMPLATE, Point::default(), 0.75).is_ok()    
-}    
+fn detect_tof_next_button(bgr: &impl ToInputArray, localization: &Localization) -> Result<Rect> {  
+    let template = localization  
+        .tof_next_base64  
+        .as_ref()  
+        .and_then(|base64| to_mat_from_base64(base64, false).ok());  
+  
+    detect_template(  
+        bgr,  
+        template.as_ref().unwrap_or(&*TOF_NEXT_TEMPLATE),  
+        Point::default(),  
+        0.75,  
+    )  
+}
+
+fn detect_tof_yes_button(bgr: &impl ToInputArray, localization: &Localization) -> Result<Rect> {  
+    let template = localization  
+        .tof_yes_base64  
+        .as_ref()  
+        .and_then(|base64| to_mat_from_base64(base64, false).ok());  
+  
+    detect_template(  
+        bgr,  
+        template.as_ref().unwrap_or(&*TOF_YES_TEMPLATE),  
+        Point::default(),  
+        0.75,  
+    )  
+}  
+  
+fn detect_tof_bule_potion(bgr: &impl ToInputArray) -> bool {  
+    detect_template(bgr, &*TOF_BULE_POTION_TEMPLATE, Point::default(), 0.75).is_ok()  
+}  
+  
+/// Returns true if any ToF dialog element (Yes button, Next button, or blue potion frame) is visible.  
+fn detect_tof_dialog_visible(bgr: &impl ToInputArray, localization: &Localization) -> bool {  
+    detect_tof_yes_button(bgr, localization).is_ok()  
+        || detect_tof_next_button(bgr, localization).is_ok()  
+        || detect_tof_bule_potion(bgr)  
+}
   
 // 参数名 grayscale → bgr，to_mat_from_base64 第二个参数 true → false  
 fn detect_tof_ask_button(bgr: &impl ToInputArray, localization: &Localization) -> Result<Rect> {    
