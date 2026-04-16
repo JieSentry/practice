@@ -271,7 +271,7 @@ fn update_interact_complete(resources: &mut Resources, tof: &mut ThreadsOfFateSt
             } else {  
                 // Check if fate_character.png dialog is still visible  
                 // If not visible, dialog ended - go back to click bulb  
-                if resources.detector().detect_tof_fate_character_dialog() {  
+                if resources.detector().detect_tof_dialog_visible() {
                     tof.state = State::InteractComplete(Timeout::default(), new_count);  
                 } else {  
                     // Dialog ended  
@@ -424,7 +424,7 @@ fn update_click_ask(resources: &mut Resources, tof: &mut ThreadsOfFateState) {
         }    
         Lifecycle::Ended => {    
             // 检查对话框是否出现（说明 ask 点击成功了）  
-            if resources.detector().detect_tof_fate_character_dialog() {    
+            if resources.detector().detect_tof_dialog_visible() {    
                 tof.state = State::InteractDialog(Timeout::default(), 0);    
                 return;    
             }    
@@ -441,7 +441,7 @@ fn update_click_ask(resources: &mut Resources, tof: &mut ThreadsOfFateState) {
         }    
         Lifecycle::Updated(timeout) => {    
             // 每 10 tick 检查对话框是否已出现  
-            if timeout.current % 10 == 0 && resources.detector().detect_tof_fate_character_dialog() {    
+            if timeout.current % 10 == 0 && resources.detector().detect_tof_dialog_visible() {   
                 tof.state = State::InteractDialog(Timeout::default(), 0);    
                 return;    
             }    
@@ -482,7 +482,10 @@ fn update_interact_dialog(resources: &mut Resources, tof: &mut ThreadsOfFateStat
             } else {  
                 // Check if dialog is still visible  
                 // During ThreadsOfFate, next.png detection should press interact instead of ESC  
-                if resources.detector().detect_tof_next_button().is_ok() {  
+                if resources.detector().detect_tof_dialog_visible() {  
+    resources.input.send_key(tof.interact_key);  
+    tof.state = State::InteractDialog(Timeout::default(), new_count);  
+} else {   
                     // Next button visible - press interact key instead of ESC  
                     resources.input.send_key(tof.interact_key);  
                     tof.state = State::InteractDialog(Timeout::default(), new_count);  
