@@ -65,7 +65,6 @@ impl LocalizationService for DefaultLocalizationService {
             DetectionTemplate::LieDetectorShapePrepare => &LIE_DETECTOR_SHAPE_PREPARE_TEMPLATE,
             DetectionTemplate::TofFateCharacter => &TOF_FATE_CHARACTER_TEMPLATE,  
             DetectionTemplate::TofAskButton => &TOF_ASK_BUTTON_TEMPLATE,
-            DetectionTemplate::TofAskButton => &TOF_ASK_BUTTON_TEMPLATE,  
             DetectionTemplate::TofYes => &TOF_YES_TEMPLATE,  
             DetectionTemplate::TofNext => &TOF_NEXT_TEMPLATE,
         };
