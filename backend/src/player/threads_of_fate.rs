@@ -483,13 +483,7 @@ fn update_interact_dialog(resources: &mut Resources, tof: &mut ThreadsOfFateStat
                 // Check if dialog is still visible  
                 // During ThreadsOfFate, next.png detection should press interact instead of ESC  
                 if resources.detector().detect_tof_dialog_visible() {  
-    resources.input.send_key(tof.interact_key);  
-    tof.state = State::InteractDialog(Timeout::default(), new_count);  
-} else {   
-                    // Next button visible - press interact key instead of ESC  
                     resources.input.send_key(tof.interact_key);  
-                    tof.state = State::InteractDialog(Timeout::default(), new_count);  
-                } else if resources.detector().detect_tof_fate_character_dialog() {  
                     tof.state = State::InteractDialog(Timeout::default(), new_count);  
                 } else {  
                     // Dialog ended  
