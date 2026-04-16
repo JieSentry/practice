@@ -3438,11 +3438,6 @@ fn to_input_value(mat: &impl MatTraitConst) -> SessionInputValue<'static> {
 static TOF_BULB_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {    
     imgcodecs::imdecode(include_bytes!(env!("TOF_BULB_TEMPLATE")), IMREAD_COLOR).unwrap()    
 });    
-  
-// 改为 IMREAD_COLOR  
-static TOF_MAPLE_MAILBOX_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {  
-    imgcodecs::imdecode(include_bytes!(env!("TOF_MAPLE_MAILBOX_TEMPLATE")), IMREAD_COLOR).unwrap()  
-});  
 
 static TOF_MAPLE_MAILBOX_MASK: LazyLock<Mat> = LazyLock::new(|| {  
     imgcodecs::imdecode(include_bytes!(env!("TOF_MAPLE_MAILBOX_MASK_TEMPLATE")), IMREAD_GRAYSCALE).unwrap()  
@@ -3485,7 +3480,7 @@ fn detect_tof_bulb(bgr: &impl ToInputArray) -> Result<Rect> {
 
 // grayscale → bgr  
 fn detect_tof_maple_mailbox(bgr: &impl ToInputArray) -> bool {  
-    detect_template_single(bgr, &*TOF_MAPLE_MAILBOX_TEMPLATE, &*TOF_MAPLE_MAILBOX_MASK, Point::default(), 0.75).is_ok()  
+    detect_template(bgr, &*TOF_MAPLE_MAILBOX_TEMPLATE, Point::default(), 0.65).is_ok()  
 }
   
 // 参数名 grayscale → bgr  
