@@ -511,10 +511,13 @@ fn update_wait_interval(resources: &mut Resources, tof: &mut ThreadsOfFateState)
 
     match next_timeout_lifecycle(timeout, tof.wait_interval_ticks.max(1)) {
         Lifecycle::Started(timeout) | Lifecycle::Updated(timeout) => {
-            // Check if fate_character_ui is still visible and press ESC to close it
-            if timeout.current % 30 == 0 && resources.detector().detect_tof_fate_character_ui() {
-                info!(target: "backend/player", "threads of fate: fate_character_ui still visible, pressing ESC");
+            // Check for ESC settings (fate_character_ui, etc.) and press ESC if needed
+            if resources.detector().detect_esc_settings() {
                 resources.input.send_key(KeyKind::Esc);
+            }
+            // Check for ToF dialog elements (yes, next, blue_position) and press interact if needed
+            if resources.detector().detect_tof_interact_settings() {
+                resources.input.send_key(tof.interact_key);
             }
             tof.state = State::WaitInterval(timeout);
         }
@@ -532,10 +535,18 @@ fn update_completing(_resources: &mut Resources, tof: &mut ThreadsOfFateState) {
         panic!("threads of fate state is not completing")  
     };  
 
-    match next_timeout_lifecycle(timeout, 20) {  
-        Lifecycle::Started(timeout) | Lifecycle::Updated(timeout) => {  
-            tof.state = State::Completing(timeout, completed);  
-        }  
+    match next_timeout_lifecycle(timeout, 20) {
+        Lifecycle::Started(timeout) | Lifecycle::Updated(timeout) => {
+            // Check for ESC settings (fate_character_ui, etc.) and press ESC if needed
+            if resources.detector().detect_esc_settings() {
+                resources.input.send_key(KeyKind::Esc);
+            }
+            // Check for ToF dialog elements (yes, next, blue_position) and press interact if needed
+            if resources.detector().detect_tof_interact_settings() {
+                resources.input.send_key(tof.interact_key);
+            }
+            tof.state = State::Completing(timeout, completed);
+        }
         Lifecycle::Ended => {  
             tof.state = State::Completing(timeout, true);  
         }  
@@ -547,3 +558,4 @@ fn update_completing(_resources: &mut Resources, tof: &mut ThreadsOfFateState) {
 fn bbox_click_point(bbox: Rect) -> (i32, i32) {  
     (bbox.x + bbox.width / 2, bbox.y + bbox.height / 2)  
 }
+
