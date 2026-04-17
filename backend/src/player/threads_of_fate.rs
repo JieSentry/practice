@@ -22,7 +22,7 @@ const INTERACT_PRESS_INTERVAL: u32 = 8;
 /// Maximum consecutive ask failures before permanently stopping.
 const MAX_ASK_FAIL_COUNT: u32 = 2;  
   
-/// Internal state machine for Threads of Fate.  
+/// Internal state machine for Threads of Fate.
 #[derive(Debug, Clone)]
 enum State {
     /// Step 1: Find and click bulb.png
@@ -51,11 +51,11 @@ enum State {
     Completing(Timeout, bool),
 }  
   
-/// Struct for storing Threads of Fate state data.  
+/// Struct for storing Threads of Fate state data.
 #[derive(Debug, Clone)]
 pub struct ThreadsOfFateState {
     state: State,
-    /// Total chat count remaining
+    /// Total chat count remaining (number of complete quests to execute)
     remaining_count: u32,
     /// Wait interval in ticks between cycles
     wait_interval_ticks: u32,
@@ -67,6 +67,8 @@ pub struct ThreadsOfFateState {
     found_complete: bool,
     /// Whether complete quest has been used this cycle (prevents infinite loop)
     complete_used: bool,
+    /// Number of complete quests executed so far
+    complete_executed_count: u32,
 }  
   
 impl Display for ThreadsOfFateState {  
@@ -98,6 +100,7 @@ impl ThreadsOfFateState {
             success: false,
             found_complete: false,
             complete_used: false,
+            complete_executed_count: 0,
         }
     }
 }  
@@ -278,9 +281,18 @@ fn update_interact_complete(resources: &mut Resources, tof: &mut ThreadsOfFateSt
                 resources.input.send_key(tof.interact_key);
                 tof.state = State::InteractComplete(Timeout::default(), new_count);
             } else {
-                // Dialog ended, need to reopen mailbox by clicking bulb
-                // Then find unravelling in the reopened mailbox
-                tof.state = State::ClickBulb(Timeout::default());
+                // Dialog ended, increment complete executed count
+                tof.complete_executed_count += 1;
+                info!(target: "backend/player", "threads of fate: complete quest finished ({}/{})", tof.complete_executed_count, tof.remaining_count);
+                
+                // Check if we've executed enough complete quests
+                if tof.complete_executed_count >= tof.remaining_count {
+                    tof.success = true;
+                    tof.state = State::Completing(Timeout::default(), false);
+                } else {
+                    // Need to execute more complete quests, reopen mailbox
+                    tof.state = State::ClickBulb(Timeout::default());
+                }
             }
         }
         Lifecycle::Updated(timeout) => {
@@ -316,10 +328,16 @@ fn update_find_unravelling(resources: &mut Resources, tof: &mut ThreadsOfFateSta
                 }  
                 Err(_) => {  
                     let new_cycle = scroll_cycle + 1;  
-                    if new_cycle >= MAX_SCROLL_CYCLES {  
-                        info!(target: "backend/player", "threads of fate: unravelling not found after {} scroll cycles", MAX_SCROLL_CYCLES);  
-                        resources.input.send_key(KeyKind::Esc);  
-                        tof.state = State::Completing(Timeout::default(), false);  
+                    if new_cycle >= MAX_SCROLL_CYCLES {
+                        info!(target: "backend/player", "threads of fate: unravelling not found after {} scroll cycles", MAX_SCROLL_CYCLES);
+                        // If no complete quest was executed this cycle, terminate the task
+                        if !tof.found_complete {
+                            info!(target: "backend/player", "threads of fate: no complete quest executed and unravelling not found, terminating task");
+                            tof.state = State::Completing(Timeout::default(), false);
+                        } else {
+                            // Complete was executed, go back to find more complete quests
+                            tof.state = State::ClickBulb(Timeout::default());
+                        }
                     } else {  
                         for _ in 0..DOWN_PRESSES_PER_CYCLE {  
                             resources.input.send_key(KeyKind::Down);  
@@ -361,10 +379,10 @@ fn update_wait_fate_character_ui(resources: &mut Resources, tof: &mut ThreadsOfF
         Lifecycle::Started(timeout) => {  
             tof.state = State::WaitFateCharacterUI(timeout);  
         }  
-        Lifecycle::Ended => {  
-            info!(target: "backend/player", "threads of fate: fate character UI did not appear");  
-            resources.input.send_key(KeyKind::Esc);  
-            tof.state = State::Completing(Timeout::default(), false);  
+        Lifecycle::Ended => {
+            info!(target: "backend/player", "threads of fate: fate character UI did not appear");
+            // Task failed, go directly to completing without pressing ESC
+            tof.state = State::Completing(Timeout::default(), false);
         }  
         Lifecycle::Updated(timeout) => {  
             if timeout.current % 10 == 0 && resources.detector().detect_tof_fate_character_ui() {  
@@ -386,10 +404,10 @@ fn update_click_fate_character(resources: &mut Resources, tof: &mut ThreadsOfFat
         Lifecycle::Started(timeout) => {    
             tof.state = State::ClickFateCharacter(timeout);    
         }    
-        Lifecycle::Ended => {    
-            info!(target: "backend/player", "threads of fate: failed to find fate character");    
-            resources.input.send_key(KeyKind::Esc);    
-            tof.state = State::Completing(Timeout::default(), false);    
+        Lifecycle::Ended => {
+            info!(target: "backend/player", "threads of fate: failed to find fate character");
+            // Task failed, go directly to completing without pressing ESC
+            tof.state = State::Completing(Timeout::default(), false);
         }    
         Lifecycle::Updated(timeout) => {    
             // 每 15 tick 重试检测并点击（60 tick 内有 4 次机会）  
@@ -435,14 +453,16 @@ fn update_click_ask(resources: &mut Resources, tof: &mut ThreadsOfFateState) {
             // Dialog did not appear, retry
             let new_retry = retry_count + 1;
             if new_retry >= MAX_ASK_FAIL_COUNT {
-                info!(target: "backend/player", "threads of fate: ask failed {} times, completing task", MAX_ASK_FAIL_COUNT);
-                // Complete the task and go to completing state
-                tof.remaining_count = tof.remaining_count.saturating_sub(1);
-                if tof.remaining_count == 0 {
-                    tof.success = true;
+                info!(target: "backend/player", "threads of fate: ask failed {} times", MAX_ASK_FAIL_COUNT);
+                // If no complete quest was executed this cycle and ask failed, terminate the task
+                // (since daily limit is 7, we should not continue if complete is not available)
+                if !tof.found_complete {
+                    info!(target: "backend/player", "threads of fate: no complete quest executed and ask failed, terminating task");
+                    tof.state = State::Completing(Timeout::default(), false);
+                } else {
+                    // Complete was executed but ask failed, count as partial success and continue
+                    tof.state = State::ClickBulb(Timeout::default());
                 }
-                resources.input.send_key(KeyKind::Esc);
-                tof.state = State::Completing(Timeout::default(), false);
             } else {
                 tof.state = State::ClickAsk(Timeout::default(), new_retry);
             }
