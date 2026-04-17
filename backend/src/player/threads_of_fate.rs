@@ -512,7 +512,7 @@ fn update_click_ask(resources: &mut Resources, tof: &mut ThreadsOfFateState) {
 /// Step 10: Press interact key to finish dialog
 /// Detects tof_next, tof_yes, tof_blue_position and presses interact key
 fn update_interact_dialog(resources: &mut Resources, tof: &mut ThreadsOfFateState) {
-    let State::InteractDialog(timeout, press_count) = tof.state else {
+    let State::InteractDialog(timeout, consecutive_not_detected) = tof.state else {
         panic!("threads of fate state is not interact dialog")
     };
 
@@ -522,23 +522,30 @@ fn update_interact_dialog(resources: &mut Resources, tof: &mut ThreadsOfFateStat
             if resources.detector().detect_tof_dialog_visible() {
                 resources.input.send_key(tof.interact_key);
             }
-            tof.state = State::InteractDialog(timeout, press_count);
+            tof.state = State::InteractDialog(timeout, consecutive_not_detected);
         }
         Lifecycle::Ended => {
-            let new_count = press_count + 1;
+            let new_count = consecutive_not_detected + 1;
             // Check if dialog is still visible (detect tof_next, tof_yes, tof_blue_position)
             if resources.detector().detect_tof_dialog_visible() {
+                // Dialog still visible, reset consecutive_not_detected counter and continue
                 resources.input.send_key(tof.interact_key);
-                tof.state = State::InteractDialog(Timeout::default(), new_count);
+                tof.state = State::InteractDialog(Timeout::default(), 0);
             } else {
-                // Dialog ended, one cycle complete
-                info!(target: "backend/player", "threads of fate: dialog finished, cycle complete");
-                // Return to idle - next cycle will be triggered by rotator if needed
-                tof.state = State::Completing(Timeout::default());
+                // Dialog not visible, check if we've consecutively not detected it for 2 times
+                // This prevents premature exit when there's a brief gap between chat boxes
+                if new_count >= 2 {
+                    // Consecutively not detected for 2 cycles, dialog truly ended
+                    info!(target: "backend/player", "threads of fate: dialog finished, cycle complete");
+                    tof.state = State::Completing(Timeout::default());
+                } else {
+                    // First time not detecting dialog, wait one more cycle to confirm
+                    tof.state = State::InteractDialog(Timeout::default(), new_count);
+                }
             }
         }
         Lifecycle::Updated(timeout) => {
-            tof.state = State::InteractDialog(timeout, press_count);
+            tof.state = State::InteractDialog(timeout, consecutive_not_detected);
         }
     }
 }
