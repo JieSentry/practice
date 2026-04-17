@@ -25,32 +25,32 @@ const INTERACT_PRESS_INTERVAL: u32 = 8;
 const MAX_ASK_FAIL_COUNT: u32 = 3;  
   
 /// Internal state machine for Threads of Fate.  
-#[derive(Debug, Clone)]  
-enum State {  
-    /// Step 1: Find and click bulb.png  
-    ClickBulb(Timeout),  
-    /// Step 2: Wait for maple_mailbox.png to appear  
-    WaitMailbox(Timeout),  
-    /// Step 3: Look for threads_of_fate_complete in the mailbox  
-    FindComplete(Timeout),  
-    /// Step 4: Click threads_of_fate_complete and start interacting  
-    InteractComplete(Timeout, u32),  
-    /// Step 5: Find unravelling.png (with scrolling)  
-    FindUnravelling(Timeout, u32),  
-    /// Step 6: Click unravelling.png, wait for fate_character_ui.png  
-    ClickUnravelling(Timeout),  
-    /// Step 7: Wait for fate_character_ui.png  
-    WaitFateCharacterUI(Timeout),  
-    /// Step 8: Click fate_character.png  
-    ClickFateCharacter(Timeout),  
-    /// Step 9: Click ask.png  
-    ClickAsk(Timeout, u32),  
-    /// Step 10: Press interact key to finish dialog  
-    InteractDialog(Timeout, u32),  
-    /// Step 11: Wait interval before next cycle (mm:ss)  
+#[derive(Debug, Clone)]
+enum State {
+    /// Step 1: Find and click bulb.png
+    ClickBulb(Timeout),
+    /// Step 2: Wait for maple_mailbox.png to appear
+    WaitMailbox(Timeout),
+    /// Step 3: Look for threads_of_fate_complete in the mailbox (only once per cycle)
+    FindComplete(Timeout),
+    /// Step 4: Click threads_of_fate_complete and start interacting
+    InteractComplete(Timeout, u32),
+    /// Step 5: Find unravelling.png (with scrolling)
+    FindUnravelling(Timeout, u32),
+    /// Step 6: Click unravelling.png, wait for fate_character_ui.png
+    ClickUnravelling(Timeout),
+    /// Step 7: Wait for fate_character_ui.png
+    WaitFateCharacterUI(Timeout),
+    /// Step 8: Click fate_character.png
+    ClickFateCharacter(Timeout),
+    /// Step 9: Click ask.png (max 2 attempts, then complete if no dialog)
+    ClickAsk(Timeout, u32),
+    /// Step 10: Press interact key to finish dialog
+    InteractDialog(Timeout, u32),
+    /// Step 11: Wait interval before next cycle (mm:ss), press ESC if fate_character_ui still visible
     WaitInterval(Timeout),
-    /// Terminal state  
-    Completing(Timeout, bool),  
+    /// Terminal state
+    Completing(Timeout, bool),
 }  
   
 /// Struct for storing Threads of Fate state data.  
