@@ -54,21 +54,23 @@ enum State {
 }  
   
 /// Struct for storing Threads of Fate state data.  
-#[derive(Debug, Clone)]  
-pub struct ThreadsOfFateState {  
-    state: State,  
-    /// Total chat count remaining  
-    remaining_count: u32,  
-    /// Wait interval in ticks between cycles  
-    wait_interval_ticks: u32,  
-    /// Interact key configured by user  
-    interact_key: KeyKind,  
-    /// Whether the operation was successful  
-    success: bool,  
-    /// Consecutive ask failures (ask clicked but no dialog appeared)  
-    ask_fail_count: u32,  
-    /// Whether we found a complete quest this cycle  
-    found_complete: bool,  
+#[derive(Debug, Clone)]
+pub struct ThreadsOfFateState {
+    state: State,
+    /// Total chat count remaining
+    remaining_count: u32,
+    /// Wait interval in ticks between cycles
+    wait_interval_ticks: u32,
+    /// Interact key configured by user
+    interact_key: KeyKind,
+    /// Whether the operation was successful
+    success: bool,
+    /// Consecutive ask failures (ask clicked but no dialog appeared)
+    ask_fail_count: u32,
+    /// Whether we found a complete quest this cycle
+    found_complete: bool,
+    /// Whether complete quest has been used this cycle (prevents infinite loop)
+    complete_used: bool,
 }  
   
 impl Display for ThreadsOfFateState {  
@@ -90,18 +92,19 @@ impl Display for ThreadsOfFateState {
     }  
 }  
   
-impl ThreadsOfFateState {  
-    pub fn new(count: u32, wait_interval_ticks: u32, interact_key: KeyKind) -> Self {  
-        Self {  
-            state: State::ClickBulb(Timeout::default()),  
-            remaining_count: count,  
-            wait_interval_ticks,  
-            interact_key,  
-            success: false,  
-            ask_fail_count: 0,  
-            found_complete: false,  
-        }  
-    }  
+impl ThreadsOfFateState {
+    pub fn new(count: u32, wait_interval_ticks: u32, interact_key: KeyKind) -> Self {
+        Self {
+            state: State::ClickBulb(Timeout::default()),
+            remaining_count: count,
+            wait_interval_ticks,
+            interact_key,
+            success: false,
+            ask_fail_count: 0,
+            found_complete: false,
+            complete_used: false,
+        }
+    }
 }  
   
 /// Updates [`Player::ThreadsOfFate`] contextual state.  
@@ -205,84 +208,93 @@ fn update_wait_mailbox(resources: &mut Resources, tof: &mut ThreadsOfFateState) 
     }  
 }  
 
-/// Step 3: Look for threads_of_fate_complete    
-fn update_find_complete(resources: &mut Resources, tof: &mut ThreadsOfFateState) {    
-    let State::FindComplete(timeout) = tof.state else {    
-        panic!("threads of fate state is not find complete")    
-    };    
+/// Step 3: Look for threads_of_fate_complete (only once per cycle)
+fn update_find_complete(resources: &mut Resources, tof: &mut ThreadsOfFateState) {
+    let State::FindComplete(timeout) = tof.state else {
+        panic!("threads of fate state is not find complete")
+    };
 
-    match next_timeout_lifecycle(timeout, 30) {    
-          Lifecycle::Started(timeout) => {
-     // 立即检测 complete
-     match resources.detector().detect_tof_complete() {
-         Ok(bbox) => {
-             let (x, y) = bbox_click_point(bbox);
-             resources.input.send_mouse(x, y, MouseKind::Click);
-            tof.found_complete = true;
-             tof.state = State::InteractComplete(Timeout::default(), 0);
-         }
-         Err(_) => {
-             tof.state = State::FindComplete(timeout);
-         }
-     }
-        }    
-        Lifecycle::Ended => {    
-            // No complete quest found, look for unravelling    
-            tof.found_complete = false;    
-            tof.state = State::FindUnravelling(Timeout::default(), 0);    
-        }    
-        Lifecycle::Updated(timeout) => {    
-            // 每 10 tick 重试检测（30 tick 内有 3 次机会）  
-            if timeout.current % 10 == 0 {    
-                match resources.detector().detect_tof_complete() {    
-                    Ok(bbox) => {    
-                        let (x, y) = bbox_click_point(bbox);    
-                        resources.input.send_mouse(x, y, MouseKind::Click);    
-                        tof.found_complete = true;    
-                        tof.state = State::InteractComplete(Timeout::default(), 0);    
-                    }    
-                    Err(_) => {    
-                        tof.state = State::FindComplete(timeout);    
-                    }    
-                }    
-            } else {    
-                tof.state = State::FindComplete(timeout);    
-            }    
-        }    
-    }    
+    // If complete was already used this cycle, skip directly to unravelling
+    if tof.complete_used {
+        tof.found_complete = false;
+        tof.state = State::FindUnravelling(Timeout::default(), 0);
+        return;
+    }
+
+    match next_timeout_lifecycle(timeout, 30) {
+        Lifecycle::Started(timeout) => {
+            // Check if complete is available
+            match resources.detector().detect_tof_complete() {
+                Ok(bbox) => {
+                    let (x, y) = bbox_click_point(bbox);
+                    resources.input.send_mouse(x, y, MouseKind::Click);
+                    tof.found_complete = true;
+                    tof.complete_used = true; // Mark complete as used for this cycle
+                    tof.state = State::InteractComplete(Timeout::default(), 0);
+                }
+                Err(_) => {
+                    tof.state = State::FindComplete(timeout);
+                }
+            }
+        }
+        Lifecycle::Ended => {
+            // No complete quest found, look for unravelling
+            tof.found_complete = false;
+            tof.complete_used = true; // Mark complete as used even if not found
+            tof.state = State::FindUnravelling(Timeout::default(), 0);
+        }
+        Lifecycle::Updated(timeout) => {
+            // Retry detection every 10 ticks (3 chances within 30 ticks)
+            if timeout.current % 10 == 0 {
+                match resources.detector().detect_tof_complete() {
+                    Ok(bbox) => {
+                        let (x, y) = bbox_click_point(bbox);
+                        resources.input.send_mouse(x, y, MouseKind::Click);
+                        tof.found_complete = true;
+                        tof.complete_used = true; // Mark complete as used for this cycle
+                        tof.state = State::InteractComplete(Timeout::default(), 0);
+                    }
+                    Err(_) => {
+                        tof.state = State::FindComplete(timeout);
+                    }
+                }
+            } else {
+                tof.state = State::FindComplete(timeout);
+            }
+        }
+    }
 }
 
-/// Step 4: Press interact key multiple times to finish complete quest dialog  
-fn update_interact_complete(resources: &mut Resources, tof: &mut ThreadsOfFateState) {  
-    let State::InteractComplete(timeout, press_count) = tof.state else {  
-        panic!("threads of fate state is not interact complete")  
-    };  
+/// Step 4: Press interact key multiple times to finish complete quest dialog
+fn update_interact_complete(resources: &mut Resources, tof: &mut ThreadsOfFateState) {
+    let State::InteractComplete(timeout, press_count) = tof.state else {
+        panic!("threads of fate state is not interact complete")
+    };
 
-    match next_timeout_lifecycle(timeout, INTERACT_PRESS_INTERVAL) {  
-        Lifecycle::Started(timeout) => {  
-            resources.input.send_key(tof.interact_key);  
-            tof.state = State::InteractComplete(timeout, press_count);  
-        }  
-        Lifecycle::Ended => {  
-            let new_count = press_count + 1;  
-            if new_count >= MAX_INTERACT_PRESSES {  
-                // Dialog should be closed by now, go back to step 1 (click bulb again)  
-                tof.state = State::ClickBulb(Timeout::default());  
-            } else {  
-                // Check if fate_character.png dialog is still visible  
-                // If not visible, dialog ended - go back to click bulb  
+    match next_timeout_lifecycle(timeout, INTERACT_PRESS_INTERVAL) {
+        Lifecycle::Started(timeout) => {
+            resources.input.send_key(tof.interact_key);
+            tof.state = State::InteractComplete(timeout, press_count);
+        }
+        Lifecycle::Ended => {
+            let new_count = press_count + 1;
+            if new_count >= MAX_INTERACT_PRESSES {
+                // Dialog should be closed by now, go to unravelling (complete is already marked as used)
+                tof.state = State::FindUnravelling(Timeout::default(), 0);
+            } else {
+                // Check if dialog is still visible (detect tof_next, tof_yes, tof_blue_position)
                 if resources.detector().detect_tof_dialog_visible() {
-                    tof.state = State::InteractComplete(Timeout::default(), new_count);  
-                } else {  
-                    // Dialog ended  
-                    tof.state = State::ClickBulb(Timeout::default());  
-                }  
-            }  
-        }  
-        Lifecycle::Updated(timeout) => {  
-            tof.state = State::InteractComplete(timeout, press_count);  
-        }  
-    }  
+                    tof.state = State::InteractComplete(Timeout::default(), new_count);
+                } else {
+                    // Dialog ended, go to unravelling (complete is already marked as used)
+                    tof.state = State::FindUnravelling(Timeout::default(), 0);
+                }
+            }
+        }
+        Lifecycle::Updated(timeout) => {
+            tof.state = State::InteractComplete(timeout, press_count);
+        }
+    }
 }  
 
 /// Step 5: Find unravelling.png (with scrolling)  
