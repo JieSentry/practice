@@ -909,6 +909,9 @@ fn detect_esc_settings(
     if detect_familiar_menu_opened(grayscale) {  
         return true;  
     } 
+    if detect_tof_fate_character_ui(grayscale) {
+        return true;
+    }
 
     false
 }
