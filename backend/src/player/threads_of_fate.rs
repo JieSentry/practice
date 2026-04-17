@@ -526,10 +526,9 @@ fn update_interact_dialog(resources: &mut Resources, tof: &mut ThreadsOfFateStat
 
     match next_timeout_lifecycle(timeout, INTERACT_PRESS_INTERVAL) {
         Lifecycle::Started(timeout) => {
-            // Only press interact if not in grace period
-            if miss_count == 0 {
-                if resources.detector().detect_tof_dialog_visible() {
-                    resources.input.send_key(tof.interact_key);
+            // Only press interact if not in grace period and dialog is visible
+            if miss_count == 0 && resources.detector().detect_tof_dialog_visible() {
+                resources.input.send_key(tof.interact_key);
                 }
             }
             tof.state = State::InteractDialog(timeout, press_count, miss_count);
