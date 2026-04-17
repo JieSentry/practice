@@ -308,6 +308,7 @@ fn update_interact_complete(resources: &mut Resources, tof: &mut ThreadsOfFateSt
                 } else {
                     // More complete quests to execute, return to Idle (next cycle will be triggered by rotator)
                     info!(target: "backend/player", "threads of fate: returning to idle, waiting for next cycle");
+                    tof.success = true;
                     tof.state = State::Completing(Timeout::default());
                 }
             }
