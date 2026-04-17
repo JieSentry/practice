@@ -400,7 +400,8 @@ pub struct PlayerContext {
     hexa_booster_failed_count: u32,
     /// The number of times Threads of Fate failed.  
     threads_of_fate_failed_count: u32,
-
+    /// Whether Threads of Fate should be permanently stopped.
+    threads_of_fate_permanently_stopped: bool,
     /// The number of times [`Player::FamiliarsSwapping`] failed.
     familiars_swap_failed_count: u32,
 
