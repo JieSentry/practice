@@ -329,6 +329,8 @@ pub trait Detector: Debug + Send + Sync {
   
     /// Detects whether any ToF dialog element is visible (Yes, Next, or blue position frame).  
     fn detect_tof_dialog_visible(&self) -> bool;
+
+    fn detect_tof_interact_settings(&self) -> bool;
   
     /// Detects the Next button during Threads of Fate dialog.  
     #[allow(dead_code)]
@@ -523,6 +525,10 @@ fn detect_tof_ask_button(&self) -> Result<Rect> {
 
     fn detect_tof_dialog_visible(&self) -> bool {
         detect_tof_dialog_visible(self.bgr(), self.grayscale(), &self.localization)
+    }
+
+    fn detect_tof_interact_settings(&self) -> bool {
+        detect_tof_interact_settings(self.bgr(), self.grayscale(), &self.localization)
     }
     
     fn detect_rune_arrows(&self, ignore: Vec<Rect>) -> Vec<Arrow> {
@@ -910,6 +916,29 @@ fn detect_esc_settings(
         return true;  
     } 
     if detect_tof_fate_character_ui(grayscale) {
+        return true;
+    }
+
+    false
+}
+
+/// Detects Threads of Fate dialog elements (next, yes, blue_position) that require interact key press.
+/// Returns true if any dialog element is visible.
+fn detect_tof_interact_settings(
+    bgr: &impl ToInputArray,
+    grayscale: &impl ToInputArray,
+    localization: &Localization,
+) -> bool {
+    // Check for tof_next (grayscale template)
+    if detect_tof_next_button(grayscale, localization).is_ok() {
+        return true;
+    }
+    // Check for tof_yes (grayscale template)
+    if detect_tof_yes_button(grayscale, localization).is_ok() {
+        return true;
+    }
+    // Check for tof_blue_position (BGR template, color-based)
+    if detect_tof_blue_position(bgr) {
         return true;
     }
 
