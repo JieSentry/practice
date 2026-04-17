@@ -530,7 +530,6 @@ fn update_interact_dialog(resources: &mut Resources, tof: &mut ThreadsOfFateStat
             if miss_count == 0 && resources.detector().detect_tof_dialog_visible() {
                 resources.input.send_key(tof.interact_key);
                 }
-            }
             tof.state = State::InteractDialog(timeout, press_count, miss_count);
         }
         Lifecycle::Ended => {
