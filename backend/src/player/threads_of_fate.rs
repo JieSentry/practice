@@ -278,8 +278,9 @@ fn update_interact_complete(resources: &mut Resources, tof: &mut ThreadsOfFateSt
                 resources.input.send_key(tof.interact_key);
                 tof.state = State::InteractComplete(Timeout::default(), new_count);
             } else {
-                // Dialog ended, go to unravelling (complete is already marked as used)
-                tof.state = State::FindUnravelling(Timeout::default(), 0);
+                // Dialog ended, need to reopen mailbox by clicking bulb
+                // Then find unravelling in the reopened mailbox
+                tof.state = State::ClickBulb(Timeout::default());
             }
         }
         Lifecycle::Updated(timeout) => {
