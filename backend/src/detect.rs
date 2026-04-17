@@ -505,27 +505,25 @@ fn detect_tof_fate_character(&self) -> Result<Rect> {
     detect_tof_fate_character(self.bgr(), &self.localization)  // grayscale → bgr  
 }    
   
-
-  
 fn detect_tof_ask_button(&self) -> Result<Rect> {    
     detect_tof_ask_button(self.bgr(), &self.localization)  // grayscale → bgr  
 }    
   
-fn detect_tof_next_button(&self) -> Result<Rect> {  
-    detect_tof_next_button(self.bgr(), &self.localization)  
-}
+    fn detect_tof_next_button(&self) -> Result<Rect> {
+        detect_tof_next_button(self.grayscale(), &self.localization)
+    }
 
-    fn detect_tof_yes_button(&self) -> Result<Rect> {  
-    detect_tof_yes_button(self.bgr(), &self.localization)  
-}  
-  
-fn detect_tof_blue_position(&self) -> bool {  
-    detect_tof_blue_position(self.bgr())  
-}  
-  
-fn detect_tof_dialog_visible(&self) -> bool {  
-    detect_tof_dialog_visible(self.bgr(), &self.localization)  
-}
+    fn detect_tof_yes_button(&self) -> Result<Rect> {
+        detect_tof_yes_button(self.grayscale(), &self.localization)
+    }
+
+    fn detect_tof_blue_position(&self) -> bool {
+        detect_tof_blue_position(self.bgr())
+    }
+
+    fn detect_tof_dialog_visible(&self) -> bool {
+        detect_tof_dialog_visible(self.bgr(), self.grayscale(), &self.localization)
+    }
     
     fn detect_rune_arrows(&self, ignore: Vec<Rect>) -> Vec<Arrow> {
         detect_rune_arrows(self.bgr(), ignore).unwrap_or_default()
@@ -3539,44 +3537,43 @@ fn detect_tof_fate_character(bgr: &impl ToInputArray, localization: &Localizatio
     )    
 }    
   
-// 保持不变  
-fn detect_tof_next_button(bgr: &impl ToInputArray, localization: &Localization) -> Result<Rect> {  
-    let template = localization  
-        .tof_next_base64  
-        .as_ref()  
-        .and_then(|base64| to_mat_from_base64(base64, false).ok());  
-  
-    detect_template(  
-        bgr,  
-        template.as_ref().unwrap_or(&*TOF_NEXT_TEMPLATE),  
-        Point::default(),  
-        0.75,  
-    )  
+fn detect_tof_next_button(grayscale: &impl ToInputArray, localization: &Localization) -> Result<Rect> {
+    let template = localization
+        .tof_next_base64
+        .as_ref()
+        .and_then(|base64| to_mat_from_base64(base64, true).ok());
+
+    detect_template(
+        grayscale,
+        template.as_ref().unwrap_or(&*TOF_NEXT_TEMPLATE),
+        Point::default(),
+        0.75,
+    )
 }
 
-fn detect_tof_yes_button(bgr: &impl ToInputArray, localization: &Localization) -> Result<Rect> {  
-    let template = localization  
-        .tof_yes_base64  
-        .as_ref()  
-        .and_then(|base64| to_mat_from_base64(base64, false).ok());  
-  
-    detect_template(  
-        bgr,  
-        template.as_ref().unwrap_or(&*TOF_YES_TEMPLATE),  
-        Point::default(),  
-        0.75,  
-    )  
-}  
-  
-fn detect_tof_blue_position(bgr: &impl ToInputArray) -> bool {  
-    detect_template(bgr, &*TOF_BLUE_POSITION_TEMPLATE, Point::default(), 0.75).is_ok()  
-}  
-  
-/// Returns true if any ToF dialog element (Yes button, Next button, or blue position frame) is visible.  
-fn detect_tof_dialog_visible(bgr: &impl ToInputArray, localization: &Localization) -> bool {  
-    detect_tof_yes_button(bgr, localization).is_ok()  
-        || detect_tof_next_button(bgr, localization).is_ok()  
-        || detect_tof_blue_position(bgr)  
+fn detect_tof_yes_button(grayscale: &impl ToInputArray, localization: &Localization) -> Result<Rect> {
+    let template = localization
+        .tof_yes_base64
+        .as_ref()
+        .and_then(|base64| to_mat_from_base64(base64, true).ok());
+
+    detect_template(
+        grayscale,
+        template.as_ref().unwrap_or(&*TOF_YES_TEMPLATE),
+        Point::default(),
+        0.75,
+    )
+}
+
+fn detect_tof_blue_position(bgr: &impl ToInputArray) -> bool {
+    detect_template(bgr, &*TOF_BLUE_POSITION_TEMPLATE, Point::default(), 0.75).is_ok()
+}
+
+/// Returns true if any ToF dialog element (Yes button, Next button, or blue position frame) is visible.
+fn detect_tof_dialog_visible(bgr: &impl ToInputArray, grayscale: &impl ToInputArray, localization: &Localization) -> bool {
+    detect_tof_yes_button(grayscale, localization).is_ok()
+        || detect_tof_next_button(grayscale, localization).is_ok()
+        || detect_tof_blue_position(bgr)
 }
   
 // 参数名 grayscale → bgr，to_mat_from_base64 第二个参数 true → false  
