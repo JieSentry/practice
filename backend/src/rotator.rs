@@ -1168,30 +1168,39 @@ fn familiar_essence_replenish_priority_action(key: KeyKind) -> PriorityAction {
     }
 }
 
-#[inline]  
-fn threads_of_fate_priority_action(millis: u64) -> PriorityAction {  
-    PriorityAction {  
-        condition: Condition(Box::new(move |_, world, info| {  
-            if world  
-                .player  
-                .context  
-                .is_threads_of_fate_fail_count_limit_reached()  
-            {  
-                return ConditionResult::Ignore;  
-            }  
-  
-            if !at_least_millis_passed_since(info.last_queued_time, millis.into()) {  
-                return ConditionResult::Skip;  
-            }  
-  
-            ConditionResult::Queue  
-        })),  
-        condition_kind: None,  
-        metadata: None,  
-        inner: RotatorAction::Single(PlayerAction::ThreadsOfFate),  
-        queue_to_front: false,  
-        queue_info: PriorityActionQueueInfo::default(),  
-    }  
+#[inline]
+fn threads_of_fate_priority_action(millis: u64) -> PriorityAction {
+    PriorityAction {
+        condition: Condition(Box::new(move |_, world, info| {
+            // Check if permanently stopped (reached target complete count or failed condition)
+            if world
+                .player
+                .context
+                .is_threads_of_fate_permanently_stopped()
+            {
+                return ConditionResult::Ignore;
+            }
+
+            if world
+                .player
+                .context
+                .is_threads_of_fate_fail_count_limit_reached()
+            {
+                return ConditionResult::Ignore;
+            }
+
+            if !at_least_millis_passed_since(info.last_queued_time, millis.into()) {
+                return ConditionResult::Skip;
+            }
+
+            ConditionResult::Queue
+        })),
+        condition_kind: None,
+        metadata: None,
+        inner: RotatorAction::Single(PlayerAction::ThreadsOfFate),
+        queue_to_front: false,
+        queue_info: PriorityActionQueueInfo::default(),
+    }
 }
 
 #[inline]
