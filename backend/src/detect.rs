@@ -3598,7 +3598,7 @@ fn detect_tof_yes_button(grayscale: &impl ToInputArray, localization: &Localizat
 }
 
 fn detect_tof_blue_position(bgr: &impl ToInputArray) -> bool {
-    detect_template(bgr, &*TOF_BLUE_POSITION_TEMPLATE, Point::default(), 0.75).is_ok()
+    detect_template(bgr, &*TOF_BLUE_POSITION_TEMPLATE, Point::default(), 0.55).is_ok()
 }
 
 /// Returns true if any ToF dialog element (Yes button, Next button, or blue position frame) is visible.
