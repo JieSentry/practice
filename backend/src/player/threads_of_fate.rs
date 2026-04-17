@@ -111,6 +111,7 @@ impl ThreadsOfFateState {
             permanently_stopped: false,
         }
     }
+}
 
 /// Updates [`Player::ThreadsOfFate`] contextual state.
 pub fn update_threads_of_fate_state(resources: &mut Resources, player: &mut PlayerEntity) {
@@ -597,4 +598,3 @@ fn update_completing(resources: &mut Resources, tof: &mut ThreadsOfFateState) {
 fn bbox_click_point(bbox: Rect) -> (i32, i32) {
     (bbox.x + bbox.width / 2, bbox.y + bbox.height / 2)
 }
-
