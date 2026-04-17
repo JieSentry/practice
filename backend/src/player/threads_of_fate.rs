@@ -245,7 +245,7 @@ fn update_find_complete(resources: &mut Resources, tof: &mut ThreadsOfFateState)
                     resources.input.send_mouse(x, y, MouseKind::Click);
                     tof.found_complete = true;
                     tof.complete_used = true; // Mark complete as used for this cycle
-                    tof.state = State::InteractComplete(Timeout::default(), 0);
+                    tof.state = State::InteractComplete(Timeout::default(), 0, 0);
                 }
                 Err(_) => {
                     tof.state = State::FindComplete(timeout);
