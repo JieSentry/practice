@@ -63,8 +63,6 @@ pub struct ThreadsOfFateState {
     interact_key: KeyKind,
     /// Whether the operation was successful
     success: bool,
-    /// Consecutive ask failures (ask clicked but no dialog appeared)
-    ask_fail_count: u32,
     /// Whether we found a complete quest this cycle
     found_complete: bool,
     /// Whether complete quest has been used this cycle (prevents infinite loop)
@@ -98,7 +96,6 @@ impl ThreadsOfFateState {
             wait_interval_ticks,
             interact_key,
             success: false,
-            ask_fail_count: 0,
             found_complete: false,
             complete_used: false,
         }
