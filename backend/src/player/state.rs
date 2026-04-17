@@ -427,6 +427,16 @@ impl PlayerContext {
             self.threads_of_fate_failed_count += 1;  
         }  
     }  
+
+    #[inline]
+    pub fn is_threads_of_fate_permanently_stopped(&self) -> bool {
+        self.threads_of_fate_permanently_stopped
+    }
+
+    #[inline]
+    pub(super) fn set_threads_of_fate_permanently_stopped(&mut self) {
+        self.threads_of_fate_permanently_stopped = true;
+    }
   
     #[inline]  
     pub(super) fn clear_threads_of_fate_fail_count(&mut self) {  
