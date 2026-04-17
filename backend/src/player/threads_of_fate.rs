@@ -550,13 +550,12 @@ fn update_wait_interval(resources: &mut Resources, tof: &mut ThreadsOfFateState)
 
     match next_timeout_lifecycle(timeout, tof.wait_interval_ticks.max(1)) {
         Lifecycle::Started(timeout) | Lifecycle::Updated(timeout) => {
-            // Check for ESC settings (fate_character_ui, etc.) and press ESC if needed
-            if resources.detector().detect_esc_settings() {
-                resources.input.send_key(KeyKind::Esc);
-            }
-            // Check for ToF dialog elements (yes, next, blue_position) and press interact if needed
+            // First check for ToF dialog elements (yes, next, blue_position) and press interact if needed
             if resources.detector().detect_tof_interact_settings() {
                 resources.input.send_key(tof.interact_key);
+            } else if resources.detector().detect_tof_fate_character_ui() {
+                // Only press ESC if fate_character_ui is detected and no dialog elements are present
+                resources.input.send_key(KeyKind::Esc);
             }
             tof.state = State::WaitInterval(timeout);
         }
@@ -577,13 +576,12 @@ fn update_completing(resources: &mut Resources, tof: &mut ThreadsOfFateState) {
 
     match next_timeout_lifecycle(timeout, COMPLETING_TIMEOUT) {
         Lifecycle::Started(timeout) | Lifecycle::Updated(timeout) => {
-            // Check for ESC settings (fate_character_ui, etc.) and press ESC if needed
-            if resources.detector().detect_esc_settings() {
-                resources.input.send_key(KeyKind::Esc);
-            }
-            // Check for ToF dialog elements (yes, next, blue_position) and press interact if needed
+            // First check for ToF dialog elements (yes, next, blue_position) and press interact if needed
             if resources.detector().detect_tof_interact_settings() {
                 resources.input.send_key(tof.interact_key);
+            } else if resources.detector().detect_tof_fate_character_ui() {
+                // Only press ESC if fate_character_ui is detected and no dialog elements are present
+                resources.input.send_key(KeyKind::Esc);
             }
             tof.state = State::Completing(timeout);
         }
