@@ -3485,12 +3485,12 @@ pub static TOF_ASK_BUTTON_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {
     imgcodecs::imdecode(include_bytes!(env!("TOF_ASK_BUTTON_TEMPLATE")), IMREAD_COLOR).unwrap()    
 });    
   
-pub static TOF_YES_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {  
-    imgcodecs::imdecode(include_bytes!(env!("TOF_YES_TEMPLATE")), IMREAD_COLOR).unwrap()  
-});  
-  
-pub static TOF_NEXT_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {  
-    imgcodecs::imdecode(include_bytes!(env!("TOF_NEXT_TEMPLATE")), IMREAD_COLOR).unwrap()  
+pub static TOF_YES_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {
+    imgcodecs::imdecode(include_bytes!(env!("TOF_YES_TEMPLATE")), IMREAD_GRAYSCALE).unwrap()
+});
+
+pub static TOF_NEXT_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {
+    imgcodecs::imdecode(include_bytes!(env!("TOF_NEXT_TEMPLATE")), IMREAD_GRAYSCALE).unwrap()
 });  
   
 static TOF_BLUE_POSITION_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {  
