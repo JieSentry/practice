@@ -112,12 +112,6 @@ impl ThreadsOfFateState {
         }
     }
 
-    /// Returns whether the task should be permanently stopped.
-    pub fn is_permanently_stopped(&self) -> bool {
-        self.permanently_stopped
-    }
-}
-
 /// Updates [`Player::ThreadsOfFate`] contextual state.
 pub fn update_threads_of_fate_state(resources: &mut Resources, player: &mut PlayerEntity) {
     let Player::ThreadsOfFate(mut tof) = player.state.clone() else {
