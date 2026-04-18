@@ -282,7 +282,7 @@ fn update_interact_complete(resources: &mut Resources, tof: &mut ThreadsOfFateSt
         tof.state = State::InteractComplete(Timeout::default(), new_count, miss_count + 1);
     } else {
                 tof.complete_executed_count += 1;
-                info!(target: "backend/player", "threads of fate: complete quest finished ({}/{)", tof.complete_executed_count, tof.target_complete_count);
+                info!(target: "backend/player", "threads of fate: complete quest finished ({}/{})", tof.complete_executed_count, tof.target_complete_count);
                 tof.complete_used = true; // Mark as used to skip FindComplete next
                 tof.state = State::ClickBulb(Timeout::default());
             }
