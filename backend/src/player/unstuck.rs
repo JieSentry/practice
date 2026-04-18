@@ -72,7 +72,7 @@ pub fn update_unstucking_state(
     match unstucking.kind {
         UnstuckingKind::Esc => {
             // First check for ToF dialog elements (yes, next, blue) and press interact
-            if resources.detector().detect_tof_interact_settings() {
+            if resources.detector().detect_tof_dialog_visible() {
                 resources.input.send_key(player.context.config.interact_key);
             } else if resources.detector().detect_esc_settings() {
                 resources.input.send_key(KeyKind::Esc);
