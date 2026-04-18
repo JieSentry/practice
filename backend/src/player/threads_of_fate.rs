@@ -71,8 +71,6 @@ pub struct ThreadsOfFateState {
     complete_used: bool,
     /// Number of complete quests executed so far
     complete_executed_count: u32,
-    /// Whether ask failed in this cycle (for tracking fail count)
-    ask_failed_this_cycle: bool,
     /// Whether to permanently stop (reached target or failed condition)
     permanently_stopped: bool,
     /// Whether the task is completed and should return to Idle
@@ -106,7 +104,6 @@ impl ThreadsOfFateState {
             found_complete: false,
             complete_used: false,
             complete_executed_count: 0,
-            ask_failed_this_cycle: false,
             permanently_stopped: false,
             completed: false,
         }
@@ -149,14 +146,14 @@ pub fn update_threads_of_fate_state(resources: &mut Resources, player: &mut Play
                 if tof.success {
                     // Success: clear fail count
                     player.context.clear_threads_of_fate_fail_count();
-                } else if tof.ask_failed_this_cycle {
-                    // Ask failed: track fail count (using existing context mechanism)
+                } else {
+                    // Any failure: track fail count
+                    // Two consecutive failures (any type) will trigger permanent stop
                     player.context.track_threads_of_fate_fail_count();
                     if player.context.is_threads_of_fate_fail_count_limit_reached() {
                         player.context.set_threads_of_fate_permanently_stopped();
                     }
                 }
-                // Other failures don't increment fail count
             }
             player.state = player_next_state;
         }
@@ -181,7 +178,7 @@ fn update_click_bulb(resources: &mut Resources, tof: &mut ThreadsOfFateState) {
         }
         Lifecycle::Updated(timeout) => {
             // Check for dialog elements first - close dialog before clicking bulb
-            // But limit interact presses to avoid infinite loop
+            // Limit to 1 press to reduce delay
             if press_count < 1 && resources.detector().detect_tof_dialog_visible() {
                 resources.input.send_key(tof.interact_key);
                 tof.state = State::ClickBulb(timeout, press_count + 1);
@@ -436,6 +433,7 @@ fn update_click_ask(resources: &mut Resources, tof: &mut ThreadsOfFateState) {
     let State::ClickAsk(timeout, retry_count, ask_clicked) = tof.state else {
         panic!("threads of fate state is not click ask")
     };
+
     // Shorter timeout: 15 ticks (~0.5s) instead of 30
     match next_timeout_lifecycle(timeout, 15) {
         Lifecycle::Started(timeout) => {
@@ -461,9 +459,7 @@ fn update_click_ask(resources: &mut Resources, tof: &mut ThreadsOfFateState) {
             if new_retry >= MAX_ASK_FAIL_COUNT {
                 // Ask failed MAX_ASK_FAIL_COUNT times in this cycle
                 // Mark as failed and end this cycle
-                // Fail count is tracked via context.ask_fail_cycle_count (persisted across rotator cycles)
                 info!(target: "backend/player", "threads of fate: ask failed {} times in this cycle", MAX_ASK_FAIL_COUNT);
-                tof.ask_failed_this_cycle = true;
                 tof.completed = true;
             } else {
                 tof.state = State::ClickAsk(Timeout::default(), new_retry, false);
