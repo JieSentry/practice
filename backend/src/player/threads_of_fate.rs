@@ -116,7 +116,7 @@ pub fn update_threads_of_fate_state(resources: &mut Resources, player: &mut Play
     };
 
     match tof.state.clone() {
-        State::ClickBulb(_) => update_click_bulb(resources, &mut tof),
+        State::ClickBulb(_, _) => update_click_bulb(resources, &mut tof),
         State::FindComplete(_) => update_find_complete(resources, &mut tof),
         State::InteractComplete(_, _, _) => update_interact_complete(resources, &mut tof),
         State::FindUnravelling(_, _) => update_find_unravelling(resources, &mut tof),
