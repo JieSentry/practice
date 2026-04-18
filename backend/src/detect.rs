@@ -3590,7 +3590,7 @@ fn detect_tof_ask_button(bgr: &impl ToInputArray, localization: &Localization) -
         bgr,    
         template.as_ref().unwrap_or(&*TOF_ASK_BUTTON_TEMPLATE),    
         Point::default(),    
-        0.75,    
+        0.90,    
     )    
 }    
 
