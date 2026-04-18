@@ -168,17 +168,13 @@ fn update_click_bulb(resources: &mut Resources, tof: &mut ThreadsOfFateState) {
             tof.completed = true;
         }
         Lifecycle::Updated(timeout) => {
-            if timeout.current == 0 {
-                tof.state = State::ClickBulb(timeout);
-                return;
-            }
             if timeout.current % 10 == 0 && resources.detector().detect_tof_maple_mailbox() {
                 info!(target: "backend/player", "threads of fate: mailbox detected, looking for complete");
                 tof.state = State::FindComplete(Timeout::default());
                 return;
             }
-            // 每 15 tick 重试检测并点击灯泡
-            if timeout.current % 15 == 0
+            // Delay bulb detection to avoid initial false positives (wait 15 ticks for image stable)
+            if timeout.current >= 15 && timeout.current % 15 == 0
                 && let Ok(bbox) = resources.detector().detect_tof_bulb()
             {
                 let (x, y) = bbox_click_point(bbox);
@@ -268,9 +264,10 @@ fn update_interact_complete(resources: &mut Resources, tof: &mut ThreadsOfFateSt
                 resources.input.send_key(tof.interact_key);
                 tof.state = State::InteractComplete(Timeout::default(), new_count, 0);
             } else if press_count >= 4 {
-        info!(target: "backend/player", "threads of fate: complete dialog press count reached limit (4), ending");
-        tof.success = true;
-        tof.completed = true;
+                info!(target: "backend/player", "threads of fate: complete dialog press count reached limit (4), ending");
+                tof.complete_executed_count += 1;
+                tof.complete_used = true;
+                tof.state = State::ClickBulb(Timeout::default());
     } else if miss_count < MAX_DIALOG_GRACE_CHECKS {
         // Grace period: dialog might be transitioning between pages
         // Don't press interact, just wait and re-check
