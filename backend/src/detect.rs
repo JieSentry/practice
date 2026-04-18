@@ -524,10 +524,6 @@ fn detect_tof_ask_button(&self) -> Result<Rect> {
     fn detect_tof_dialog_visible(&self) -> bool {
         detect_tof_dialog_visible(self.bgr(), self.grayscale(), &self.localization)
     }
-
-    fn detect_tof_interact_settings(&self) -> bool {
-        detect_tof_interact_settings(self.bgr(), self.grayscale(), &self.localization)
-    }
     
     fn detect_rune_arrows(&self, ignore: Vec<Rect>) -> Vec<Arrow> {
         detect_rune_arrows(self.bgr(), ignore).unwrap_or_default()
