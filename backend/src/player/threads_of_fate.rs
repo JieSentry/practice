@@ -174,7 +174,7 @@ fn update_click_bulb(resources: &mut Resources, tof: &mut ThreadsOfFateState) {
         }
         Lifecycle::Updated(timeout) => {
             // Check for dialog elements first - close dialog before clicking bulb
-            if resources.detector().detect_tof_interact_settings() {
+            if resources.detector().detect_tof_dialog_visible() {
                 resources.input.send_key(tof.interact_key);
                 tof.state = State::ClickBulb(timeout);
                 return;
