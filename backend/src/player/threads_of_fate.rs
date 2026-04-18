@@ -311,13 +311,7 @@ fn update_find_unravelling(resources: &mut Resources, tof: &mut ThreadsOfFateSta
                 Err(_) => {
                     let new_cycle = scroll_cycle + 1;
                     if new_cycle >= MAX_SCROLL_CYCLES {
-                        info!(target: "backend/player", "threads of fate: unravelling not found after {} scroll cycles", MAX_SCROLL_CYCLES);
-                        // Return to Idle, let the task system decide whether to retry after interval
-                        if !tof.found_complete {
-                            info!(target: "backend/player", "threads of fate: no complete quest executed and unravelling not found, returning to idle");
-                        } else {
-                            info!(target: "backend/player", "threads of fate: complete was executed but unravelling not found, returning to idle");
-                        }
+                        info!(target: "backend/player", "threads of fate: unravelling not found, found_complete={}", tof.found_complete);
                         tof.completed = true;
                     } else {
                         for _ in 0..DOWN_PRESSES_PER_CYCLE {
