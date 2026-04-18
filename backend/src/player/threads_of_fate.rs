@@ -30,7 +30,7 @@ const MAX_INTERACT_PRESS_COUNT: u32 = 11;
 #[derive(Debug, Clone)]
 enum State {
     /// Step 1: Find and click bulb.png, wait for maple_mailbox.png
-    ClickBulb(Timeout),
+    ClickBulb(Timeout, u32),
     /// Step 2: Look for threads_of_fate_complete in the mailbox (only once per cycle)
     FindComplete(Timeout),
     /// Step 3: Click threads_of_fate_complete and start interacting
