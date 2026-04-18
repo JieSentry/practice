@@ -175,7 +175,7 @@ fn update_click_bulb(resources: &mut Resources, tof: &mut ThreadsOfFateState) {
         Lifecycle::Updated(timeout) => {
             // Check for dialog elements first - close dialog before clicking bulb
             // But limit interact presses to avoid infinite loop
-            if press_count < 4 && resources.detector().detect_tof_dialog_visible() {
+            if press_count < 1 && resources.detector().detect_tof_dialog_visible() {
                 resources.input.send_key(tof.interact_key);
                 tof.state = State::ClickBulb(timeout, press_count + 1);
                 return;
@@ -424,13 +424,14 @@ fn update_click_fate_character(resources: &mut Resources, tof: &mut ThreadsOfFat
     }
 }
 
-/// Step 8: Click ask.png (max 2 attempts, then complete if no dialog)
+/// Step 8: Click ask.png (max 2 attempts with shorter interval, then terminate)
 fn update_click_ask(resources: &mut Resources, tof: &mut ThreadsOfFateState) {
     let State::ClickAsk(timeout, retry_count, ask_clicked) = tof.state else {
         panic!("threads of fate state is not click ask")
     };
 
-    match next_timeout_lifecycle(timeout, 30) {
+    // Shorter timeout: 15 ticks (~0.5s) instead of 30
+    match next_timeout_lifecycle(timeout, 15) {
         Lifecycle::Started(timeout) => {
             // First entry: detect and click ask button
             if let Ok(bbox) = resources.detector().detect_tof_ask_button() {
@@ -464,8 +465,8 @@ fn update_click_ask(resources: &mut Resources, tof: &mut ThreadsOfFateState) {
                 tof.state = State::InteractDialog(Timeout::default(), 0, 0);
                 return;
             }
-            // Retry clicking ask button every 15 ticks
-            if timeout.current % 15 == 0
+            // Retry clicking ask button every 8 ticks (~0.25s, half of the original)
+            if timeout.current % 8 == 0
                 && let Ok(bbox) = resources.detector().detect_tof_ask_button()
             {
                 let (x, y) = bbox_click_point(bbox);
