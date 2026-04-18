@@ -12,7 +12,7 @@ use super::{
 };
 use crate::{
     ActionKeyDirection, ActionKeyWith, Position,
-    bridge::KeyKind,
+    bridge::{KeyKind, MouseKind},
     ecs::Resources,
     minimap::Minimap,
     player::{
@@ -225,13 +225,15 @@ fn update_from_action(
             player.state = Player::Unstucking(Unstucking::new_esc());
         }
 
-        Some(PlayerAction::ThreadsOfFate) => {  
-            let config = &player.context.config;  
-            player.state = Player::ThreadsOfFate(ThreadsOfFateState::new(  
-            config.threads_of_fate_count,  
-            config.threads_of_fate_interval_ticks,  
-            config.interact_key,  
-            ));  
+        Some(PlayerAction::ThreadsOfFate) => {
+            let mouse_rest = Point::new(1100, 550);
+            resources.input.send_mouse(mouse_rest.x, mouse_rest.y, MouseKind::Move);
+            let config = &player.context.config;
+            player.state = Player::ThreadsOfFate(ThreadsOfFateState::new(
+                config.threads_of_fate_count,
+                config.threads_of_fate_interval_ticks,
+                config.interact_key,
+            ));
         }
         
         Some(PlayerAction::SolveShape) => {
