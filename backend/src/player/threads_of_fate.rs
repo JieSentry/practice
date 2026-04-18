@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
 use log::info;
-use opencv::core::Rect;
+use opencv::core::{Point, Rect};
 
 use super::{
     Player,
@@ -45,7 +45,8 @@ enum State {
     /// Step 7: Click fate_character.png
     ClickFateCharacter(Timeout),
     /// Step 8: Click ask.png (max 2 attempts, then complete if no dialog)
-    ClickAsk(Timeout, u32),
+    /// (timeout, retry_count, ask_clicked)
+    ClickAsk(Timeout, u32, bool),
     /// Step 9: Press interact key to finish dialog
     /// (timeout, press_count, miss_count)
     InteractDialog(Timeout, u32, u32),
@@ -59,6 +60,8 @@ pub struct ThreadsOfFateState {
     target_complete_count: u32,
     /// Interact key configured by user
     interact_key: KeyKind,
+    /// Mouse rest point for avoiding UI overlap
+    mouse_rest: Point,
     /// Whether the operation was successful
     success: bool,
     /// Whether we found a complete quest this cycle
@@ -83,7 +86,7 @@ impl Display for ThreadsOfFateState {
             State::ClickUnravelling(_) => write!(f, "ClickUnravelling"),
             State::WaitFateCharacterUI(_) => write!(f, "WaitFateCharacterUI"),
             State::ClickFateCharacter(_) => write!(f, "ClickFateCharacter"),
-            State::ClickAsk(_, _) => write!(f, "ClickAsk"),
+            State::ClickAsk(_, _, _) => write!(f, "ClickAsk"),
             State::InteractDialog(_, _, _) => write!(f, "InteractDialog"),
         }
     }
@@ -95,6 +98,7 @@ impl ThreadsOfFateState {
             state: State::ClickBulb(Timeout::default()),
             target_complete_count: target_count,
             interact_key,
+            mouse_rest: Point::new(1100, 550),
             success: false,
             found_complete: false,
             complete_used: false,
@@ -119,7 +123,7 @@ pub fn update_threads_of_fate_state(resources: &mut Resources, player: &mut Play
         State::ClickUnravelling(_) => update_click_unravelling(resources, &mut tof),
         State::WaitFateCharacterUI(_) => update_wait_fate_character_ui(resources, &mut tof),
         State::ClickFateCharacter(_) => update_click_fate_character(resources, &mut tof),
-        State::ClickAsk(_, _) => update_click_ask(resources, &mut tof),
+        State::ClickAsk(_, _, _) => update_click_ask(resources, &mut tof),
         State::InteractDialog(_, _, _) => update_interact_dialog(resources, &mut tof),
     }
 
@@ -161,6 +165,7 @@ fn update_click_bulb(resources: &mut Resources, tof: &mut ThreadsOfFateState) {
 
     match next_timeout_lifecycle(timeout, 90) {
         Lifecycle::Started(timeout) => {
+            resources.input.send_mouse(tof.mouse_rest.x, tof.mouse_rest.y, MouseKind::Move);
             tof.state = State::ClickBulb(timeout);
         }
         Lifecycle::Ended => {
@@ -179,6 +184,7 @@ fn update_click_bulb(resources: &mut Resources, tof: &mut ThreadsOfFateState) {
             {
                 let (x, y) = bbox_click_point(bbox);
                 resources.input.send_mouse(x, y, MouseKind::Click);
+                resources.input.send_mouse(tof.mouse_rest.x, tof.mouse_rest.y, MouseKind::Move);
             }
             tof.state = State::ClickBulb(timeout);
         }
@@ -206,6 +212,7 @@ fn update_find_complete(resources: &mut Resources, tof: &mut ThreadsOfFateState)
                 Ok(bbox) => {
                     let (x, y) = bbox_click_point(bbox);
                     resources.input.send_mouse(x, y, MouseKind::Click);
+                    resources.input.send_mouse(tof.mouse_rest.x, tof.mouse_rest.y, MouseKind::Move);
                     tof.found_complete = true;
                     tof.complete_used = true; // Mark complete as used for this cycle
                     tof.state = State::InteractComplete(Timeout::default(), 0, 0);
@@ -228,6 +235,7 @@ fn update_find_complete(resources: &mut Resources, tof: &mut ThreadsOfFateState)
                     Ok(bbox) => {
                         let (x, y) = bbox_click_point(bbox);
                         resources.input.send_mouse(x, y, MouseKind::Click);
+                        resources.input.send_mouse(tof.mouse_rest.x, tof.mouse_rest.y, MouseKind::Move);
                         tof.found_complete = true;
                         tof.complete_used = true; // Mark complete as used for this cycle
                         tof.state = State::InteractComplete(Timeout::default(), 0, 0);
@@ -274,7 +282,7 @@ fn update_interact_complete(resources: &mut Resources, tof: &mut ThreadsOfFateSt
         tof.state = State::InteractComplete(Timeout::default(), new_count, miss_count + 1);
     } else {
                 tof.complete_executed_count += 1;
-                info!(target: "backend/player", "threads of fate: complete quest finished ({}/{})", tof.complete_executed_count, tof.target_complete_count);
+                info!(target: "backend/player", "threads of fate: complete quest finished ({}/{)", tof.complete_executed_count, tof.target_complete_count);
                 tof.complete_used = true; // Mark as used to skip FindComplete next
                 tof.state = State::ClickBulb(Timeout::default());
             }
@@ -297,6 +305,7 @@ fn update_find_unravelling(resources: &mut Resources, tof: &mut ThreadsOfFateSta
             if let Ok(bbox) = resources.detector().detect_tof_unravelling() {
                 let (x, y) = bbox_click_point(bbox);
                 resources.input.send_mouse(x, y, MouseKind::Click);
+                resources.input.send_mouse(tof.mouse_rest.x, tof.mouse_rest.y, MouseKind::Move);
                 tof.state = State::ClickUnravelling(Timeout::default());
                 return;
             }
@@ -308,6 +317,7 @@ fn update_find_unravelling(resources: &mut Resources, tof: &mut ThreadsOfFateSta
                 Ok(bbox) => {
                     let (x, y) = bbox_click_point(bbox);
                     resources.input.send_mouse(x, y, MouseKind::Click);
+                    resources.input.send_mouse(tof.mouse_rest.x, tof.mouse_rest.y, MouseKind::Move);
                     tof.state = State::ClickUnravelling(Timeout::default());
                 }
                 Err(_) => {
@@ -392,7 +402,8 @@ fn update_click_fate_character(resources: &mut Resources, tof: &mut ThreadsOfFat
                     Ok(bbox) => {
                         let (x, y) = bbox_click_point(bbox);
                         resources.input.send_mouse(x, y, MouseKind::Click);
-                        tof.state = State::ClickAsk(Timeout::default(), 0);
+                        resources.input.send_mouse(tof.mouse_rest.x, tof.mouse_rest.y, MouseKind::Move);
+                        tof.state = State::ClickAsk(Timeout::default(), 0, false);
                     }
                     Err(_) => {
                         tof.state = State::ClickFateCharacter(timeout);
@@ -407,7 +418,7 @@ fn update_click_fate_character(resources: &mut Resources, tof: &mut ThreadsOfFat
 
 /// Step 8: Click ask.png (max 2 attempts, then complete if no dialog)
 fn update_click_ask(resources: &mut Resources, tof: &mut ThreadsOfFateState) {
-    let State::ClickAsk(timeout, retry_count) = tof.state else {
+    let State::ClickAsk(timeout, retry_count, ask_clicked) = tof.state else {
         panic!("threads of fate state is not click ask")
     };
 
@@ -417,12 +428,16 @@ fn update_click_ask(resources: &mut Resources, tof: &mut ThreadsOfFateState) {
             if let Ok(bbox) = resources.detector().detect_tof_ask_button() {
                 let (x, y) = bbox_click_point(bbox);
                 resources.input.send_mouse(x, y, MouseKind::Click);
+                resources.input.send_mouse(tof.mouse_rest.x, tof.mouse_rest.y, MouseKind::Move);
+                // Mark ask as clicked, now we can check for dialog
+                tof.state = State::ClickAsk(timeout, retry_count, true);
+            } else {
+                tof.state = State::ClickAsk(timeout, retry_count, ask_clicked);
             }
-            tof.state = State::ClickAsk(timeout, retry_count);
         }
         Lifecycle::Ended => {
-            // Check if dialog appeared (ask click succeeded)
-            if resources.detector().detect_tof_dialog_visible() {
+            // Only check dialog if we have clicked ask
+            if ask_clicked && resources.detector().detect_tof_dialog_visible() {
                 tof.state = State::InteractDialog(Timeout::default(), 0, 0);
                 return;
             }
@@ -432,12 +447,12 @@ fn update_click_ask(resources: &mut Resources, tof: &mut ThreadsOfFateState) {
                 info!(target: "backend/player", "threads of fate: ask failed {} times in this attempt", MAX_ASK_FAIL_COUNT);
                 tof.completed = true;
             } else {
-                tof.state = State::ClickAsk(Timeout::default(), new_retry);
+                tof.state = State::ClickAsk(Timeout::default(), new_retry, false);
             }
         }
         Lifecycle::Updated(timeout) => {
-            // Check if dialog appeared (ask click succeeded)
-            if resources.detector().detect_tof_dialog_visible() {
+            // Only check dialog if we have clicked ask
+            if ask_clicked && resources.detector().detect_tof_dialog_visible() {
                 tof.state = State::InteractDialog(Timeout::default(), 0, 0);
                 return;
             }
@@ -447,8 +462,12 @@ fn update_click_ask(resources: &mut Resources, tof: &mut ThreadsOfFateState) {
             {
                 let (x, y) = bbox_click_point(bbox);
                 resources.input.send_mouse(x, y, MouseKind::Click);
+                resources.input.send_mouse(tof.mouse_rest.x, tof.mouse_rest.y, MouseKind::Move);
+                // Mark ask as clicked
+                tof.state = State::ClickAsk(timeout, retry_count, true);
+            } else {
+                tof.state = State::ClickAsk(timeout, retry_count, ask_clicked);
             }
-            tof.state = State::ClickAsk(timeout, retry_count);
         }
     }
 }
@@ -470,8 +489,15 @@ fn update_interact_dialog(resources: &mut Resources, tof: &mut ThreadsOfFateStat
         Lifecycle::Ended => {
             let new_count = press_count + 1;
             if resources.detector().detect_tof_dialog_visible() {
-                resources.input.send_key(tof.interact_key);
-                tof.state = State::InteractDialog(Timeout::default(), new_count, 0);
+                // Check press count limit even when dialog is visible
+                if press_count >= MAX_INTERACT_PRESS_COUNT {
+                    info!(target: "backend/player", "threads of fate: interact press count reached limit ({}), forcing end", MAX_INTERACT_PRESS_COUNT);
+                    tof.success = true;
+                    tof.completed = true;
+                } else {
+                    resources.input.send_key(tof.interact_key);
+                    tof.state = State::InteractDialog(Timeout::default(), new_count, 0);
+                }
             } else if press_count >= MAX_INTERACT_PRESS_COUNT {
                 info!(target: "backend/player", "threads of fate: interact press count reached limit ({}), ending dialog", MAX_INTERACT_PRESS_COUNT);
                 tof.success = true;
