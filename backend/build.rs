@@ -187,6 +187,7 @@ println!("cargo:rustc-env=TOF_ASK_BUTTON_TEMPLATE={}", tof_ask_button.to_str().u
 println!("cargo:rustc-env=TOF_YES_TEMPLATE={}", tof_yes.to_str().unwrap());  
 println!("cargo:rustc-env=TOF_NEXT_TEMPLATE={}", tof_next.to_str().unwrap());  
 println!("cargo:rustc-env=TOF_BLUE_POSITION_TEMPLATE={}", tof_blue_position.to_str().unwrap());
+println!("cargo:rustc-env=TOF_BLUE_MASK_TEMPLATE={}", tof_blue_mask.to_str().unwrap());
 
     println!(
         "cargo:rustc-env=POPUP_YES_TEMPLATE={}",
