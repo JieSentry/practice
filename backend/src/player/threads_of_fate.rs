@@ -30,6 +30,7 @@ const MAX_INTERACT_PRESS_COUNT: u32 = 11;
 #[derive(Debug, Clone)]
 enum State {
     /// Step 1: Find and click bulb.png, wait for maple_mailbox.png
+    /// (timeout, interact_press_count)
     ClickBulb(Timeout, u32),
     /// Step 2: Look for threads_of_fate_complete in the mailbox (only once per cycle)
     FindComplete(Timeout),
@@ -70,6 +71,8 @@ pub struct ThreadsOfFateState {
     complete_used: bool,
     /// Number of complete quests executed so far
     complete_executed_count: u32,
+    /// Whether ask failed in this cycle (for tracking fail count)
+    ask_failed_this_cycle: bool,
     /// Whether to permanently stop (reached target or failed condition)
     permanently_stopped: bool,
     /// Whether the task is completed and should return to Idle
@@ -103,6 +106,7 @@ impl ThreadsOfFateState {
             found_complete: false,
             complete_used: false,
             complete_executed_count: 0,
+            ask_failed_this_cycle: false,
             permanently_stopped: false,
             completed: false,
         }
@@ -143,13 +147,16 @@ pub fn update_threads_of_fate_state(resources: &mut Resources, player: &mut Play
                     player.context.set_threads_of_fate_permanently_stopped();
                 }
                 if tof.success {
+                    // Success: clear fail count
                     player.context.clear_threads_of_fate_fail_count();
-                } else {
+                } else if tof.ask_failed_this_cycle {
+                    // Ask failed: track fail count (using existing context mechanism)
                     player.context.track_threads_of_fate_fail_count();
                     if player.context.is_threads_of_fate_fail_count_limit_reached() {
                         player.context.set_threads_of_fate_permanently_stopped();
                     }
                 }
+                // Other failures don't increment fail count
             }
             player.state = player_next_state;
         }
