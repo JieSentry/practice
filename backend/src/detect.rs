@@ -3496,8 +3496,22 @@ pub static TOF_NEXT_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {
     imgcodecs::imdecode(include_bytes!(env!("TOF_NEXT_TEMPLATE")), IMREAD_GRAYSCALE).unwrap()
 });  
   
-static TOF_BLUE_POSITION_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {  
-    imgcodecs::imdecode(include_bytes!(env!("TOF_BLUE_POSITION_TEMPLATE")), IMREAD_COLOR).unwrap()  
+static TOF_BLUE_POSITION_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {
+    imgcodecs::imdecode(include_bytes!(env!("TOF_BLUE_POSITION_TEMPLATE")), IMREAD_COLOR).unwrap()
+});
+
+static TOF_BLUE_MASK_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {
+    let mut mat = imgcodecs::imdecode(
+        include_bytes!(env!("TOF_BLUE_MASK_TEMPLATE")),
+        IMREAD_GRAYSCALE,
+    )
+    .unwrap();
+    unsafe {
+        mat.modify_inplace(|mat, mat_mut| {
+            mat.convert_to(mat_mut, CV_32FC3, 1.0 / 255.0, 0.0).unwrap();
+        });
+    }
+    mat
 });
   
 // 参数名 grayscale → bgr  
@@ -3569,7 +3583,7 @@ fn detect_tof_yes_button(grayscale: &impl ToInputArray, localization: &Localizat
 }
 
 fn detect_tof_blue_position(bgr: &impl ToInputArray) -> bool {
-    detect_template(bgr, &*TOF_BLUE_POSITION_TEMPLATE, Point::default(), 0.75).is_ok()
+    detect_template_single(bgr, &*TOF_BLUE_POSITION_TEMPLATE, &*TOF_BLUE_MASK_TEMPLATE, Point::default(), 0.85).is_ok()
 }
 
 /// Returns true if any ToF dialog element (Yes button, Next button, or blue position frame) is visible.
