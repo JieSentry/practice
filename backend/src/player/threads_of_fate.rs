@@ -173,6 +173,12 @@ fn update_click_bulb(resources: &mut Resources, tof: &mut ThreadsOfFateState) {
             tof.completed = true;
         }
         Lifecycle::Updated(timeout) => {
+            // Check for dialog elements first - close dialog before clicking bulb
+            if resources.detector().detect_tof_interact_settings() {
+                resources.input.send_key(tof.interact_key);
+                tof.state = State::ClickBulb(timeout);
+                return;
+            }
             if timeout.current % 10 == 0 && resources.detector().detect_tof_maple_mailbox() {
                 info!(target: "backend/player", "threads of fate: mailbox detected, looking for complete");
                 tof.state = State::FindComplete(Timeout::default());
@@ -267,16 +273,17 @@ fn update_interact_complete(resources: &mut Resources, tof: &mut ThreadsOfFateSt
         }
         Lifecycle::Ended => {
             let new_count = press_count + 1;
-            if resources.detector().detect_tof_dialog_visible() {
-                // Dialog still visible, press interact and reset miss_count
-                resources.input.send_key(tof.interact_key);
-                tof.state = State::InteractComplete(Timeout::default(), new_count, 0);
-            } else if press_count >= 4 {
+            if press_count >= 4 {
+                // Force end after 4 presses regardless of dialog state (prevent infinite loop)
                 info!(target: "backend/player", "threads of fate: complete dialog press count reached limit (4), ending");
                 tof.complete_executed_count += 1;
                 tof.complete_used = true;
                 tof.state = State::ClickBulb(Timeout::default());
-    } else if miss_count < MAX_DIALOG_GRACE_CHECKS {
+            } else if resources.detector().detect_tof_dialog_visible() {
+                // Dialog still visible, press interact and reset miss_count
+                resources.input.send_key(tof.interact_key);
+                tof.state = State::InteractComplete(Timeout::default(), new_count, 0);
+            } else if miss_count < MAX_DIALOG_GRACE_CHECKS {
         // Grace period: dialog might be transitioning between pages
         // Don't press interact, just wait and re-check
         tof.state = State::InteractComplete(Timeout::default(), new_count, miss_count + 1);
