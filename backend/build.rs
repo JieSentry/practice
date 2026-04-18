@@ -134,6 +134,7 @@ let tof_ask_button = resources_dir.join("tof_ask_button_ideal_ratio.png");
 let tof_yes = resources_dir.join("tof_yes_ideal_ratio.png");  
 let tof_next = resources_dir.join("tof_next_ideal_ratio.png");  
 let tof_blue_position = resources_dir.join("tof_blue_position_ideal_ratio.png");
+let tof_blue_mask = resources_dir.join("tof_blue_mask_ideal_ratio.png");
 
     let familiar_button_save = resources_dir.join("familiar_button_save_ideal_ratio.png");
     let familiar_button_setup = resources_dir.join("familiar_button_setup_ideal_ratio.png");
