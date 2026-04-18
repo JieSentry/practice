@@ -429,7 +429,6 @@ fn update_click_ask(resources: &mut Resources, tof: &mut ThreadsOfFateState) {
     let State::ClickAsk(timeout, retry_count, ask_clicked) = tof.state else {
         panic!("threads of fate state is not click ask")
     };
-
     // Shorter timeout: 15 ticks (~0.5s) instead of 30
     match next_timeout_lifecycle(timeout, 15) {
         Lifecycle::Started(timeout) => {
@@ -453,7 +452,11 @@ fn update_click_ask(resources: &mut Resources, tof: &mut ThreadsOfFateState) {
             // Dialog did not appear, retry
             let new_retry = retry_count + 1;
             if new_retry >= MAX_ASK_FAIL_COUNT {
-                info!(target: "backend/player", "threads of fate: ask failed {} times in this attempt", MAX_ASK_FAIL_COUNT);
+                // Ask failed MAX_ASK_FAIL_COUNT times in this cycle
+                // Mark as failed and end this cycle
+                // Fail count is tracked via context.ask_fail_cycle_count (persisted across rotator cycles)
+                info!(target: "backend/player", "threads of fate: ask failed {} times in this cycle", MAX_ASK_FAIL_COUNT);
+                tof.ask_failed_this_cycle = true;
                 tof.completed = true;
             } else {
                 tof.state = State::ClickAsk(Timeout::default(), new_retry, false);
