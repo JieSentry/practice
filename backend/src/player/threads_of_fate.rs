@@ -168,6 +168,10 @@ fn update_click_bulb(resources: &mut Resources, tof: &mut ThreadsOfFateState) {
             tof.completed = true;
         }
         Lifecycle::Updated(timeout) => {
+            if timeout.current == 0 {
+                tof.state = State::ClickBulb(timeout);
+                return;
+            }
             if timeout.current % 10 == 0 && resources.detector().detect_tof_maple_mailbox() {
                 info!(target: "backend/player", "threads of fate: mailbox detected, looking for complete");
                 tof.state = State::FindComplete(Timeout::default());
@@ -274,6 +278,7 @@ fn update_interact_complete(resources: &mut Resources, tof: &mut ThreadsOfFateSt
     } else {
                 tof.complete_executed_count += 1;
                 info!(target: "backend/player", "threads of fate: complete quest finished ({}/{})", tof.complete_executed_count, tof.target_complete_count);
+                tof.complete_used = true; // Mark as used to skip FindComplete next
                 tof.state = State::ClickBulb(Timeout::default());
             }
         }
