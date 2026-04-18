@@ -79,7 +79,7 @@ pub struct ThreadsOfFateState {
 impl Display for ThreadsOfFateState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.state {
-            State::ClickBulb(_) => write!(f, "ClickBulb"),
+            State::ClickBulb(_, _) => write!(f, "ClickBulb"),
             State::FindComplete(_) => write!(f, "FindComplete"),
             State::InteractComplete(_, _, _) => write!(f, "InteractComplete"),
             State::FindUnravelling(_, _) => write!(f, "FindUnravelling"),
@@ -95,7 +95,7 @@ impl Display for ThreadsOfFateState {
 impl ThreadsOfFateState {
     pub fn new(target_count: u32, _wait_interval_ticks: u32, interact_key: KeyKind) -> Self {
         Self {
-            state: State::ClickBulb(Timeout::default()),
+            state: State::ClickBulb(Timeout::default(), 0),
             target_complete_count: target_count,
             interact_key,
             mouse_rest: Point::new(1100, 550),
@@ -159,14 +159,14 @@ pub fn update_threads_of_fate_state(resources: &mut Resources, player: &mut Play
 
 /// Step 1: Find bulb.png and click it
 fn update_click_bulb(resources: &mut Resources, tof: &mut ThreadsOfFateState) {
-    let State::ClickBulb(timeout) = tof.state else {
+    let State::ClickBulb(timeout, press_count) = tof.state else {
         panic!("threads of fate state is not click bulb")
     };
 
     match next_timeout_lifecycle(timeout, 90) {
         Lifecycle::Started(timeout) => {
             resources.input.send_mouse(tof.mouse_rest.x, tof.mouse_rest.y, MouseKind::Move);
-            tof.state = State::ClickBulb(timeout);
+            tof.state = State::ClickBulb(timeout, press_count);
         }
         Lifecycle::Ended => {
             info!(target: "backend/player", "threads of fate: mailbox did not appear after clicking bulb");
@@ -174,9 +174,10 @@ fn update_click_bulb(resources: &mut Resources, tof: &mut ThreadsOfFateState) {
         }
         Lifecycle::Updated(timeout) => {
             // Check for dialog elements first - close dialog before clicking bulb
-            if resources.detector().detect_tof_dialog_visible() {
+            // But limit interact presses to avoid infinite loop
+            if press_count < 4 && resources.detector().detect_tof_dialog_visible() {
                 resources.input.send_key(tof.interact_key);
-                tof.state = State::ClickBulb(timeout);
+                tof.state = State::ClickBulb(timeout, press_count + 1);
                 return;
             }
             if timeout.current % 10 == 0 && resources.detector().detect_tof_maple_mailbox() {
@@ -192,7 +193,7 @@ fn update_click_bulb(resources: &mut Resources, tof: &mut ThreadsOfFateState) {
                 resources.input.send_mouse(x, y, MouseKind::Click);
                 resources.input.send_mouse(tof.mouse_rest.x, tof.mouse_rest.y, MouseKind::Move);
             }
-            tof.state = State::ClickBulb(timeout);
+            tof.state = State::ClickBulb(timeout, press_count);
         }
     }
 }
@@ -278,7 +279,7 @@ fn update_interact_complete(resources: &mut Resources, tof: &mut ThreadsOfFateSt
                 info!(target: "backend/player", "threads of fate: complete dialog press count reached limit (4), ending");
                 tof.complete_executed_count += 1;
                 tof.complete_used = true;
-                tof.state = State::ClickBulb(Timeout::default());
+                tof.state = State::ClickBulb(Timeout::default(), 0);
             } else if resources.detector().detect_tof_dialog_visible() {
                 // Dialog still visible, press interact and reset miss_count
                 resources.input.send_key(tof.interact_key);
@@ -291,7 +292,7 @@ fn update_interact_complete(resources: &mut Resources, tof: &mut ThreadsOfFateSt
                 tof.complete_executed_count += 1;
                 info!(target: "backend/player", "threads of fate: complete quest finished ({}/{})", tof.complete_executed_count, tof.target_complete_count);
                 tof.complete_used = true; // Mark as used to skip FindComplete next
-                tof.state = State::ClickBulb(Timeout::default());
+                tof.state = State::ClickBulb(Timeout::default(), 0);
             }
         }
         Lifecycle::Updated(timeout) => {
