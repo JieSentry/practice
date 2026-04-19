@@ -161,6 +161,12 @@ pub fn update_threads_of_fate_state(resources: &mut Resources, player: &mut Play
     }
 }
 
+/// Step 1: Find bulb.png and click it
+fn update_click_bulb(resources: &mut Resources, tof: &mut ThreadsOfFateState) {
+    let State::ClickBulb(timeout, press_count) = tof.state else {
+        panic!("threads of fate state is not click bulb")
+    };
+
     match next_timeout_lifecycle(timeout, 30) {
         Lifecycle::Started(timeout) => {
             resources.input.send_mouse(tof.mouse_rest.x, tof.mouse_rest.y, MouseKind::Move);
