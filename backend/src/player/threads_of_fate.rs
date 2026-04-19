@@ -161,13 +161,7 @@ pub fn update_threads_of_fate_state(resources: &mut Resources, player: &mut Play
     }
 }
 
-/// Step 1: Find bulb.png and click it
-fn update_click_bulb(resources: &mut Resources, tof: &mut ThreadsOfFateState) {
-    let State::ClickBulb(timeout, press_count) = tof.state else {
-        panic!("threads of fate state is not click bulb")
-    };
-
-    match next_timeout_lifecycle(timeout, 90) {
+    match next_timeout_lifecycle(timeout, 30) {
         Lifecycle::Started(timeout) => {
             resources.input.send_mouse(tof.mouse_rest.x, tof.mouse_rest.y, MouseKind::Move);
             tof.state = State::ClickBulb(timeout, press_count);
@@ -177,20 +171,20 @@ fn update_click_bulb(resources: &mut Resources, tof: &mut ThreadsOfFateState) {
             tof.completed = true;
         }
         Lifecycle::Updated(timeout) => {
-            // Check for dialog elements first - close dialog before clicking bulb
-            // Limit to 1 press to reduce delay
+            // Check for dialog elements first (only once at the beginning)
             if press_count < 1 && resources.detector().detect_tof_dialog_visible() {
                 resources.input.send_key(tof.interact_key);
                 tof.state = State::ClickBulb(timeout, press_count + 1);
                 return;
             }
+            // Check mailbox every 10 ticks
             if timeout.current % 10 == 0 && resources.detector().detect_tof_maple_mailbox() {
                 info!(target: "backend/player", "threads of fate: mailbox detected, looking for complete");
                 tof.state = State::FindComplete(Timeout::default());
                 return;
             }
-            // Delay bulb detection to avoid initial false positives (wait 15 ticks for image stable)
-            if timeout.current >= 15 && timeout.current % 15 == 0
+            // Click bulb when mailbox not detected
+            if timeout.current >= 5 && timeout.current % 5 == 0
                 && let Ok(bbox) = resources.detector().detect_tof_bulb()
             {
                 let (x, y) = bbox_click_point(bbox);
