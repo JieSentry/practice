@@ -429,7 +429,7 @@ fn update_click_ask(resources: &mut Resources, tof: &mut ThreadsOfFateState) {
     };
 
     // Shorter timeout: 15 ticks (~0.5s) instead of 30
-    match next_timeout_lifecycle(timeout, 15) {
+    match next_timeout_lifecycle(timeout, 10) {
         Lifecycle::Started(timeout) => {
             // First entry: detect and click ask button
             if let Ok(bbox) = resources.detector().detect_tof_ask_button() {
