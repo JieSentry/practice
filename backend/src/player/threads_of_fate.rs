@@ -268,7 +268,7 @@ fn update_interact_complete(resources: &mut Resources, tof: &mut ThreadsOfFateSt
         panic!("threads of fate state is not interact complete")
     };
 
-    match next_timeout_lifecycle(timeout, INTERACT_PRESS_INTERVAL) {
+    match next_timeout_lifecycle(timeout, INTERACT_PRESS_INTERVAL / 2) {
         Lifecycle::Started(timeout) => {
             // Only press interact if not in grace period (miss_count == 0)
             if miss_count == 0 {
