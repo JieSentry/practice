@@ -437,16 +437,8 @@ fn update_click_ask(resources: &mut Resources, tof: &mut ThreadsOfFateState) {
     // Shorter timeout: 15 ticks (~0.5s) instead of 30
     match next_timeout_lifecycle(timeout, 10) {
         Lifecycle::Started(timeout) => {
-            // First entry: detect and click ask button
-            if let Ok(bbox) = resources.detector().detect_tof_ask_button() {
-                let (x, y) = bbox_click_point(bbox);
-                resources.input.send_mouse(x, y, MouseKind::Click);
-                resources.input.send_mouse(tof.mouse_rest.x, tof.mouse_rest.y, MouseKind::Move);
-                // Mark ask as clicked, now we can check for dialog
-                tof.state = State::ClickAsk(timeout, retry_count, true);
-            } else {
-                tof.state = State::ClickAsk(timeout, retry_count, ask_clicked);
-            }
+            // Delay first click to tick 2
+            tof.state = State::ClickAsk(timeout, retry_count, ask_clicked);
         }
         Lifecycle::Ended => {
             // Only check dialog if we have clicked ask
@@ -471,8 +463,8 @@ fn update_click_ask(resources: &mut Resources, tof: &mut ThreadsOfFateState) {
                 tof.state = State::InteractDialog(Timeout::default(), 0, 0);
                 return;
             }
-            // Retry clicking ask button every 8 ticks (~0.25s, half of the original)
-            if timeout.current % 8 == 0
+            // Click ask button at tick 2 (first click) and tick 8 (second click)
+            if (timeout.current == 2 || timeout.current % 8 == 0)
                 && let Ok(bbox) = resources.detector().detect_tof_ask_button()
             {
                 let (x, y) = bbox_click_point(bbox);
