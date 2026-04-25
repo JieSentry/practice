@@ -269,33 +269,57 @@ fn update_idle_state(
     } = minimap_state;
     let detector = resources.detector();
 
-    let tl_pixel = match pixel_at(&detector.mat(), anchors.tl.0) {
-        Some(val) => val,
-        None => {
-            minimap.state = Minimap::Detecting;
-            return;
-        }
-    };
-    let br_pixel = match pixel_at(&detector.mat(), anchors.br.0) {
-        Some(val) => val,
-        None => {
-            minimap.state = Minimap::Detecting;
-            return;
-        }
-    };
-    let tl_match = anchor_match(anchors.tl.1, tl_pixel);
-    let br_match = anchor_match(anchors.br.1, br_pixel);
-    if !tl_match && !br_match {
-        debug!(
-            target: "backend/minimap",
-            "anchor pixels mismatch: {:?} != {:?}",
-            (tl_pixel, br_pixel),
-            (anchors.tl.1, anchors.br.1)
-        );
-        minimap.state = Minimap::Detecting;
-        return;
-    }
-
+const ANCHOR_POSITION_TOLERANCE: i32 = 3;  
+  
+let mat = &detector.mat();  
+let tl_pixel = match pixel_at(mat, anchors.tl.0) {  
+    Some(val) => val,  
+    None => {  
+        minimap.state = Minimap::Detecting;  
+        return;  
+    }  
+};  
+let br_pixel = match pixel_at(mat, anchors.br.0) {  
+    Some(val) => val,  
+    None => {  
+        minimap.state = Minimap::Detecting;  
+        return;  
+    }  
+};  
+  
+// 先用颜色匹配（快速路径）  
+let mut tl_match = anchor_match(anchors.tl.1, tl_pixel);  
+let mut br_match = anchor_match(anchors.br.1, br_pixel);  
+  
+// 颜色都不匹配时，用位置容忍回退  
+if !tl_match && !br_match {  
+    let size = bbox.width.min(bbox.height) as usize;  
+    let tl_pos_match = anchor_at(mat, bbox.tl(), size, 1)  
+        .map(|(pos, _)| {  
+            (pos.x - anchors.tl.0.x).abs() <= ANCHOR_POSITION_TOLERANCE  
+                && (pos.y - anchors.tl.0.y).abs() <= ANCHOR_POSITION_TOLERANCE  
+        })  
+        .unwrap_or(false);  
+    let br_pos_match = anchor_at(mat, bbox.br(), size, -1)  
+        .map(|(pos, _)| {  
+            (pos.x - anchors.br.0.x).abs() <= ANCHOR_POSITION_TOLERANCE  
+                && (pos.y - anchors.br.0.y).abs() <= ANCHOR_POSITION_TOLERANCE  
+        })  
+        .unwrap_or(false);  
+  
+    if !tl_pos_match && !br_pos_match {  
+        debug!(  
+            target: "backend/minimap",  
+            "anchor color and position both mismatch, re-detecting"  
+        );  
+        minimap.state = Minimap::Detecting;  
+        return;  
+    }  
+    // 位置容忍通过，更新 tl_match/br_match 供后续 partially_overlapping 判断  
+    tl_match = tl_pos_match;  
+    br_match = br_pos_match;  
+}
+    
     let partially_overlapping = (tl_match && !br_match) || (!tl_match && br_match);
     let rune = update_rune_task(
         resources,
