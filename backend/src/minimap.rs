@@ -269,7 +269,7 @@ fn update_idle_state(
     } = minimap_state;
     let detector = resources.detector();
 
-const ANCHOR_POSITION_TOLERANCE: i32 = 3;  
+const ANCHOR_POSITION_TOLERANCE: i32 = 5;  
   
 let mat = &detector.mat();  
 let tl_pixel = match pixel_at(mat, anchors.tl.0) {  
