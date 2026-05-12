@@ -247,7 +247,7 @@ fn update_non_positional_state(
     if resources.operation.config.efficiency_mode {  
         let is_high_fps_state = matches!(  
             player.state,  
-            Player::SolvingRune(_) | Player::SolvingShape(_) | Player::SolvingVioletta(_)  
+            Player::SolvingShape(_) | Player::SolvingVioletta(_)  
         );  
           
         if is_high_fps_state {  
