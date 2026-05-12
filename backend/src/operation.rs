@@ -7,18 +7,20 @@ use std::time::Instant;
 use crate::models::Settings;
 
 #[derive(Debug, Clone, Copy)]
-pub struct OperationConfiguration {
-    pub run_timer: bool,
-    pub run_timer_millis: u64,
+pub struct OperationConfiguration {  
+    pub run_timer: bool,  
+    pub run_timer_millis: u64,  
+    pub efficiency_mode: bool,  
 }
 
-impl From<&Settings> for OperationConfiguration {
-    fn from(settings: &Settings) -> Self {
-        Self {
-            run_timer: settings.run_timer,
-            run_timer_millis: settings.run_timer_millis,
-        }
-    }
+impl From<&Settings> for OperationConfiguration {  
+    fn from(settings: &Settings) -> Self {  
+        Self {  
+            run_timer: settings.run_timer,  
+            run_timer_millis: settings.run_timer_millis,  
+            efficiency_mode: settings.efficiency_mode,  
+        }  
+    }  
 }
 
 #[derive(Debug, Clone, Copy)]
