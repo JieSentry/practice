@@ -171,7 +171,7 @@ fn systems_loop() {
         |detector| detector.detect_elite_boss_bar(),
     );
 
-    loop_with_fps(get_current_fps(), || {
+    loop_with_fps(resources.operation.config.efficiency_mode, || {
         let detector = capture
             .grab()
             .and_then(|frame| OwnedMat::new(frame).map_err(|_| Error::WindowInvalidSize))
@@ -276,9 +276,16 @@ fn event_task(
 }
 
 #[inline]
-fn loop_with_fps(fps: u32, mut on_tick: impl FnMut()) {
+fn loop_with_fps(use_dynamic_fps: bool, mut on_tick: impl FnMut()) {  
     #[cfg(debug_assertions)]
     const LOG_INTERVAL_SECS: u64 = 5;
+
+    // 根据参数决定使用动态FPS还是固定FPS  
+    let fps = if use_dynamic_fps {  
+        get_current_fps()  
+    } else {  
+        FPS  
+    };  
 
     let nanos_per_frame = (1_000_000_000 / fps) as u128;
     #[cfg(debug_assertions)]
