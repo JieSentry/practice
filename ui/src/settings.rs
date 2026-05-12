@@ -611,6 +611,16 @@ fn SectionOthers() -> Element {
                     },
                     checked: settings().stop_on_player_die,
                 }
+                SettingsCheckbox {  
+                    label: "Whether to adopt efficiency mode",  
+                    on_checked: move |efficiency_mode| {  
+                        save_settings(Settings {  
+                            efficiency_mode,  
+                            ..settings.peek().clone()  
+                        });  
+                    },  
+                    checked: settings().efficiency_mode,  
+                }
                 div { class: "col-span-full",
                     div { class: "grid grid-cols-2 gap-3",
                         FileInput {
