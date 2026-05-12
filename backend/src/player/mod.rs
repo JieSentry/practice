@@ -254,7 +254,10 @@ fn update_non_positional_state(
             crate::run::set_high_fps();  
         } else {  
             crate::run::set_low_fps();  
-        }  
+        }
+            } else {  
+        // 未启用 efficiency_mode 时，确保帧率恢复到 30  
+        crate::run::set_high_fps();  
     }  
     match player.state {
         Player::UseKey(_) => update_use_key_state(resources, player, minimap_state),
