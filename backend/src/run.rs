@@ -4,7 +4,7 @@ use std::{
     rc::Rc,
     sync::{
         Arc,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU32, Ordering},
     },
     thread,
     time::{Duration, Instant},
@@ -39,6 +39,23 @@ use crate::{
 ///
 /// This must **not** be changed as it affects other ticking systems.
 pub const FPS: u32 = 30;
+/// 当前运行的FPS（动态调整）  
+static CURRENT_FPS: AtomicU32 = AtomicU32::new(30);  
+  
+/// 设置高FPS模式（用于解符文、测谎仪等关键状态）  
+pub fn set_high_fps() {  
+    CURRENT_FPS.store(30, Ordering::SeqCst);  
+}  
+  
+/// 设置低FPS模式（用于普通状态以降低CPU使用）  
+pub fn set_low_fps() {  
+    CURRENT_FPS.store(10, Ordering::SeqCst);  
+}  
+  
+/// 获取当前FPS  
+pub fn get_current_fps() -> u32 {  
+    CURRENT_FPS.load(Ordering::SeqCst)  
+}
 
 /// Milliseconds per tick as an [`u64`].
 pub const MS_PER_TICK: u64 = MS_PER_TICK_F32 as u64;
@@ -154,7 +171,7 @@ fn systems_loop() {
         |detector| detector.detect_elite_boss_bar(),
     );
 
-    loop_with_fps(FPS, || {
+    loop_with_fps(get_current_fps(), || {
         let detector = capture
             .grab()
             .and_then(|frame| OwnedMat::new(frame).map_err(|_| Error::WindowInvalidSize))
