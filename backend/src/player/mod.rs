@@ -243,6 +243,20 @@ fn update_non_positional_state(
     minimap_state: Minimap,
     failed_to_detect_player: bool,
 ) -> bool {
+        if resources.operation.config.efficiency_mode {  
+        let is_high_fps_state = matches!(  
+            player.state,  
+            Player::SolvingRune(_) | Player::SolvingShape(_) | Player::SolvingVioletta(_)  
+        );  
+          
+        if is_high_fps_state {  
+            crate::run::set_high_fps();  
+        } else {  
+            crate::run::set_low_fps();  
+        }  
+    } else {  
+        crate::run::set_high_fps();  
+    }  
     match player.state {
         Player::UseKey(_) => update_use_key_state(resources, player, minimap_state),
         Player::FamiliarsSwapping(_) => {
