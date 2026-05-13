@@ -612,7 +612,7 @@ fn SectionOthers() -> Element {
                     checked: settings().stop_on_player_die,
                 }
                 SettingsCheckbox {  
-                    label: "Whether to adopt efficiency mode",  
+                    label: "efficiency mode",  
                     on_checked: move |efficiency_mode| {  
                         save_settings(Settings {  
                             efficiency_mode,  
