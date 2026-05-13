@@ -213,12 +213,13 @@ mod tests {
 
     use super::*;
 
-    fn base_config(run_timer: bool) -> OperationConfiguration {
-        OperationConfiguration {
-            run_timer,
-            run_timer_millis: 1_000,
-        }
-    }
+fn base_config(run_timer: bool) -> OperationConfiguration {  
+    OperationConfiguration {  
+        run_timer,  
+        run_timer_millis: 1_000,  
+        efficiency_mode: false,  
+    }  
+}
 
     fn op_with_state(state: OperationState, config: OperationConfiguration) -> Operation {
         Operation { state, config }
