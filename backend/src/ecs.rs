@@ -116,10 +116,11 @@ impl Resources {
             notification: Notification::new(Rc::new(RefCell::new(Settings::default()))),
             detector: detector.map(|detector| Arc::new(detector) as Arc<dyn Detector>),
             operation: Operation {
-                config: OperationConfiguration {
-                    run_timer: false,
-                    run_timer_millis: 0,
-                },
+config: OperationConfiguration {  
+    run_timer: false,  
+    run_timer_millis: 0,  
+    efficiency_mode: false,  
+},
                 state: OperationState::Running,
             },
             tick: 0,
