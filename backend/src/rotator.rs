@@ -569,10 +569,16 @@ impl DefaultRotator {
         let bound = bound.into();
 
         let name = player_context.name();
-        let Update::Ok(points) =
-            update_detection_task(resources, 0, &mut self.auto_mob_task, move |detector| {
-                detector.detect_mobs(idle.bbox, bound, pos, name)
-            })
+let update_millis = if resources.operation.config.efficiency_mode {  
+    100  // 启用efficiency mode时，每100ms检测一次  
+} else {  
+    0    // 未启用时，每帧检测  
+};  
+  
+let Update::Ok(points) =  
+    update_detection_task(resources, update_millis, &mut self.auto_mob_task, move |detector| {  
+        detector.detect_mobs(idle.bbox, bound, pos, name)  
+    })
         else {
             return;
         };
