@@ -570,7 +570,7 @@ impl DefaultRotator {
 
         let name = player_context.name();
 let update_millis = if resources.operation.config.efficiency_mode {  
-    1000  // 启用efficiency mode时，每1000ms检测一次  
+    3000  // 启用efficiency mode时，每3000ms检测一次  
 } else {  
     0    // 未启用时，每帧检测  
 };  
