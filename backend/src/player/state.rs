@@ -308,6 +308,8 @@ pub struct PlayerContext {
     is_dead_task: Option<Task<Result<bool>>>,
     /// The task for detecting the tomb OK button when player is dead.
     is_dead_button_task: Option<Task<Result<Rect>>>,
+    /// The task for detecting health when tomb is detected.  
+    is_dead_health_task: Option<Task<Result<(u32, u32)>>>,
 
     /// Approximates the player direction for using key.
     pub(super) last_known_direction: ActionKeyDirection,
@@ -1520,39 +1522,67 @@ impl PlayerContext {
     ///
     /// Upon being dead, a notification will be scheduled to notify the user.
     #[inline]
-    fn update_is_dead_state(&mut self, resources: &mut Resources) {
-        let Update::Ok(is_dead) =
-            update_detection_task(resources, 3000, &mut self.is_dead_task, |detector| {
-                Ok(detector.detect_player_is_dead())
-            })
-        else {
-            return;
-        };
-        if is_dead && !self.is_dead {
-            resources
-                .notification
-                .schedule_notification(NotificationKind::PlayerIsDead);
-        }
-        if is_dead {
-            let update =
-                update_detection_task(resources, 1000, &mut self.is_dead_button_task, |detector| {
-                    detector.detect_popup_ok_new_button()
-                });
-            match update {
-                Update::Ok(bbox) => {
-                    let x = bbox.x + bbox.width / 2;
-                    let y = bbox.y + bbox.height / 2;
-                    resources.input.send_mouse(x, y, MouseKind::Click);
-                }
-                Update::Err(_) => {
-                    resources.input.send_mouse(300, 100, MouseKind::Move);
-                }
-                Update::Pending => (),
-            }
-        }
-        self.is_dead = is_dead;
-    }
-
+fn update_is_dead_state(&mut self, resources: &mut Resources) {  
+    // 检测墓碑  
+    let Update::Ok(tomb_detected) =  
+        update_detection_task(resources, 3000, &mut self.is_dead_task, |detector| {  
+            Ok(detector.detect_player_is_dead())  
+        })  
+    else {  
+        return;  
+    };  
+  
+    // 只有检测到墓碑时，才检测血量  
+    let health_is_zero = if tomb_detected {  
+        match update_detection_task(  
+            resources,  
+            1000,  
+            &mut self.is_dead_health_task,  
+            |detector| {  
+                let health_bar = detector.detect_player_health_bar()?;  
+                let (current_bar, max_bar) = detector.detect_player_current_max_health_bars(health_bar)?;  
+                let health = detector.detect_player_health(current_bar, max_bar)?;  
+                Ok(health)  
+            },  
+        ) {  
+            Update::Ok((current, _)) => current == 0,  
+            Update::Err(_) | Update::Pending => false,  
+        }  
+    } else {  
+        // 没有墓碑时，清空血量检测任务  
+        self.is_dead_health_task = None;  
+        false  
+    };  
+  
+    // 死亡判断：检测到墓碑且血量为0  
+    let confirmed_dead = tomb_detected && health_is_zero;  
+  
+    if confirmed_dead && !self.is_dead {  
+        resources  
+            .notification  
+            .schedule_notification(NotificationKind::PlayerIsDead);  
+    }  
+  
+    if confirmed_dead {  
+        let update =  
+            update_detection_task(resources, 1000, &mut self.is_dead_button_task, |detector| {  
+                detector.detect_popup_ok_new_button()  
+            });  
+        match update {  
+            Update::Ok(bbox) => {  
+                let x = bbox.x + bbox.width / 2;  
+                let y = bbox.y + bbox.height / 2;  
+                resources.input.send_mouse(x, y, MouseKind::Click);  
+            }  
+            Update::Err(_) => {  
+                resources.input.send_mouse(300, 100, MouseKind::Move);  
+            }  
+            Update::Pending => (),  
+        }  
+    }  
+  
+    self.is_dead = confirmed_dead;  
+}
     fn update_stalling_buffer_state(&mut self, resources: &mut Resources) {
         match self.stalling_buffered {
             BufferedStalling::None => (),
