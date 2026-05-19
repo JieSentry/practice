@@ -308,8 +308,6 @@ pub struct PlayerContext {
     is_dead_task: Option<Task<Result<bool>>>,
     /// The task for detecting the tomb OK button when player is dead.
     is_dead_button_task: Option<Task<Result<Rect>>>,
-    /// The task for detecting health when tomb is detected.  
-    is_dead_health_task: Option<Task<Result<(u32, u32)>>>,
 
     /// Approximates the player direction for using key.
     pub(super) last_known_direction: ActionKeyDirection,
