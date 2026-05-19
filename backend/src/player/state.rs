@@ -1477,7 +1477,7 @@ impl PlayerContext {
     // 只有在启用自动喝药或检测到墓碑时才运行血量检测  
     let should_detect_health = self.config.use_potion_below_percent.is_some() || self.is_dead;  
 
-        if self.config.use_potion_below_percent.is_none() {
+if !should_detect_health { 
             self.health = None;
             self.health_task = None;
             self.health_bar = None;
