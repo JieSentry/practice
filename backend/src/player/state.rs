@@ -1473,6 +1473,10 @@ impl PlayerContext {
         if matches!(player_state, Player::SolvingRune(_)) {
             return;
         }
+
+    // 只有在启用自动喝药或检测到墓碑时才运行血量检测  
+    let should_detect_health = self.config.use_potion_below_percent.is_some() || self.is_dead;  
+
         if self.config.use_potion_below_percent.is_none() {
             self.health = None;
             self.health_task = None;
@@ -1583,6 +1587,7 @@ fn update_is_dead_state(&mut self, resources: &mut Resources) {
   
     self.is_dead = confirmed_dead;  
 }
+    
     fn update_stalling_buffer_state(&mut self, resources: &mut Resources) {
         match self.stalling_buffered {
             BufferedStalling::None => (),
