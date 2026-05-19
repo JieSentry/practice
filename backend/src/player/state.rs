@@ -1473,18 +1473,14 @@ impl PlayerContext {
         if matches!(player_state, Player::SolvingRune(_)) {
             return;
         }
-
-    // 只有在启用自动喝药或检测到墓碑时才运行血量检测  
-    let should_detect_health = self.config.use_potion_below_percent.is_some() || self.is_dead;  
-
-if !should_detect_health { 
+        if self.config.use_potion_below_percent.is_none() {
             self.health = None;
             self.health_task = None;
             self.health_bar = None;
             self.health_bar_task = None;
             return;
         }
-
+ 
         let Some(health_bar) = self.health_bar else {
             let update = update_detection_task(
                 resources,
@@ -1497,7 +1493,7 @@ if !should_detect_health {
             }
             return;
         };
-
+ 
         let Update::Ok(health) = update_detection_task(
             resources,
             self.config.update_health_millis.unwrap_or(1000),
@@ -1511,16 +1507,6 @@ if !should_detect_health {
         ) else {
             return;
         };
-
-        let percentage = self.config.use_potion_below_percent.unwrap();
-        let (current, max) = health;
-        let ratio = current as f32 / max as f32;
-
-        self.health = Some(health);
-        if ratio <= percentage {
-            resources.input.send_key(self.config.potion_key);
-        }
-    }
 
     /// Updates whether the player is dead.
     ///
