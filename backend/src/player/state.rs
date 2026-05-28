@@ -1505,6 +1505,7 @@ impl PlayerContext {
         ) else {
             return;
         };
+    }
 
     /// Updates whether the player is dead.
     ///
