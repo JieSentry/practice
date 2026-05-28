@@ -1209,7 +1209,10 @@ fn detect_minimap(bgr: &impl MatTraitConst, border_threshold: u8) -> Result<Rect
     );
     debug!(target: "backend/minimap", "bbox {bbox:?}");
 
-    Ok(bbox + contour_bbox.tl())
+    let expanded_bbox = expand_bbox(None, bbox, 2);  
+    debug!(target: "backend/minimap", "expanded bbox {expanded_bbox:?}");  
+  
+    Ok(expanded_bbox + contour_bbox.tl())
 }
 
 fn detect_minimap_portals<T: MatTraitConst + ToInputArray>(minimap_bgr: T) -> Vec<Rect> {
