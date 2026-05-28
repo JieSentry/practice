@@ -1505,6 +1505,15 @@ impl PlayerContext {
         ) else {
             return;
         };
+
+        let percentage = self.config.use_potion_below_percent.unwrap();
+        let (current, max) = health;
+        let ratio = current as f32 / max as f32;
+
+        self.health = Some(health);
+        if ratio <= percentage {
+            resources.input.send_key(self.config.potion_key);
+        }
     }
 
     /// Updates whether the player is dead.
