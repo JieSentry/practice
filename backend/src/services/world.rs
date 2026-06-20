@@ -28,12 +28,32 @@ impl EventHandler<WorldEvent> for WorldEventHandler {
                         .schedule_notification(NotificationKind::RunTimerEnded);
                 }
             }
-            WorldEvent::PlayerDied => {
-                if context.settings_service.settings().stop_on_player_die {
-                    context
-                        .operation_service
-                        .queue_halt(true, Halt { go_to_town: false });
+            WorldEvent::PlayerDied => {  
+                if context.settings_service.settings().stop_on_player_die {  
+                context  
+                    .world  
+                    .player  
+                    .context  
+                    .mark_pending_go_to_town_after_respawn();  
+  
+                context  
+                    .operation_service  
+                    .queue_halt(true, Halt { go_to_town: false });  
                 }
+            }
+            WorldEvent::PlayerRevived => {  
+                if !context  
+                    .world  
+                    .player  
+                    .context  
+                    .take_pending_go_to_town_after_respawn()  
+                {  
+                    return;  
+                }  
+  
+                context  
+                .operation_service  
+                .queue_halt(true, Halt { go_to_town: true });  
             }
             WorldEvent::MinimapChanged => {
                 if context.resources.operation.halting() {
