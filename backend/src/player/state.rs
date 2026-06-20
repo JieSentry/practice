@@ -1606,7 +1606,6 @@ impl PlayerContext {
 
         self.stalling_buffered = next;
     }
-}
 
 #[inline]
 fn auto_mob_ignore_xs_range_value(x: i32) -> (Range<i32>, u32) {
