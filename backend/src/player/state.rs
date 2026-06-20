@@ -419,12 +419,12 @@ impl PlayerContext {
     const MAX_THREADS_OF_FATE_FAIL_COUNT: u32 = 1;  
   
     #[inline]  
-    pub(super) fn mark_pending_go_to_town_after_respawn(&mut self) {  
+    pub(crate) fn mark_pending_go_to_town_after_respawn(&mut self) {  
         self.pending_go_to_town_after_respawn = true;  
     }  
   
     #[inline]  
-    pub(super) fn take_pending_go_to_town_after_respawn(&mut self) -> bool {  
+    pub(crate) fn take_pending_go_to_town_after_respawn(&mut self) -> bool {  
         let pending = self.pending_go_to_town_after_respawn;  
         self.pending_go_to_town_after_respawn = false;  
         pending  
