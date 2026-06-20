@@ -155,6 +155,7 @@ config: OperationConfiguration {
 pub enum WorldEvent {
     RunTimerEnded,
     PlayerDied,
+    PlayerRevived,
     MinimapChanged,
     CaptureFailed,
     LieDetectorShapeAppeared,
