@@ -189,7 +189,7 @@ fn systems_loop() {
         if let Ok(detector) = detector {
             let was_running_cycle =
                 matches!(resources.operation.state, OperationState::RunUntil { .. });
-            let was_player_alive = !world.player.context.is_dead();
+            let was_player_dead = world.player.context.is_dead();  
             let was_minimap_idle = matches!(world.minimap.state, Minimap::Idle(_));
 
             resources.detector = Some(Arc::new(detector));
@@ -221,11 +221,16 @@ fn systems_loop() {
                 let _ = event_tx.send(WorldEvent::RunTimerEnded);
             }
 
-            let player_died = was_player_alive && world.player.context.is_dead();
-            if player_died {
-                let _ = event_tx.send(WorldEvent::PlayerDied);
+            let player_died = !was_player_dead && world.player.context.is_dead();  
+            if player_died {  
+                let _ = event_tx.send(WorldEvent::PlayerDied);  
+            }  
+  
+            let player_revived = was_player_dead && !world.player.context.is_dead();  
+            if player_revived {  
+                let _ = event_tx.send(WorldEvent::PlayerRevived);  
             }
-
+            
             let minimap_detecting = matches!(world.minimap.state, Minimap::Detecting);
             if was_minimap_idle && minimap_detecting {
                 let _ = event_tx.send(WorldEvent::MinimapChanged);
