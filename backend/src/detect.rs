@@ -1208,9 +1208,6 @@ fn detect_minimap(bgr: &impl MatTraitConst, border_threshold: u8) -> Result<Rect
         minimap.rows() - bottom - top,
     );
     debug!(target: "backend/minimap", "bbox {bbox:?}");
-
-    let expanded_bbox = expand_bbox(None, bbox, 2);  
-    debug!(target: "backend/minimap", "expanded bbox {expanded_bbox:?}");  
   
     Ok(expanded_bbox + contour_bbox.tl())
 }
