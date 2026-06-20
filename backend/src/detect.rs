@@ -1208,8 +1208,8 @@ fn detect_minimap(bgr: &impl MatTraitConst, border_threshold: u8) -> Result<Rect
         minimap.rows() - bottom - top,
     );
     debug!(target: "backend/minimap", "bbox {bbox:?}");
-  
-    Ok(expanded_bbox + contour_bbox.tl())
+
+    Ok(bbox + contour_bbox.tl())
 }
 
 fn detect_minimap_portals<T: MatTraitConst + ToInputArray>(minimap_bgr: T) -> Vec<Rect> {
