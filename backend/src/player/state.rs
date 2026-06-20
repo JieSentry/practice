@@ -308,6 +308,8 @@ pub struct PlayerContext {
     is_dead_task: Option<Task<Result<bool>>>,
     /// The task for detecting the tomb OK button when player is dead.
     is_dead_button_task: Option<Task<Result<Rect>>>,
+    /// Mark death happened and town should be triggered after respawn.  
+    pending_go_to_town_after_respawn: bool,  
 
     /// Approximates the player direction for using key.
     pub(super) last_known_direction: ActionKeyDirection,
@@ -416,6 +418,19 @@ impl PlayerContext {
     /// Used whenever minimap data or configuration changes.
     const MAX_THREADS_OF_FATE_FAIL_COUNT: u32 = 1;  
   
+    #[inline]  
+    pub(super) fn mark_pending_go_to_town_after_respawn(&mut self) {  
+        self.pending_go_to_town_after_respawn = true;  
+    }  
+  
+    #[inline]  
+    pub(super) fn take_pending_go_to_town_after_respawn(&mut self) -> bool {  
+        let pending = self.pending_go_to_town_after_respawn;  
+        self.pending_go_to_town_after_respawn = false;  
+        pending  
+    }  
+}
+
     #[inline]  
     pub fn is_threads_of_fate_fail_count_limit_reached(&self) -> bool {  
         self.threads_of_fate_failed_count >= Self::MAX_THREADS_OF_FATE_FAIL_COUNT
