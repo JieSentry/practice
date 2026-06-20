@@ -429,7 +429,6 @@ impl PlayerContext {
         self.pending_go_to_town_after_respawn = false;  
         pending  
     }  
-}
 
     #[inline]  
     pub fn is_threads_of_fate_fail_count_limit_reached(&self) -> bool {  
@@ -1606,6 +1605,7 @@ impl PlayerContext {
 
         self.stalling_buffered = next;
     }
+}
 
 #[inline]
 fn auto_mob_ignore_xs_range_value(x: i32) -> (Range<i32>, u32) {
