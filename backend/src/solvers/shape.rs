@@ -88,12 +88,12 @@ impl TransparentShapeSolver {
         let flow_centroid = self.run_optical_flow(cur_gray.as_ref());  
   
         // ── 2. 在仍清晰时补充特征点（避免逐渐变透明后点流失殆尽）──  
-        if let (Some(cur), Some(tb)) = (cur_gray.as_ref(), self.target_box) {  
-            if self.flow_points.len() < REPLENISH_THRESHOLD {  
-                let mut fresh = detect_features(cur, tb);  
-                self.flow_points.append(&mut fresh);  
-            }  
-        }  
+        if let (Some(cur), Some(tb)) = (cur_gray.as_ref(), self.target_box)
+    && self.flow_points.len() < REPLENISH_THRESHOLD
+{
+    let mut fresh = detect_features(cur, tb);
+    self.flow_points.append(&mut fresh);
+} 
   
         // 当前帧灰度存为下一帧的 prev  
         self.prev_gray = cur_gray;  
