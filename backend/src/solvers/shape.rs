@@ -10,8 +10,6 @@ use crate::{
 };  
   
 // ── 跟踪调参常量 ──────────────────────────────────────────  
-/// 切换迟滞：候选连续 N 次为最佳才切换（计数从 0 开始，0 = 1 帧即切）。  
-const SWITCH_CANDIDATE_FRAMES: u32 = 0;  
 /// 切换所需的最小分差。  
 const SWITCH_SCORE_MARGIN: f64 = 0.1;  
 /// 融合判定阈值：交集占两框中较小面积的比例超过此值视为融合。  
@@ -187,13 +185,13 @@ impl TransparentShapeSolver {
   
         // 融合检测：当前目标 ID 仍存活、且与其他 track 高度重叠时，冻结切换，  
         // 靠 Kalman 预测惯性继续跟随当前目标（避免融合瞬间评分抖动误切）。  
-        if let Some(current_track) = tracks.iter().find(|t| t.track_id() == current_track_id) {  
-            if is_track_fused(current_track, tracks) {  
-                self.candidate_track_id = None;  
-                self.candidate_track_count = 0;  
-                return Some(current_track);  
-            }  
-        }  
+if let Some(current_track) = tracks.iter().find(|t| t.track_id() == current_track_id)  
+            && is_track_fused(current_track, tracks)  
+        {  
+            self.candidate_track_id = None;  
+            self.candidate_track_count = 0;  
+            return Some(current_track);  
+        }
   
         // ← 移除了 self.update_low_angle_count(tracks, bg_direction) 调用  
   
@@ -246,10 +244,9 @@ impl TransparentShapeSolver {
             .map(|(_, s, _)| *s)  
             .unwrap_or(0.0);  
   
-        // 快速切换：迟滞降到 1 帧（SWITCH_CANDIDATE_FRAMES = 0）+ 分差 > SWITCH_SCORE_MARGIN。  
+        // 快速切换：迟滞降到 1 帧（不再做连续帧限制）+ 分差 > SWITCH_SCORE_MARGIN。  
         // 配合上面的融合冻结：融合瞬间已被挡住，非融合期评分稳定时快切可迅速纠正跟错。  
-        let should_switch = self.candidate_track_count >= SWITCH_CANDIDATE_FRAMES  
-            && best_score - current_score > SWITCH_SCORE_MARGIN;  
+        let should_switch = best_score - current_score > SWITCH_SCORE_MARGIN;
   
         if should_switch {  
             debug!(target: "backend/player", "Switch from {:?} to {}", self.current_track_id, best_track.track_id());  
@@ -328,12 +325,12 @@ fn overlap_ratio(a: Rect, b: Rect) -> f64 {
   
 /// 用预测位置在 tracks 中重认领：方向与背景夹角合理（沿用 track_background_score 过滤）、  
 /// 且距离预测位置最近、不超过最大允许距离的 track。  
-fn reclaim_track<'a>(  
+fn reclaim_track(  
     point: Point,  
-    tracks: &'a [STrack],  
+    tracks: &[STrack],  
     bg_direction: Point2d,  
     region: Rect,  
-) -> Option<&'a STrack> {  
+) -> Option<&STrack> {
     let max_dist = RECLAIM_MAX_DISTANCE_RATIO * diag(region);  
     tracks  
         .iter()  
