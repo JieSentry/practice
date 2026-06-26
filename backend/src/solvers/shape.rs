@@ -1,6 +1,3 @@
-下面是整合了全部改动（含启用 IOU 门控 IouGating::Position）的完整 backend/src/solvers/shape.rs，可整体替换。
-
-
 use std::ops::Div;  
   
 use log::debug;  
