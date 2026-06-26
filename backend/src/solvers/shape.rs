@@ -413,6 +413,7 @@ fn debug_transparent_shapes(
         &[],   // feature_points：还没接光流数据时先传空切片  
         None,  // target_box：还没接光流数据时先传 None  
     );
+  }
   
 fn find_track_closest_to(point: Point, tracks: &[STrack]) -> Option<&STrack> {  
     tracks.iter().min_by_key(|track| {  
