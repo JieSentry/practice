@@ -1,3 +1,6 @@
+下面是整合了全部改动（含启用 IOU 门控 IouGating::Position）的完整 backend/src/solvers/shape.rs，可整体替换。
+
+
 use std::ops::Div;  
   
 use log::debug;  
@@ -8,6 +11,16 @@ use crate::{
     run::FPS,  
     tracker::{ByteTracker, Detection, IouGating, STrack},  
 };  
+  
+// ── 跟踪调参常量 ──────────────────────────────────────────  
+/// 切换迟滞：候选连续 N 次为最佳才切换（计数从 0 开始，0 = 1 帧即切）。  
+const SWITCH_CANDIDATE_FRAMES: u32 = 0;  
+/// 切换所需的最小分差。  
+const SWITCH_SCORE_MARGIN: f64 = 0.1;  
+/// 融合判定阈值：交集占两框中较小面积的比例超过此值视为融合。  
+const FUSION_OVERLAP_RATIO: f64 = 0.3;  
+/// 重认领时允许的最大距离（相对 region 对角线的比例）。  
+const RECLAIM_MAX_DISTANCE_RATIO: f64 = 0.25;  
   
 #[derive(Debug)]  
 pub struct TransparentShapeSolver {  
@@ -26,7 +39,8 @@ pub struct TransparentShapeSolver {
 impl Default for TransparentShapeSolver {  
     fn default() -> Self {  
         Self {  
-            tracker: ByteTracker::new(FPS as u64, 0.25, 0.1, 0.25, IouGating::None),  
+            // ← 启用 IOU 门控（Position：仅位置门控），提升融合期 ID 关联稳定性。  
+            tracker: ByteTracker::new(FPS as u64, 0.25, 0.1, 0.25, IouGating::Position),  
             current_track_id: None,  
             candidate_track_id: None,  
             candidate_track_count: 0,  
@@ -85,7 +99,39 @@ impl TransparentShapeSolver {
             }  
             None => {  
                 let last_cursor = self.last_cursor?;  
-                let last_velocity = self.last_velocity.expect("set if last_cursor set") * 1.5;  
+                let last_velocity = self.last_velocity.expect("set if last_cursor set");  
+  
+                // 分离/丢 ID 兜底：先用预测位置在当前 tracks 中重新认领最近且方向合理的目标。  
+                let predicted = last_cursor  
+                    + Point::new(  
+                        last_velocity.x.round() as i32,  
+                        last_velocity.y.round() as i32,  
+                    );  
+                if let Some(track) = reclaim_track(predicted, &tracks, self.bg_direction, region) {  
+                    debug!(target: "backend/player", "shape reclaim to {}", track.track_id());  
+                    let next_cursor = predicted_center(track);  
+                    self.current_track_id = Some(track.track_id());  
+                    self.candidate_track_id = None;  
+                    self.candidate_track_count = 0;  
+                    self.last_cursor = Some(next_cursor);  
+                    self.last_velocity = Some(track.kalman_velocity());  
+  
+                    #[cfg(debug_assertions)]  
+                    if self.is_debugging {  
+                        debug_transparent_shapes(  
+                            detector,  
+                            &tracks,  
+                            region,  
+                            next_cursor,  
+                            self.bg_direction,  
+                        );  
+                    }  
+  
+                    return Some(region.tl() + next_cursor);  
+                }  
+  
+                // 找不到合理 track 时，退回纯速度外推。  
+                let last_velocity = last_velocity * 1.5;  
                 let next_cursor = last_cursor  
                     + Point::new(  
                         last_velocity.x.round() as i32,  
@@ -142,14 +188,22 @@ impl TransparentShapeSolver {
         let last_cursor = self.last_cursor?;  
         let bg_direction = self.bg_direction;  
   
+        // 融合检测：当前目标 ID 仍存活、且与其他 track 高度重叠时，冻结切换，  
+        // 靠 Kalman 预测惯性继续跟随当前目标（避免融合瞬间评分抖动误切）。  
+        if let Some(current_track) = tracks.iter().find(|t| t.track_id() == current_track_id) {  
+            if is_track_fused(current_track, tracks) {  
+                self.candidate_track_id = None;  
+                self.candidate_track_count = 0;  
+                return Some(current_track);  
+            }  
+        }  
+  
         // ← 移除了 self.update_low_angle_count(tracks, bg_direction) 调用  
   
         // 计算所有候选分数  
         let scored_tracks: Vec<_> = tracks  
             .iter()  
-            .filter(|track| {  
-                track.track_id() == current_track_id || track.tracklet_len() >= 3  
-            })  
+            .filter(|track| track.track_id() == current_track_id || track.tracklet_len() >= 3)  
             .filter_map(|track| {  
                 let is_current = track.track_id() == current_track_id;  
                 let score = track_background_score(  
@@ -195,10 +249,10 @@ impl TransparentShapeSolver {
             .map(|(_, s, _)| *s)  
             .unwrap_or(0.0);  
   
-        // ← 简化切换条件：候选连续3帧最佳 + 分差 > 0.1  
-        //   移除了 current_low_angle_frames >= 3 的分支  
-        let should_switch =  
-            self.candidate_track_count >= 2 && best_score - current_score > 0.1;  
+        // 快速切换：迟滞降到 1 帧（SWITCH_CANDIDATE_FRAMES = 0）+ 分差 > SWITCH_SCORE_MARGIN。  
+        // 配合上面的融合冻结：融合瞬间已被挡住，非融合期评分稳定时快切可迅速纠正跟错。  
+        let should_switch = self.candidate_track_count >= SWITCH_CANDIDATE_FRAMES  
+            && best_score - current_score > SWITCH_SCORE_MARGIN;  
   
         if should_switch {  
             debug!(target: "backend/player", "Switch from {:?} to {}", self.current_track_id, best_track.track_id());  
@@ -254,6 +308,49 @@ fn find_track_closest_to(point: Point, tracks: &[STrack]) -> Option<&STrack> {
   
         (point - track_mid).norm() as i32  
     })  
+}  
+  
+/// 当前目标框与任一其他 track 框的重叠比例是否超过融合阈值。  
+fn is_track_fused(current: &STrack, tracks: &[STrack]) -> bool {  
+    let cur = current.kalman_rect();  
+    tracks.iter().any(|t| {  
+        t.track_id() != current.track_id()  
+            && overlap_ratio(cur, t.kalman_rect()) > FUSION_OVERLAP_RATIO  
+    })  
+}  
+  
+/// 交集面积占两框中较小面积的比例（能覆盖"一个框被另一个包含"的情况）。  
+fn overlap_ratio(a: Rect, b: Rect) -> f64 {  
+    let inter = (a & b).area();  
+    if inter == 0 {  
+        return 0.0;  
+    }  
+    let min_area = a.area().min(b.area()).max(1);  
+    inter as f64 / min_area as f64  
+}  
+  
+/// 用预测位置在 tracks 中重认领：方向与背景夹角合理（沿用 track_background_score 过滤）、  
+/// 且距离预测位置最近、不超过最大允许距离的 track。  
+fn reclaim_track<'a>(  
+    point: Point,  
+    tracks: &'a [STrack],  
+    bg_direction: Point2d,  
+    region: Rect,  
+) -> Option<&'a STrack> {  
+    let max_dist = RECLAIM_MAX_DISTANCE_RATIO * diag(region);  
+    tracks  
+        .iter()  
+        .filter(|track| {  
+            track_background_score(track, point, bg_direction, region, false).is_some()  
+        })  
+        .filter(|track| {  
+            let mid = mid_point(track.kalman_rect());  
+            (point - mid).norm() <= max_dist  
+        })  
+        .min_by_key(|track| {  
+            let mid = mid_point(track.kalman_rect());  
+            (point - mid).norm() as i32  
+        })  
 }  
   
 fn mid_point(rect: Rect) -> Point {  
