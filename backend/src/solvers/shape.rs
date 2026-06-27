@@ -101,7 +101,7 @@ impl TransparentShapeSolver {
             None => {  
                 // 完全融合 / 无逆背景候选：用冻结的干净速度滑行过渡。  
                 let last_cursor = self.last_cursor?;  
-                let last_velocity = self.last_velocity.expect("set if last_cursor set") * 1.5;  
+                let last_velocity = self.last_velocity.expect("set if last_cursor set") * 1.0;  
   
                 // 滑行过久则放弃，避免连环融合时一直盲滑。  
                 self.slide_frames += 1;  
