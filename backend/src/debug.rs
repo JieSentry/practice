@@ -84,13 +84,11 @@ pub fn debug_spinning_arrows(mat: &impl MatTraitConst, spin_arrow: SpinArrow) {
     debug_mat("Spin Arrow", &mat, 0, []);
 }
 
-pub fn debug_shape_tracks(  
-    mat: &impl MatTraitConst,  
-    tracks: Vec<STrack>,  
-    cursor: Point,  
-    bg_direction: Point2d,  
-    feature_points: &[Point],  
-    target_box: Option<Rect>,  
+pub fn debug_shape_tracks(
+    mat: &impl MatTraitConst,
+    tracks: Vec<STrack>,
+    cursor: Point,
+    bg_direction: Point2d, 
 ) {
     fn signed_angle_deg(a: Point2d, b: Point2d) -> f64 {
         let dot = a.dot(b);
@@ -190,31 +188,6 @@ pub fn debug_shape_tracks(
             0.9,
             Scalar::new(0.0, 255.0, 0.0, 0.0),
         );
-    }
-
-    // ── 焊在目标图形上的框（青色，比 track 框更粗，醒目）──  
-    if let Some(target) = target_box {  
-        let _ = rectangle(  
-            &mut mat,  
-            target,  
-            Scalar::new(255.0, 255.0, 0.0, 0.0), // 青色 (BGR)  
-            3,  
-            LINE_8,  
-            0,  
-        );  
-        let _ = put_text_def(  
-            &mut mat,  
-            "TARGET",  
-            target.tl() - Point::new(0, 10),  
-            FONT_HERSHEY_SIMPLEX,  
-            0.7,  
-            Scalar::new(255.0, 255.0, 0.0, 0.0),  
-        );  
-    }  
-  
-    // ── 光流特征点（洋红实心小圆点）──  
-    for &pt in feature_points {  
-        let _ = circle_def(&mut mat, pt, 3, Scalar::new(255.0, 0.0, 255.0, 0.0));  
     }
 
     imshow("Shape Tracks", &mat).unwrap();
