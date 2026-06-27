@@ -1,11 +1,7 @@
 use std::ops::Div;  
   
 use log::debug;  
-use opencv::core::{  
-    Mat, MatTraitConst, Point, Point2d, Point2f, Point_, Rect, Vector,  
-};  
-use opencv::imgproc::good_features_to_track_def;  
-use opencv::video::calc_optical_flow_pyr_lk_def;  
+use opencv::core::{Point, Point_, Point2d, Rect};  
   
 use crate::{  
     detect::Detector,  
@@ -13,17 +9,11 @@ use crate::{
     tracker::{ByteTracker, Detection, IouGating, STrack},  
 };  
   
-// ── 光流调参常量 ───────────────────────────────────────────  
-/// 每次最多检测的特征点数量。  
-const MAX_FEATURES: i32 = 80;  
-/// 光流存活点低于此数视为"跟丢"，回退到运动惯性。  
-const MIN_SURVIVING_FEATURES: usize = 6;  
-/// 存活点低于此数时补点（在仍清晰时补充新角点）。  
-const REPLENISH_THRESHOLD: usize = 24;  
-/// good_features_to_track 的质量阈值。  
-const FEATURE_QUALITY: f64 = 0.01;  
-/// good_features_to_track 的最小点间距（像素）。  
-const FEATURE_MIN_DISTANCE: f64 = 5.0;  
+// ── 调参常量 ──────────────────────────────────────────────  
+/// 当前目标框与另一个 track 框重叠即视为「正在融合」，融合期冻结速度。  
+const FUSION_OVERLAP_AREA: i32 = 1;  
+/// 惯性滑行的最大帧数，超过则放弃（返回 None），避免无限盲滑。  
+const MAX_SLIDE_FRAMES: u32 = 30;  
   
 #[derive(Debug)]  
 pub struct TransparentShapeSolver {  
@@ -34,10 +24,8 @@ pub struct TransparentShapeSolver {
     last_cursor: Option<Point>,  
     last_velocity: Option<Point2d>,  
     bg_direction: Point2d,  
-    // ── 光流状态（坐标均为 region 局部坐标）──  
-    prev_gray: Option<Mat>,  
-    flow_points: Vec<Point2f>,  
-    target_box: Option<Rect>,  
+    /// 连续惯性滑行的帧数。  
+    slide_frames: u32,  
     #[cfg(debug_assertions)]  
     is_debugging: bool,  
 }  
@@ -52,9 +40,7 @@ impl Default for TransparentShapeSolver {
             last_cursor: None,  
             last_velocity: None,  
             bg_direction: Point2d::default(),  
-            prev_gray: None,  
-            flow_points: Vec::new(),  
-            target_box: None,  
+            slide_frames: 0,  
             #[cfg(debug_assertions)]  
             is_debugging: false,  
         }  
@@ -78,48 +64,9 @@ impl TransparentShapeSolver {
                 .collect(),  
         );  
   
-        // 当前帧灰度的 region 子图（光流的输入图像）  
-        let cur_gray = extract_gray_roi(detector, region);  
-  
-        self.update_initial_track_if_needed(region, &tracks, cur_gray.as_ref());  
+        self.update_initial_track_if_needed(region, &tracks);  
         self.update_background_direction(&tracks);  
   
-        // ── 1. 光流：从上一帧灰度追踪特征点到当前帧 ──  
-        let flow_centroid = self.run_optical_flow(cur_gray.as_ref());  
-  
-        // ── 2. 在仍清晰时补充特征点（避免逐渐变透明后点流失殆尽）──  
-        if let (Some(cur), Some(tb)) = (cur_gray.as_ref(), self.target_box)
-    && self.flow_points.len() < REPLENISH_THRESHOLD
-{
-    let mut fresh = detect_features(cur, tb);
-    self.flow_points.append(&mut fresh);
-} 
-  
-        // 当前帧灰度存为下一帧的 prev  
-        self.prev_gray = cur_gray;  
-  
-        // ── 3. 光流质心可用：它就是目标位置，无视 trackID 漂移 ──  
-        if let Some(centroid) = flow_centroid {  
-            // 用质心就近重新锁定一个 track（仅用于取速度/调试，不依赖其 ID 稳定）  
-            if let Some(track) = find_track_closest_to(centroid, &tracks) {  
-                self.current_track_id = Some(track.track_id());  
-                self.last_velocity = Some(track.kalman_velocity());  
-            }  
-            self.last_cursor = Some(centroid);  
-  
-            #[cfg(debug_assertions)]  
-            if self.is_debugging {  
-                debug_transparent_shapes(detector, &tracks, region, centroid, self.bg_direction);  
-            }  
-  
-            let absolute = region.tl() + centroid;  
-            if !region.contains(absolute) {  
-                return None;  
-            }  
-            return Some(absolute);  
-        }  
-  
-        // ── 4. 光流跟丢：回退到原有 track 评分逻辑，并重建光流模板 ──  
         match self.update_and_find_best_track(&tracks, region) {  
             Some(track) => {  
                 let next_cursor = predicted_center(track);  
@@ -128,22 +75,40 @@ impl TransparentShapeSolver {
                 }  
                 self.current_track_id = Some(track.track_id());  
                 self.last_cursor = Some(next_cursor);  
-                self.last_velocity = Some(track.kalman_velocity());  
   
-                // 重新以该 track 的框为目标，重选特征点让光流恢复  
-                self.reseed_features(track.rect());  
+                // 融合期冻结速度：若目标框与其它 track 框重叠，认为正在融合，  
+                // 此时 kalman_velocity 已被融合质心污染，不用它覆盖干净速度快照。  
+                if !is_fusing(track, &tracks) {  
+                    self.last_velocity = Some(track.kalman_velocity());  
+                }  
+  
+                // 成功锁定到真实 track，清零滑行计数。  
+                self.slide_frames = 0;  
   
                 #[cfg(debug_assertions)]  
                 if self.is_debugging {  
-                    debug_transparent_shapes(detector, &tracks, region, next_cursor, self.bg_direction);  
+                    debug_transparent_shapes(  
+                        detector,  
+                        &tracks,  
+                        region,  
+                        next_cursor,  
+                        self.bg_direction,  
+                    );  
                 }  
   
                 Some(region.tl() + next_cursor)  
             }  
             None => {  
-                // ── 5. 完全融合等极端帧：纯速度外推硬撑 ──  
+                // 完全融合 / 无逆背景候选：用冻结的干净速度滑行过渡。  
                 let last_cursor = self.last_cursor?;  
                 let last_velocity = self.last_velocity.expect("set if last_cursor set") * 1.5;  
+  
+                // 滑行过久则放弃，避免连环融合时一直盲滑。  
+                self.slide_frames += 1;  
+                if self.slide_frames > MAX_SLIDE_FRAMES {  
+                    return None;  
+                }  
+  
                 let next_cursor = last_cursor  
                     + Point::new(  
                         last_velocity.x.round() as i32,  
@@ -158,7 +123,13 @@ impl TransparentShapeSolver {
   
                 #[cfg(debug_assertions)]  
                 if self.is_debugging {  
-                    debug_transparent_shapes(detector, &tracks, region, next_cursor, self.bg_direction);  
+                    debug_transparent_shapes(  
+                        detector,  
+                        &tracks,  
+                        region,  
+                        next_cursor,  
+                        self.bg_direction,  
+                    );  
                 }  
   
                 Some(absolute_next_cursor)  
@@ -166,64 +137,13 @@ impl TransparentShapeSolver {
         }  
     }  
   
-    /// 从 prev_gray 到 cur_gray 追踪特征点；存活点足够则返回其质心，并平移 target_box。  
-    fn run_optical_flow(&mut self, cur_gray: Option<&Mat>) -> Option<Point> {  
-        let prev = self.prev_gray.as_ref()?;  
-        let cur = cur_gray?;  
-        if self.flow_points.is_empty() {  
-            return None;  
-        }  
-  
-        let old_centroid = centroid(&self.flow_points);  
-        let survivors = track_flow(prev, cur, &self.flow_points);  
-        if survivors.len() < MIN_SURVIVING_FEATURES {  
-            // 跟丢：清空让上层重建  
-            self.flow_points.clear();  
-            return None;  
-        }  
-  
-        let new_centroid = centroid(&survivors);  
-  
-        // 用质心位移平移目标框，保持"焊在目标上的框"随之移动  
-        if let (Some(oc), Some(nc), Some(tb)) = (old_centroid, new_centroid, self.target_box) {  
-            let dx = nc.x - oc.x;  
-            let dy = nc.y - oc.y;  
-            self.target_box = Some(Rect::new(tb.x + dx, tb.y + dy, tb.width, tb.height));  
-        }  
-  
-        self.flow_points = survivors;  
-        new_centroid  
-    }  
-  
-    /// 以给定框（region 局部坐标）为目标，重置光流模板。  
-    fn reseed_features(&mut self, box_local: Rect) {  
-        self.target_box = Some(box_local);  
-        if let Some(cur) = self.prev_gray.as_ref() {  
-            self.flow_points = detect_features(cur, box_local);  
-        } else {  
-            self.flow_points.clear();  
-        }  
-    }  
-  
-    fn update_initial_track_if_needed(  
-        &mut self,  
-        region: Rect,  
-        tracks: &[STrack],  
-        cur_gray: Option<&Mat>,  
-    ) {  
+    fn update_initial_track_if_needed(&mut self, region: Rect, tracks: &[STrack]) {  
         if self.current_track_id.is_none() {  
             let region_mid = mid_point(Rect::new(0, 0, region.width, region.height));  
             if let Some(track) = find_track_closest_to(region_mid, tracks) {  
                 self.current_track_id = Some(track.track_id());  
                 self.last_cursor = Some(mid_point(track.rect()));  
                 self.last_velocity = Some(track.kalman_velocity());  
-  
-                // 初始锁定：记录目标框并选取特征点  
-                let box_local = track.rect();  
-                self.target_box = Some(box_local);  
-                if let Some(cur) = cur_gray {  
-                    self.flow_points = detect_features(cur, box_local);  
-                }  
             }  
         }  
     }  
@@ -245,7 +165,8 @@ impl TransparentShapeSolver {
         let last_cursor = self.last_cursor?;  
         let bg_direction = self.bg_direction;  
   
-        let scored_tracks: Vec<_> = tracks  
+        // 计算所有「逆背景运动」候选的分数（被 30° 过滤的会被丢弃）。  
+        let scored_tracks: Vec<(&STrack, f64, bool)> = tracks  
             .iter()  
             .filter(|track| track.track_id() == current_track_id || track.tracklet_len() >= 3)  
             .filter_map(|track| {  
@@ -256,20 +177,37 @@ impl TransparentShapeSolver {
             })  
             .collect();  
   
+        // 找出最高分候选。  
         let best_track_info = scored_tracks  
             .iter()  
-            .max_by(|(_, a, _), (_, b, _)| a.partial_cmp(b).unwrap());  
+            .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap());  
         let (best_track, best_score, is_best_current) = match best_track_info {  
-            Some(info) => info,  
-            None => return tracks.iter().find(|t| t.track_id() == current_track_id),  
+            Some(info) => (info.0, info.1, info.2),  
+            // 画面里没有任何逆背景候选（完全融合那几帧）→ 交给惯性滑行。  
+            None => return None,  
         };  
   
-        if *is_best_current {  
+        // 当前目标是否仍在逆背景候选集中。  
+        let current_in_scored = scored_tracks.iter().any(|t| t.2);  
+  
+        // 当前目标已掉出候选集（被背景带走 / 融合 / 丢失）→ 立即重锁定：  
+        // 在所有逆背景候选里选离预测光标位置最近的那个，采纳其新 ID。  
+        if !current_in_scored {  
+            let predicted = predicted_cursor(last_cursor, self.last_velocity);  
+            let relocked = reclaim_track(predicted, &scored_tracks).unwrap_or(best_track);  
+            self.candidate_track_id = None;  
+            self.candidate_track_count = 0;  
+            return Some(relocked);  
+        }  
+  
+        // 最佳仍是当前目标，重置候选并返回。  
+        if is_best_current {  
             self.candidate_track_id = None;  
             self.candidate_track_count = 0;  
             return Some(best_track);  
         }  
   
+        // 更新候选计数（迟滞切换，抗抖动）。  
         let is_same_candidate = self.candidate_track_id == Some(best_track.track_id());  
         if is_same_candidate {  
             self.candidate_track_count += 1;  
@@ -280,12 +218,11 @@ impl TransparentShapeSolver {
   
         let current_score = scored_tracks  
             .iter()  
-            .find(|(_, _, is_cur)| *is_cur)  
-            .map(|(_, s, _)| *s)  
+            .find(|t| t.2)  
+            .map(|t| t.1)  
             .unwrap_or(0.0);  
   
-        let should_switch =  
-            self.candidate_track_count >= 2 && best_score - current_score > 0.1;  
+        let should_switch = self.candidate_track_count >= 2 && best_score - current_score > 0.1;  
   
         if should_switch {  
             debug!(target: "backend/player", "Switch from {:?} to {}", self.current_track_id, best_track.track_id());  
@@ -295,7 +232,8 @@ impl TransparentShapeSolver {
             return Some(best_track);  
         }  
   
-        tracks.iter().find(|t| t.track_id() == current_track_id)  
+        // 当前目标仍通过过滤，返回当前目标。  
+        scored_tracks.iter().find(|t| t.2).map(|t| t.0)  
     }  
 }  
   
@@ -309,89 +247,6 @@ impl Drop for TransparentShapeSolver {
         }  
     }  
 }  
-  
-// ── 光流辅助函数 ───────────────────────────────────────────  
-  
-/// 取整帧灰度图在 region 内的子图克隆（光流逐帧输入）。  
-fn extract_gray_roi(detector: &dyn Detector, region: Rect) -> Option<Mat> {  
-    let gray = detector.grayscale();  
-    let roi = gray.roi(region).ok()?;  
-    roi.try_clone().ok()  
-}  
-  
-/// 在目标框（region 局部坐标）内检测角点，返回 region 局部坐标的特征点。  
-fn detect_features(gray: &Mat, box_local: Rect) -> Vec<Point2f> {  
-    let bounds = Rect::new(0, 0, gray.cols(), gray.rows());  
-    let b = box_local & bounds;  
-    if b.width < 4 || b.height < 4 {  
-        return Vec::new();  
-    }  
-    let Ok(sub) = gray.roi(b) else {  
-        return Vec::new();  
-    };  
-  
-    let mut corners: Vector<Point2f> = Vector::new();  
-    if good_features_to_track_def(  
-        &sub,  
-        &mut corners,  
-        MAX_FEATURES,  
-        FEATURE_QUALITY,  
-        FEATURE_MIN_DISTANCE,  
-    )  
-    .is_err()  
-    {  
-        return Vec::new();  
-    }  
-  
-    corners  
-        .into_iter()  
-        .map(|p| Point2f::new(p.x + b.x as f32, p.y + b.y as f32))  
-        .collect()  
-}  
-  
-/// Lucas-Kanade 光流：返回成功跟踪的点（region 局部坐标）。  
-fn track_flow(prev: &Mat, next: &Mat, pts: &[Point2f]) -> Vec<Point2f> {  
-    if pts.is_empty() {  
-        return Vec::new();  
-    }  
-  
-    let prev_pts: Vector<Point2f> = pts.iter().copied().collect();  
-    let mut next_pts: Vector<Point2f> = Vector::new();  
-    let mut status: Vector<u8> = Vector::new();  
-    let mut err: Vector<f32> = Vector::new();  
-  
-    if calc_optical_flow_pyr_lk_def(  
-        prev,  
-        next,  
-        &prev_pts,  
-        &mut next_pts,  
-        &mut status,  
-        &mut err,  
-    )  
-    .is_err()  
-    {  
-        return Vec::new();  
-    }  
-  
-    next_pts  
-        .into_iter()  
-        .zip(status)  
-        .filter_map(|(p, ok)| if ok != 0 { Some(p) } else { None })  
-        .collect()  
-}  
-  
-fn centroid(pts: &[Point2f]) -> Option<Point> {  
-    if pts.is_empty() {  
-        return None;  
-    }  
-    let n = pts.len() as f32;  
-    let sum = pts  
-        .iter()  
-        .fold(Point2f::new(0.0, 0.0), |a, p| Point2f::new(a.x + p.x, a.y + p.y));  
-    Some(Point::new((sum.x / n).round() as i32, (sum.y / n).round() as i32))  
-}  
-  
-// ── 原有辅助函数 ───────────────────────────────────────────  
   
 #[cfg(debug_assertions)]  
 fn debug_transparent_shapes(  
@@ -410,10 +265,33 @@ fn debug_transparent_shapes(
         tracks.to_vec(),  
         last_cursor,  
         bg_direction,  
-        &[],   // feature_points：还没接光流数据时先传空切片  
-        None,  // target_box：还没接光流数据时先传 None  
-    );
-  }
+    );  
+}  
+  
+/// 目标框与任意其它 track 框重叠即视为正在融合。  
+fn is_fusing(target: &STrack, tracks: &[STrack]) -> bool {  
+    let target_rect = target.kalman_rect();  
+    tracks.iter().any(|t| {  
+        t.track_id() != target.track_id()  
+            && (t.kalman_rect() & target_rect).area() >= FUSION_OVERLAP_AREA  
+    })  
+}  
+  
+/// 预测光标位置 = 上一帧光标 + 冻结速度。  
+fn predicted_cursor(last_cursor: Point, last_velocity: Option<Point2d>) -> Point {  
+    match last_velocity {  
+        Some(v) => last_cursor + Point::new(v.x.round() as i32, v.y.round() as i32),  
+        None => last_cursor,  
+    }  
+}  
+  
+/// 在逆背景候选里选离预测位置最近的 track 重新认领。  
+fn reclaim_track<'a>(predicted: Point, scored: &[(&'a STrack, f64, bool)]) -> Option<&'a STrack> {  
+    scored  
+        .iter()  
+        .min_by_key(|t| (mid_point(t.0.kalman_rect()) - predicted).norm() as i32)  
+        .map(|t| t.0)  
+}  
   
 fn find_track_closest_to(point: Point, tracks: &[STrack]) -> Option<&STrack> {  
     tracks.iter().min_by_key(|track| {  
@@ -448,12 +326,14 @@ fn track_background_score(
 ) -> Option<f64> {  
     let angle = track_background_degree(track, bg_direction)?;  
   
-    if angle <= 45.0 {  
+    // ← 逆背景运动判别阈值：30°（原 45°）  
+    if angle <= 30.0 {  
         return None;  
     }  
   
     let angle_score = angle / 180.0;  
   
+    // 乘法评分：距离惩罚  
     let distance_penalty = if angle >= 60.0 {  
         1.0  
     } else {  
