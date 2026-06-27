@@ -280,40 +280,40 @@ fn event_task(
     }
 }
 
-#[inline]
+#[inline]  
 fn loop_with_fps(use_dynamic_fps: bool, mut on_tick: impl FnMut()) {  
-    #[cfg(debug_assertions)]
-    const LOG_INTERVAL_SECS: u64 = 5;
-
-    // 根据参数决定使用动态FPS还是固定FPS  
-    let fps = if use_dynamic_fps {  
-        get_current_fps()  
-    } else {  
-        FPS  
-    };  
-
-    let nanos_per_frame = (1_000_000_000 / fps) as u128;
-    #[cfg(debug_assertions)]
-    let mut last_logged_instant = Instant::now();
-
-    loop {
-        let start = Instant::now();
-
-        on_tick();
-
-        let now = Instant::now();
-        let elapsed_duration = now.duration_since(start);
-        let elapsed_nanos = elapsed_duration.as_nanos();
-        if elapsed_nanos <= nanos_per_frame {
-            thread::sleep(Duration::new(0, (nanos_per_frame - elapsed_nanos) as u32));
-        } else {
-            #[cfg(debug_assertions)]
-            if now.duration_since(last_logged_instant).as_secs() >= LOG_INTERVAL_SECS {
-                use log::debug;
-
-                last_logged_instant = now;
-                debug!(target: "backend/context", "ticking running late at {}ms", elapsed_duration.as_millis());
-            }
-        }
-    }
+    #[cfg(debug_assertions)]  
+    const LOG_INTERVAL_SECS: u64 = 5;  
+  
+    #[cfg(debug_assertions)]  
+    let mut last_logged_instant = Instant::now();  
+  
+    loop {  
+        // 每帧重新读取FPS，使动态帧率即时生效（关键改动）  
+        let fps = if use_dynamic_fps {  
+            get_current_fps()  
+        } else {  
+            FPS  
+        };  
+        let nanos_per_frame = (1_000_000_000 / fps) as u128;  
+  
+        let start = Instant::now();  
+  
+        on_tick();  
+  
+        let now = Instant::now();  
+        let elapsed_duration = now.duration_since(start);  
+        let elapsed_nanos = elapsed_duration.as_nanos();  
+        if elapsed_nanos <= nanos_per_frame {  
+            thread::sleep(Duration::new(0, (nanos_per_frame - elapsed_nanos) as u32));  
+        } else {  
+            #[cfg(debug_assertions)]  
+            if now.duration_since(last_logged_instant).as_secs() >= LOG_INTERVAL_SECS {  
+                use log::debug;  
+  
+                last_logged_instant = now;  
+                debug!(target: "backend/context", "ticking running late at {}ms", elapsed_duration.as_millis());  
+            }  
+        }  
+    }  
 }
