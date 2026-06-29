@@ -2532,6 +2532,18 @@ fn detect_hexa_quick_menu(grayscale: &impl ToInputArray) -> Result<Rect> {
     detect_template(grayscale, &*TEMPLATE, Point::default(), 0.75)
 }
 
+fn detect_erda_quick_menu(grayscale: &impl ToInputArray) -> Result<Rect> {  
+    static TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {  
+        imgcodecs::imdecode(  
+            include_bytes!(env!("ERDA_QUICK_MENU_TEMPLATE")),  
+            IMREAD_GRAYSCALE,  
+        )  
+        .unwrap()  
+    });  
+  
+    detect_template(grayscale, &*TEMPLATE, Point::default(), 0.75)  
+}
+
 pub static HEXA_ERDA_CONVERSION_BUTTON_TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {
     imgcodecs::imdecode(
         include_bytes!(env!("HEXA_BUTTON_ERDA_CONVERSION_TEMPLATE")),
