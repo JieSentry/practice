@@ -157,10 +157,12 @@ pub struct RotatorBuildArgs {
     pub enable_transparent_shape_solving: bool,
     pub enable_violetta_solving: bool,
     pub enable_reset_normal_actions_on_erda: bool,
-    pub enable_using_generic_booster: bool,
-    pub enable_using_hexa_booster: bool,
+    pub enable_using_generic_booster: bool,  
+    pub enable_using_hexa_booster: bool,  
+    pub booster_use_under_rune_state: bool,  
+    pub booster_use_count: u32,
     pub enable_threads_of_fate: bool,  
-pub threads_of_fate_millis: u64,
+    pub threads_of_fate_millis: u64,
 }
 
 /// Handles rotating provided [`PlayerAction`]s.
@@ -852,17 +854,18 @@ threads_of_fate_millis,
         self.priority_actions.clear();
 
         // Low priority
-        if enable_using_generic_booster {
-            self.priority_actions.insert(
-                next_action_id(),
-                use_booster_priority_action(Booster::Generic),
-            );
-        }
-
-        if enable_using_hexa_booster {
-            self.priority_actions
-                .insert(next_action_id(), use_booster_priority_action(Booster::Hexa));
-        }
+        if enable_using_generic_booster {  
+    self.priority_actions.insert(  
+        next_action_id(),  
+        use_booster_priority_action(Booster::Generic, booster_use_under_rune_state, booster_use_count),  
+    );  
+}  
+if enable_using_hexa_booster {  
+    self.priority_actions.insert(  
+        next_action_id(),  
+        use_booster_priority_action(Booster::Hexa, booster_use_under_rune_state, booster_use_count),  
+    );  
+}
 
         if enable_threads_of_fate {  
     self.priority_actions.insert(  
@@ -1831,6 +1834,8 @@ mod tests {
             enable_using_hexa_booster: false,
             enable_threads_of_fate: false,  
             threads_of_fate_millis: 0,
+            booster_used_under_rune_state: false,  
+            booster_use_count: booster_use_count_default(),
         };
 
         rotator.build_actions(args);
