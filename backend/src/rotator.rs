@@ -1521,7 +1521,7 @@ fn use_booster_priority_action(kind: Booster) -> PriorityAction {
 
     PriorityAction {
         condition: Condition(Box::new(move |resources, world, info| {
-            if !at_least_millis_passed_since(info.last_queued_time, 20000) {
+            if !at_least_millis_passed_since(info.last_queued_time, 10000) {
                 return ConditionResult::Skip;
             }
 
