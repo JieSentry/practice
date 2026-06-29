@@ -69,8 +69,9 @@ pub fn update_using_booster_state(resources: &mut Resources, player: &mut Player
     if is_terminal {
         if matches!(using.state, State::Completing { failed: true, .. }) {
             player.context.track_booster_fail_count(using.kind);
-        } else {
-            player.context.clear_booster_fail_count(using.kind);
+        } else {  
+            player.context.clear_booster_fail_count(using.kind);  
+            player.context.track_booster_success_count(using.kind);  
         }
     }
 
