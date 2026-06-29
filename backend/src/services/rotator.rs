@@ -73,6 +73,12 @@ impl RotatorService for DefaultRotatorService {
         self.args.enable_using_generic_booster = character
             .map(|character| character.generic_booster_key.enabled)
             .unwrap_or_default();
+        self.args.booster_use_under_rune_state = character  
+            .map(|character| character.booster_use_under_rune_state)  
+            .unwrap_or_default();  
+        self.args.booster_use_count = character  
+            .map(|character| character.booster_use_count)  
+            .unwrap_or(2); 
         self.args.enable_using_hexa_booster = character
             .map(|character| character.hexa_booster_key.enabled)
             .unwrap_or_default();
