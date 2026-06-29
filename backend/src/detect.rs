@@ -912,6 +912,9 @@ fn detect_esc_settings(
     if detect_hexa_menu(grayscale) {
         return true;
     }
+    if detect_erda_menu(grayscale) {  
+        return true;  
+    }  
     if detect_familiar_menu_opened(grayscale) {  
         return true;  
     } 
@@ -2524,6 +2527,14 @@ fn detect_hexa_menu(grayscale: &impl ToInputArray) -> bool {
     });
 
     detect_template(grayscale, &*TEMPLATE, Point::default(), 0.75).is_ok()
+}
+
+fn detect_erda_menu(grayscale: &impl ToInputArray) -> bool {  
+    static TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {  
+        imgcodecs::imdecode(include_bytes!(env!("ERDA_MENU_TEMPLATE")), IMREAD_GRAYSCALE).unwrap()  
+    });  
+  
+    detect_template(grayscale, &*TEMPLATE, Point::default(), 0.75).is_ok()  
 }
 
 fn detect_hexa_quick_menu(grayscale: &impl ToInputArray) -> Result<Rect> {
