@@ -30,7 +30,7 @@ const MAX_RUNE_FAILED_COUNT: u32 = 8;
 
 /// The maximum number of times using Generic Booster can fail before it is determined that it is not
 /// usable anymore (e.g. 10 times limit reached).
-const MAX_BOOSTER_FAILED_COUNT: u32 = 5;
+const MAX_BOOSTER_FAILED_COUNT: u32 = 3;
 
 /// The maximum number of times familiars swapping can be attempted before it is determined that
 /// there are no more cards to swap (e.g. All cards are at level 5).
