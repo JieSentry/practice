@@ -245,10 +245,13 @@ fn update_non_positional_state(
 ) -> bool {  
     // 仅在启用efficiency_mode时动态调整FPS  
     if resources.operation.config.efficiency_mode {  
-        let is_high_fps_state = matches!(  
-            player.state,  
-            Player::SolvingShape(_) | Player::SolvingVioletta(_) | Player::UpJumping(_)
-        );  
+let is_high_fps_state = matches!(  
+    player.state,  
+    Player::SolvingShape(_) | Player::SolvingVioletta(_) | Player::UpJumping(_)  
+) || matches!(  
+    next_action(&player.context),  
+    Some(PlayerAction::SolveRune)  
+);
           
         if is_high_fps_state {  
             crate::run::set_high_fps();  
