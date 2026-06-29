@@ -1516,42 +1516,52 @@ fn elite_boss_condition() -> impl FnMut(&Resources) -> ConditionResult {
     }
 }
 
-#[inline]
-fn use_booster_priority_action(kind: Booster) -> PriorityAction {
-    let mut task: Option<Task<Result<bool>>> = None;
-    let task_fn =
-        move |detector: Arc<dyn Detector>| -> Result<bool> { Ok(!detector.detect_timer_visible()) };
-
-    PriorityAction {
-        condition: Condition(Box::new(move |resources, world, info| {
-            if !at_least_millis_passed_since(info.last_queued_time, 10000) {
-                return ConditionResult::Skip;
-            }
-
-            if world
-                .player
-                .context
-                .is_booster_fail_count_limit_reached(kind)
-            {
-                return ConditionResult::Ignore;
-            }
-
-            if resources.detector.is_none() {
-                return ConditionResult::Ignore;
-            }
-
-            match update_detection_task(resources, 10000, &mut task, task_fn) {
-                Update::Ok(true) => ConditionResult::Queue,
-                Update::Err(_) | Update::Ok(false) => ConditionResult::Ignore,
-                Update::Pending => ConditionResult::Skip,
-            }
-        })),
-        condition_kind: None,
-        inner: RotatorAction::Single(PlayerAction::UseBooster(UseBooster { kind })),
-        metadata: Some(ActionMetadata::UseBooster),
-        queue_to_front: true,
-        queue_info: PriorityActionQueueInfo::default(),
-    }
+#[inline]  
+fn use_booster_priority_action(  
+    kind: Booster,  
+    use_under_rune_state: bool,  
+    use_count: u32,  
+) -> PriorityAction {  
+    let mut task: Option<Task<Result<bool>>> = None;  
+    let task_fn =  
+        move |detector: Arc<dyn Detector>| -> Result<bool> { Ok(!detector.detect_timer_visible()) };  
+  
+    PriorityAction {  
+        condition: Condition(Box::new(move |resources, world, info| {  
+            if !at_least_millis_passed_since(info.last_queued_time, 10000) {  
+                return ConditionResult::Skip;  
+            }  
+  
+            if world.player.context.is_booster_fail_count_limit_reached(kind) {  
+                return ConditionResult::Ignore;  
+            }  
+  
+            // 新增闸：仅当勾选 "Used under rune state" 时生效  
+            if use_under_rune_state {  
+                if !matches!(world.buffs[BuffKind::Rune].state, Buff::Yes) {  
+                    return ConditionResult::Skip; // 没有符文 buff，不用  
+                }  
+                if world.player.context.booster_success_count(kind) >= use_count {  
+                    return ConditionResult::Skip; // 本轮符文 buff 内已用够次数  
+                }  
+            }  
+  
+            if resources.detector.is_none() {  
+                return ConditionResult::Ignore;  
+            }  
+  
+            match update_detection_task(resources, 10000, &mut task, task_fn) {  
+                Update::Ok(true) => ConditionResult::Queue,  
+                Update::Err(_) | Update::Ok(false) => ConditionResult::Ignore,  
+                Update::Pending => ConditionResult::Skip,  
+            }  
+        })),  
+        condition_kind: None,  
+        inner: RotatorAction::Single(PlayerAction::UseBooster(UseBooster { kind })),  
+        metadata: Some(ActionMetadata::UseBooster),  
+        queue_to_front: true,  
+        queue_info: PriorityActionQueueInfo::default(),  
+    }  
 }
 
 #[inline]
