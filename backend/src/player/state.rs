@@ -396,6 +396,9 @@ pub struct PlayerContext {
     /// Approximated player velocity.
     pub(super) velocity: (f32, f32),
 
+    generic_booster_success_count: u32,  
+    hexa_booster_success_count: u32,  
+    rune_buff_was_present: bool,
     /// The number of times [`Player::UsingBooster`] for Generic Booster failed.
     generic_booster_failed_count: u32,
     /// The number of times [`Player::UsingBooster`] for HEXA Booster failed.
@@ -711,6 +714,31 @@ impl PlayerContext {
         }
     }
 
+    #[inline]  
+    pub fn booster_success_count(&self, kind: Booster) -> u32 {  
+        match kind {  
+            Booster::Generic => self.generic_booster_success_count,  
+            Booster::Hexa => self.hexa_booster_success_count,  
+        }  
+    }  
+  
+    #[inline]  
+    pub(super) fn track_booster_success_count(&mut self, kind: Booster) {  
+        match kind {  
+            Booster::Generic => self.generic_booster_success_count += 1,  
+            Booster::Hexa => self.hexa_booster_success_count += 1,  
+        }  
+    }  
+  
+    #[inline]  
+    pub(super) fn reset_booster_success_count_on_rune_rising_edge(&mut self, rune_present: bool) {  
+        if rune_present && !self.rune_buff_was_present {  
+            self.generic_booster_success_count = 0;  
+            self.hexa_booster_success_count = 0;  
+        }  
+        self.rune_buff_was_present = rune_present;  
+    }
+    
     #[inline]
     pub fn is_familiars_swap_fail_count_limit_reached(&self) -> bool {
         self.familiars_swap_failed_count >= MAX_FAMILIARS_SWAP_FAIL_COUNT
