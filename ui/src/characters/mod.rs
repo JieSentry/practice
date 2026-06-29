@@ -501,6 +501,28 @@ fn SectionUseBooster() -> Element {
                     },
                     disabled: character().id.is_none(),
                 }
+                CharactersCheckbox {  
+                    label: "Used under rune state",  
+                    checked: character().booster_use_under_rune_state,  
+                    on_checked: move |booster_use_under_rune_state| {  
+                        save_character(Character {  
+                            booster_use_under_rune_state,  
+                            ..character.peek().clone()  
+                        });  
+                    },  
+                    disabled: character().id.is_none(),  
+                }  
+                CharactersNumberU32Input {  
+                    label: "Used Count",  
+                    value: character().booster_use_count,  
+                    on_value: move |booster_use_count| {  
+                        save_character(Character {  
+                            booster_use_count,  
+                            ..character.peek().clone()  
+                        });  
+                    },  
+                    disabled: character().id.is_none() || !character().booster_use_under_rune_state,  
+                }
             }
         }
     }
