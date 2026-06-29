@@ -1367,18 +1367,21 @@ impl PlayerContext {
             }
         }
 
-        if self.update_position_state(resources, minimap_state) {
-            self.update_health_state(resources, player_state);
-            self.update_rune_validating_state(
-                #[cfg(debug_assertions)]
-                resources,
-                buffs,
-            );
-            self.update_is_dead_state(resources);
-            self.update_stalling_buffer_state(resources);
-            true
-        } else {
-            false
+        if self.update_position_state(resources, minimap_state) {  
+            self.update_health_state(resources, player_state);  
+            self.update_rune_validating_state(  
+                #[cfg(debug_assertions)]  
+                resources,  
+                buffs,  
+            );  
+            self.reset_booster_success_count_on_rune_rising_edge(  
+                !matches!(buffs[BuffKind::Rune].state, Buff::No),  
+            );  
+            self.update_is_dead_state(resources);  
+            self.update_stalling_buffer_state(resources);  
+            true  
+        } else {  
+            false  
         }
     }
 
