@@ -64,6 +64,10 @@ pub struct Character {
     pub generic_booster_key: KeyBindingConfiguration,
     #[serde(default)]
     pub hexa_booster_key: KeyBindingConfiguration,
+    #[serde(default)]  
+    pub booster_use_under_rune_state: bool,  
+    #[serde(default = "booster_use_count_default")]  
+    pub booster_use_count: u32,
     #[serde(default)]
     pub hexa_booster_exchange_condition: ExchangeHexaBoosterCondition,
     #[serde(default = "hexa_booster_exchange_amount_default")]
@@ -141,6 +145,8 @@ impl Default for Character {
             extreme_blue_potion_key: KeyBindingConfiguration::default(),
             extreme_green_potion_key: KeyBindingConfiguration::default(),
             extreme_gold_potion_key: KeyBindingConfiguration::default(),
+            booster_use_under_rune_state: false,  
+            booster_use_count: booster_use_count_default(),
             generic_booster_key: KeyBindingConfiguration::default(),
             hexa_booster_key: KeyBindingConfiguration::default(),
             hexa_booster_exchange_condition: ExchangeHexaBoosterCondition::default(),
@@ -174,6 +180,10 @@ fn feed_pet_count_default() -> u32 {
 
 fn hexa_booster_exchange_amount_default() -> u32 {
     1
+}
+
+fn booster_use_count_default() -> u32 {  
+    2  
 }
 
 fn jump_key_default() -> KeyBindingConfiguration {
