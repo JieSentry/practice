@@ -298,7 +298,6 @@ fn loop_with_fps(use_dynamic_fps: bool, mut on_tick: impl FnMut()) {
         let nanos_per_frame = (1_000_000_000 / fps) as u128;  
   
         let start = Instant::now();  
-  
         on_tick();  
   
         let now = Instant::now();  
