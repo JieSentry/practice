@@ -1846,8 +1846,8 @@ mod tests {
             enable_using_hexa_booster: false,
             enable_threads_of_fate: false,  
             threads_of_fate_millis: 0,
-            booster_used_under_rune_state: false,  
-            booster_use_count: booster_use_count_default(),
+            booster_use_under_rune_state: false,  
+            booster_use_count: 2,
         };
 
         rotator.build_actions(args);
