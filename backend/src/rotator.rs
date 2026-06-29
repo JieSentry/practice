@@ -845,7 +845,9 @@ impl Rotator for DefaultRotator {
             enable_using_generic_booster,
             enable_using_hexa_booster,
             enable_threads_of_fate,  
-threads_of_fate_millis,
+            threads_of_fate_millis,
+            booster_use_under_rune_state,  
+            booster_use_count,  
         } = args;
         self.reset_queue();
         self.normal_actions.clear();
