@@ -267,6 +267,8 @@ pub trait Detector: Debug + Send + Sync {
     /// Detects the HEXA icon in quick menu.
     fn detect_hexa_quick_menu(&self) -> Result<Rect>;
 
+    /// Detects the Erda icon in quick menu (fallback for new class).  
+    fn detect_erda_quick_menu(&self) -> Result<Rect>;
     /// Detects the `Erda conversion` button in HEXA matrix.
     fn detect_hexa_erda_conversion_button(&self) -> Result<Rect>;
 
@@ -612,6 +614,10 @@ fn detect_tof_ask_button(&self) -> Result<Rect> {
 
     fn detect_hexa_quick_menu(&self) -> Result<Rect> {
         detect_hexa_quick_menu(self.grayscale())
+    }
+
+    fn detect_erda_quick_menu(&self) -> Result<Rect> {  
+        detect_erda_quick_menu(self.grayscale())  
     }
 
     fn detect_hexa_erda_conversion_button(&self) -> Result<Rect> {
