@@ -137,23 +137,24 @@ fn update_open_hexa_menu(resources: &mut Resources, exchanging: &mut ExchangingB
     };
 
     match next_timeout_lifecycle(timeout, 20) {
-        Lifecycle::Started(timeout) => {
-            let (x, y) = match resources
-                .detector()
-                .detect_hexa_quick_menu()
-                .ok()
-                .map(bbox_click_point)
-            {
-                Some(val) => val,
-                None => {
-                    exchanging.state = State::Completing(Timeout::default(), true);
-                    return;
-                }
-            };
-
-            resources.input.send_mouse(x, y, MouseKind::Click);
-            exchanging.state = State::OpenHexaMenu(timeout);
-        }
+        Lifecycle::Started(timeout) => {  
+    let detector = resources.detector();  
+    let (x, y) = match detector  
+        .detect_hexa_quick_menu()  
+        .or_else(|_| detector.detect_erda_quick_menu())  
+        .ok()  
+        .map(bbox_click_point)  
+    {  
+        Some(val) => val,  
+        None => {  
+            exchanging.state = State::Completing(Timeout::default(), true);  
+            return;  
+        }  
+    };  
+  
+    resources.input.send_mouse(x, y, MouseKind::Click);  
+    exchanging.state = State::OpenHexaMenu(timeout);  
+}
         Lifecycle::Ended => {
             let bbox = match resources.detector().detect_hexa_erda_conversion_button() {
                 Ok(val) => val,
