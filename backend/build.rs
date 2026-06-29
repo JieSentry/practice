@@ -108,6 +108,7 @@ fn main() {
 
     let hexa_menu = resources_dir.join("hexa_menu_ideal_ratio.png");
     let hexa_quick_menu = resources_dir.join("hexa_quick_menu_ideal_ratio.png");
+    let erda_quick_menu = resources_dir.join("Erda_quick_menu_ideal_ratio.png");
     let hexa_button_erda_conversion =
         resources_dir.join("hexa_button_erda_conversion_ideal_ratio.png");
     let hexa_button_hexa_booster = resources_dir.join("hexa_button_hexa_booster_ideal_ratio.png");
@@ -469,6 +470,10 @@ println!("cargo:rustc-env=TOF_BLUE_MASK_TEMPLATE={}", tof_blue_mask.to_str().unw
     println!(
         "cargo:rustc-env=HEXA_QUICK_MENU_TEMPLATE={}",
         hexa_quick_menu.to_str().unwrap()
+    );
+    println!(  
+    "cargo:rustc-env=ERDA_QUICK_MENU_TEMPLATE={}",  
+    erda_quick_menu.to_str().unwrap()  
     );
     println!(
         "cargo:rustc-env=HEXA_BUTTON_ERDA_CONVERSION_TEMPLATE={}",
