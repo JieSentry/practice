@@ -247,28 +247,21 @@ fn FeedPet() -> Element {
                 },
                 value: character().feed_pet_millis,
             }
-            CharactersCheckbox {  
-                    label: "Used under rune state",  
-                    checked: character().booster_use_under_rune_state,  
-                    on_checked: move |booster_use_under_rune_state| {  
-                        save_character(Character {  
-                            booster_use_under_rune_state,  
-                            ..character.peek().clone()  
-                        });  
-                    },  
-                    disabled: character().id.is_none(),  
-                }  
-                CharactersNumberU32Input {  
-                    label: "Used Count",  
-                    value: character().booster_use_count,  
-                    on_value: move |booster_use_count| {  
-                        save_character(Character {  
-                            booster_use_count,  
-                            ..character.peek().clone()  
-                        });  
-                    },  
-                    disabled: character().id.is_none() || !character().booster_use_under_rune_state,  
-                }
+            CharactersCheckbox {
+                label: "Enabled",
+                disabled: character().id.is_none(),
+                on_checked: move |enabled| {
+                    let character = character.peek().clone();
+                    save_character(Character {
+                        feed_pet_key: KeyBindingConfiguration {
+                            enabled,
+                            ..character.feed_pet_key
+                        },
+                        ..character
+                    });
+                },
+                checked: character().feed_pet_key.enabled,
+            }
         }
     }
 }
