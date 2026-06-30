@@ -918,11 +918,14 @@ fn detect_esc_settings(
     if detect_familiar_menu_opened(grayscale) {  
         return true;  
     } 
-    if detect_tof_fate_character_ui(grayscale) {
-        return true;
-    }
-
-    false
+    if detect_tof_fate_character_ui(grayscale) {  
+        return true;  
+    }  
+    if detect_tof_maple_mailbox(grayscale) {  
+        return true;  
+    }  
+  
+    false  
 }
 
 fn detect_popup_confirm_button(
