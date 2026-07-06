@@ -1566,12 +1566,14 @@ impl PlayerContext {
     /// Upon being dead, a notification will be scheduled to notify the user.
     #[inline]
     fn update_is_dead_state(&mut self, resources: &mut Resources) {
-        let Update::Ok(is_dead) =
-            update_detection_task(resources, 3000, &mut self.is_dead_task, |detector| {
-                Ok(detector.detect_player_is_dead())
-            })
-        else {
-            return;
+        let Update::Ok(is_dead) =  
+            update_detection_task(resources, 3000, &mut self.is_dead_task, |detector| {    
+                let tomb_matched = detector.detect_player_is_dead();  
+                let revive_popup_matched = detector.detect_popup_ok_new_button().is_ok();  
+                Ok(tomb_matched && revive_popup_matched)  
+            })  
+        else {  
+            return;  
         };
         if is_dead && !self.is_dead {
             resources
