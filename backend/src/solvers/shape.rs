@@ -326,8 +326,8 @@ fn track_background_score(
 ) -> Option<f64> {  
     let angle = track_background_degree(track, bg_direction)?;  
   
-    // ← 逆背景运动判别阈值：30°（原 45°）  
-    if angle <= 30.0 {  
+    // ← 逆背景运动判别阈值： 45° 
+    if angle <= 45.0 {  
         return None;  
     }  
   
