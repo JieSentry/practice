@@ -286,16 +286,40 @@ impl TransparentShapeSolver {
         let current_track = tracks.iter().find(|t| t.track_id() == current_id).cloned();  
         let current_in_tracks = current_track.is_some();  
   
-        // ===== 核心策略:稳定 track 直接保留 =====  
+// ===== 核心策略:稳定 track 直接保留(增加融合→分离防护) =====  
         if let Some(ref ct) = current_track  
             && ct.state() == TrackState::Tracked  
             && ct.tracklet_len() >= 10  
             && ct.score() >= 0.50  
         {  
+            // 融合→分离防护:若稳定 track 出现异常跳变,说明底层 ByteTracker  
+            // 在两图形分离时把 ID 错配到了另一物理图形上。此时不再信任该 ID,  
+            // 改选距离上一帧光标最近的 track(分离后仍留在原处的正确图形)。  
+            if !self.is_motion_consistent(ct)  
+                && let Some(lc) = self.last_cursor  
+                && let Some(closest) = tracks.iter().min_by(|a, b| {  
+                    (track_center(a) - lc)  
+                        .norm()  
+                        .partial_cmp(&(track_center(b) - lc).norm())  
+                        .unwrap()  
+                })  
+                && closest.track_id() != ct.track_id()  
+            {  
+                debug!(  
+                    target: "backend/player",  
+                    "REASSIGN(merge-split) {} -> {}",  
+                    ct.track_id(),  
+                    closest.track_id()  
+                );  
+                self.candidate_track_id = None;  
+                self.candidate_track_count = 0;  
+                return Some(closest.clone());  
+            }  
+  
             self.candidate_track_id = None;  
             self.candidate_track_count = 0;  
             return Some(ct.clone());  
-        } 
+        }
   
         // 计算 predicted_pos  
         let predicted_pos: Option<Point2d> = if let Some(ref ct) = current_track {  
