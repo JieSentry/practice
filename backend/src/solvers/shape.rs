@@ -529,6 +529,28 @@ impl TransparentShapeSolver {
         det.atan2(dot).to_degrees().abs()  
     }  
 }  
+
+/// 校验稳定 track 分离后是否仍符合运动模型。  
+    ///  
+    /// 融合→分离时,ByteTracker 的纯 IoU 关联可能把 track ID 贴到错误的  
+    /// 物理图形上,表现为检测框中心相对上一帧光标出现远超正常帧间位移的跳变。  
+    /// 返回 false 表示疑似错配,应触发重选。  
+    fn is_motion_consistent(&self, track: &STrack) -> bool {  
+        let Some(last_cursor) = self.last_cursor else {  
+            return true; // 无历史参考,无法判断,放行  
+        };  
+  
+        let jump = (track_center(track) - last_cursor).norm();  
+  
+        // 允许的帧间位移 = 上一帧速度裕量 + 基于目标尺寸的裕量。  
+        // 正常运动(含背景滚动)由 speed 项覆盖;ID 错配的"瞬移"远超此阈值。  
+        let speed = self.last_velocity.map(|v| v.norm()).unwrap_or(0.0);  
+        let t = track.tlwh();  
+        let size = (t[2] as f64 + t[3] as f64) / 2.0;  
+        let max_jump = speed * 1.5 + size * 0.5;  
+  
+        jump <= max_jump  
+    }
   
 impl Drop for TransparentShapeSolver {  
     fn drop(&mut self) {  
