@@ -152,9 +152,9 @@ impl TransparentShapeSolver {
             return Some(to_point(region.tl(), next_cursor));  
         }  
   
-        // 优化2: 检查 current_track_id 是否在 lost 池中,用其 Kalman 预测位置  
-        if let Some(current_id) = self.current_track_id {  
-            if let Some((next_cursor, vel)) = self  
+// 优化2: 检查 current_track_id 是否在 lost 池中,用其 Kalman 预测位置  
+        if let Some(current_id) = self.current_track_id  
+            && let Some((next_cursor, vel)) = self  
                 .tracker  
                 .lost()  
                 .iter()  
@@ -166,12 +166,11 @@ impl TransparentShapeSolver {
                         t.kalman_velocity(),  
                     )  
                 })  
-            {  
-                self.last_cursor = Some(next_cursor);  
-                self.last_velocity = Some(vel);  
-                return Some(to_point(region.tl(), next_cursor));  
-            }  
-        }  
+        {  
+            self.last_cursor = Some(next_cursor);  
+            self.last_velocity = Some(vel);  
+            return Some(to_point(region.tl(), next_cursor));  
+        } 
   
         // 兜底:last_cursor + last_velocity * 1.5 线性外推(与 Komari 一致)  
         if let (Some(last_cursor), Some(last_velocity)) = (self.last_cursor, self.last_velocity) {  
@@ -288,16 +287,15 @@ impl TransparentShapeSolver {
         let current_in_tracks = current_track.is_some();  
   
         // ===== 核心策略:稳定 track 直接保留 =====  
-        if let Some(ref ct) = current_track {  
-            if ct.state() == TrackState::Tracked  
-                && ct.tracklet_len() >= 10  
-                && ct.score() >= 0.50  
-            {  
-                self.candidate_track_id = None;  
-                self.candidate_track_count = 0;  
-                return Some(ct.clone());  
-            }  
-        }  
+        if let Some(ref ct) = current_track  
+            && ct.state() == TrackState::Tracked  
+            && ct.tracklet_len() >= 10  
+            && ct.score() >= 0.50  
+        {  
+            self.candidate_track_id = None;  
+            self.candidate_track_count = 0;  
+            return Some(ct.clone());  
+        } 
   
         // 计算 predicted_pos  
         let predicted_pos: Option<Point2d> = if let Some(ref ct) = current_track {  
@@ -319,33 +317,32 @@ impl TransparentShapeSolver {
             }  
   
             // 运动约束  
-            if !is_current {  
-                if let Some(pp) = predicted_pos {  
-                    let dist = (track_center(track) - pp).norm();  
-                    let search_radius = if let Some(ref ct) = current_track {  
-                        let t = ct.tlwh();  
-                        self.search_radius_factor * (t[2] as f64 + t[3] as f64) / 2.0  
-                    } else {  
-                        self.search_radius_factor * 50.0  
-                    };  
-                    if dist > search_radius {  
-                        continue;  
-                    }  
+            if !is_current  
+                && let Some(pp) = predicted_pos  
+            {  
+                let dist = (track_center(track) - pp).norm();  
+                let search_radius = if let Some(ref ct) = current_track {  
+                    let t = ct.tlwh();  
+                    self.search_radius_factor * (t[2] as f64 + t[3] as f64) / 2.0  
+                } else {  
+                    self.search_radius_factor * 50.0  
+                };  
+                if dist > search_radius {  
+                    continue;  
                 }  
-            }  
+            } 
   
             let mut score = self  
                 .track_background_score(track, region_w, region_h, is_current)  
                 .unwrap_or(track.score() as f64 * 0.2);  
   
             // 重叠惩罚  
-            if !is_current {  
-                if let Some(ref ct) = current_track {  
-                    if iou(track, ct) > self.overlap_iou_thresh {  
-                        score *= self.overlap_switch_penalty;  
-                    }  
-                }  
-            }  
+            if !is_current  
+                && let Some(ref ct) = current_track  
+                && iou(track, ct) > self.overlap_iou_thresh  
+            {  
+                score *= self.overlap_switch_penalty;  
+            } 
   
             scored_tracks.push((track.clone(), score));  
         }  
@@ -396,11 +393,11 @@ impl TransparentShapeSolver {
         }  
   
         // current track 有分数且候选没有显著优势,不切换  
-        if let Some(cs) = current_score {  
-            if best_score <= cs * switch_threshold_multiplier {  
-                return current_track;  
-            }  
-        }  
+        if let Some(cs) = current_score  
+            && best_score <= cs * switch_threshold_multiplier  
+        {  
+            return current_track;  
+        } 
   
         // 候选确认计数  
         if self.candidate_track_id == Some(best_track.track_id()) {  
