@@ -527,10 +527,9 @@ impl TransparentShapeSolver {
         let det = direction.x * self.bg_direction.y - direction.y * self.bg_direction.x;  
   
         det.atan2(dot).to_degrees().abs()  
-    }  
-}  
+    } 
 
-/// 校验稳定 track 分离后是否仍符合运动模型。  
+  /// 校验稳定 track 分离后是否仍符合运动模型。  
     ///  
     /// 融合→分离时,ByteTracker 的纯 IoU 关联可能把 track ID 贴到错误的  
     /// 物理图形上,表现为检测框中心相对上一帧光标出现远超正常帧间位移的跳变。  
@@ -551,6 +550,7 @@ impl TransparentShapeSolver {
   
         jump <= max_jump  
     }
+}  
   
 impl Drop for TransparentShapeSolver {  
     fn drop(&mut self) {  
