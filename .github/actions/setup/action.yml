@@ -33,7 +33,7 @@ runs:
         git fetch --all --prune --tags
         git status
         git checkout .
-        git checkout "2025.10.17"
+        git checkout "${{ env.VCPKG_VERSION }}"
         ./bootstrap-vcpkg.bat -disableMetrics
         echo "set(VCPKG_BUILD_TYPE release)" >> triplets/x64-windows.cmake
         echo "set(VCPKG_BUILD_TYPE release)" >> triplets/x64-windows-static.cmake
