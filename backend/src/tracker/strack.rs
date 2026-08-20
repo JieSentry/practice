@@ -49,20 +49,24 @@ impl STrack {
         }
     }
 
-        pub fn score(&self) -> f32 {  
+#[allow(dead_code)]  
+    pub fn score(&self) -> f32 {  
         self.score  
     }  
   
+    #[allow(dead_code)]  
     pub fn state(&self) -> TrackState {  
         self.state  
     }  
   
     /// 当前检测框 tlwh(左上角 x, y + 宽高),对齐 Python 的 track.tlwh  
+    #[allow(dead_code)]  
     pub fn tlwh(&self) -> [f32; 4] {  
         self.tlwh  
     }  
   
     /// Kalman 预测的 tlwh,对齐 Python 的 track.kalman_tlwh()  
+    #[allow(dead_code)]  
     pub fn kalman_tlwh_pub(&self) -> [f32; 4] {  
         self.kalman.tlwh()  
     }
