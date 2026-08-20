@@ -6,7 +6,7 @@ mod kalman_filter;
 mod strack;
 
 pub use bytetracker::{ByteTracker, IouGating};  
-pub use strack::{STrack, TrackState};
+pub use strack::STrack;
 
 #[derive(Clone, Debug)]
 pub struct Detection {
