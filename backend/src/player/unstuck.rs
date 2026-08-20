@@ -109,7 +109,7 @@ pub fn update_unstucking_state(
                     if to_right {
                         resources.input.send_key_down(KeyKind::Right);
                     } else {
-                        resources.input.send_key_up(KeyKind::Left);
+                        resources.input.send_key_down(KeyKind::Left);
                     }
 
                     player.state = Player::Unstucking(unstucking.movement(timeout, random));
