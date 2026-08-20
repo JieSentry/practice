@@ -1,44 +1,31 @@
+use std::ops::Div;  
+  
 use log::debug;  
-use opencv::core::{Point, Point2d, Rect};  
+use opencv::core::{Point, Point_, Point2d, Rect};  
   
 use crate::{  
     detect::Detector,  
     run::FPS,  
-    tracker::{ByteTracker, Detection, IouGating, STrack, TrackState},  
+    tracker::{ByteTracker, Detection, IouGating, STrack},  
 };  
   
-/// 透明形状测谎求解器 —— 完全对齐 Python `ShapeSolver`(solver.py)。  
-///  
-/// 集成 ByteTracker + 5 项用户优化:  
-/// 1. 运动约束(search_radius)  2. 重叠惩罚(IoU)  3. 稳定 track 保留  
-/// 4. 动态阈值  5. 背景方向 EMA 平滑  
+// ── 调参常量 ──────────────────────────────────────────────  
+/// 当前目标框与另一个 track 框重叠即视为「正在融合」，融合期冻结速度。  
+const FUSION_OVERLAP_AREA: i32 = 1;  
+/// 惯性滑行的最大帧数，超过则放弃（返回 None），避免无限盲滑。  
+const MAX_SLIDE_FRAMES: u32 = 30;  
+  
 #[derive(Debug)]  
 pub struct TransparentShapeSolver {  
     tracker: ByteTracker,  
-  
-    // 跟踪状态  
     current_track_id: Option<u64>,  
-    last_cursor: Option<Point2d>,  
-    last_velocity: Option<Point2d>,  
-    bg_direction: Point2d,  
-  
-    // 候选切换逻辑  
     candidate_track_id: Option<u64>,  
     candidate_track_count: u32,  
-  
-    // ===== 用户优化参数(对齐 solver.py __init__) =====  
-    // 优化1: 运动约束 —— 搜索半径 = factor * (w + h) / 2  
-    search_radius_factor: f64,  
-    // 优化2: 重叠惩罚  
-    overlap_iou_thresh: f64,  
-    overlap_switch_penalty: f64,  
-    // 优化4: 动态阈值  
-    dynamic_thresh_enabled: bool,  
-    det_count_low: usize,  
-    det_count_high: usize,  
-    // 优化5: 背景方向 EMA 平滑系数  
-    bg_direction_alpha: f64,  
-  
+    last_cursor: Option<Point>,  
+    last_velocity: Option<Point2d>,  
+    bg_direction: Point2d,  
+    /// 连续惯性滑行的帧数。  
+    slide_frames: u32,  
     #[cfg(debug_assertions)]  
     is_debugging: bool,  
 }  
@@ -46,21 +33,14 @@ pub struct TransparentShapeSolver {
 impl Default for TransparentShapeSolver {  
     fn default() -> Self {  
         Self {  
-            // 对齐 Python: ByteTracker(30, 0.25, 0.1, 0.25, IouGating.None_)  
             tracker: ByteTracker::new(FPS as u64, 0.25, 0.1, 0.25, IouGating::None),  
             current_track_id: None,  
+            candidate_track_id: None,  
+            candidate_track_count: 0,  
             last_cursor: None,  
             last_velocity: None,  
             bg_direction: Point2d::default(),  
-            candidate_track_id: None,  
-            candidate_track_count: 0,  
-            search_radius_factor: 2.0,  
-            overlap_iou_thresh: 0.1,  
-            overlap_switch_penalty: 0.1,  
-            dynamic_thresh_enabled: true,  
-            det_count_low: 5,  
-            det_count_high: 15,  
-            bg_direction_alpha: 0.3,  
+            slide_frames: 0,  
             #[cfg(debug_assertions)]  
             is_debugging: false,  
         }  
@@ -75,111 +55,70 @@ impl TransparentShapeSolver {
         default  
     }  
   
-    /// 对齐 Python `ShapeSolver.solve(image)`。  
     pub fn solve(&mut self, detector: &dyn Detector, region: Rect) -> Option<Point> {  
-        let region_w = region.width as f64;  
-        let region_h = region.height as f64;  
-  
-        // 检测形状(region 相对坐标)  
         let shapes = detector.detect_transparent_shapes(region);  
+        let tracks = self.tracker.update(  
+            shapes  
+                .into_iter()  
+                .map(|(bbox, score)| Detection::new(bbox, score))  
+                .collect(),  
+        );  
   
-        // 优化4: 动态阈值调整  
-        if self.dynamic_thresh_enabled {  
-            self.adjust_thresholds(shapes.len());  
-        }  
-  
-        // 转换为 Detection 传入 ByteTracker  
-        let det_tracks: Vec<Detection> = shapes  
-            .into_iter()  
-            .map(|(bbox, score)| Detection::new(bbox, score))  
-            .collect();  
-  
-        // 更新追踪器  
-        let tracks = self.tracker.update(det_tracks);  
-  
-        // 检查 current track 是否还存在(被 ByteTracker 删除后需要重置)  
-        if let Some(current_id) = self.current_track_id {  
-            let exists = self  
-                .tracker  
-                .tracked()  
-                .iter()  
-                .chain(self.tracker.lost().iter())  
-                .any(|t| t.track_id() == current_id);  
-            if !exists {  
-                self.current_track_id = None;  
-                self.last_cursor = None;  
-                self.last_velocity = None;  
-                self.candidate_track_id = None;  
-                self.candidate_track_count = 0;  
-            }  
-        }  
-  
-        // 初始化跟踪(如果没有当前 track)  
-        if self.current_track_id.is_none() && !tracks.is_empty() {  
-            // 优先使用 last_cursor 作为参考点,否则用 ROI 中心  
-            let ref_point = self  
-                .last_cursor  
-                .unwrap_or_else(|| Point2d::new(region_w / 2.0, region_h / 2.0));  
-            let closest = tracks  
-                .iter()  
-                .min_by(|a, b| {  
-                    let da = (track_center(a) - ref_point).norm();  
-                    let db = (track_center(b) - ref_point).norm();  
-                    da.partial_cmp(&db).unwrap()  
-                })  
-                .unwrap();  
-            self.current_track_id = Some(closest.track_id());  
-            self.last_cursor = Some(track_center(closest));  
-            self.last_velocity = Some(closest.kalman_velocity());  
-            debug!(target: "backend/player", "INIT track_id={}", closest.track_id());  
-        }  
-  
-        // 更新背景方向  
+        self.update_initial_track_if_needed(region, &tracks);  
         self.update_background_direction(&tracks);  
   
-        // 找到最佳追踪目标  
-        if let Some(best_track) = self.find_best_track(&tracks, region_w, region_h) {  
-            let next_cursor = predicted_center(&best_track);  
-            self.current_track_id = Some(best_track.track_id());  
-            self.last_cursor = Some(next_cursor);  
-            self.last_velocity = Some(best_track.kalman_velocity());  
+        match self.update_and_find_best_track(&tracks, region) {  
+            Some(track) => {  
+                let next_cursor = predicted_center(track);  
+                if self.current_track_id != Some(track.track_id()) {  
+                    debug!(target: "backend/player", "shape id switches from {:?} to {}", self.current_track_id, track.track_id());  
+                }  
+                self.current_track_id = Some(track.track_id());  
+                self.last_cursor = Some(next_cursor);  
   
-            #[cfg(debug_assertions)]  
-            if self.is_debugging {  
-                debug_transparent_shapes(detector, &tracks, region, next_cursor, self.bg_direction);  
+                // 融合期冻结速度：若目标框与其它 track 框重叠，认为正在融合，  
+                // 此时 kalman_velocity 已被融合质心污染，不用它覆盖干净速度快照。  
+                if !is_fusing(track, &tracks) {  
+                    self.last_velocity = Some(track.kalman_velocity());  
+                }  
+  
+                // 成功锁定到真实 track，清零滑行计数。  
+                self.slide_frames = 0;  
+  
+                #[cfg(debug_assertions)]  
+                if self.is_debugging {  
+                    debug_transparent_shapes(  
+                        detector,  
+                        &tracks,  
+                        region,  
+                        next_cursor,  
+                        self.bg_direction,  
+                    );  
+                }  
+  
+                Some(region.tl() + next_cursor)  
             }  
+            None => {  
+                // 完全融合 / 无逆背景候选：用冻结的干净速度滑行过渡。  
+                let last_cursor = self.last_cursor?;  
+                let last_velocity = self.last_velocity.expect("set if last_cursor set") * 1.0;  
   
-            return Some(to_point(region.tl(), next_cursor));  
-        }  
+                // 滑行过久则放弃，避免连环融合时一直盲滑。  
+                self.slide_frames += 1;  
+                if self.slide_frames > MAX_SLIDE_FRAMES {  
+                    return None;  
+                }  
   
-// 优化2: 检查 current_track_id 是否在 lost 池中,用其 Kalman 预测位置  
-        if let Some(current_id) = self.current_track_id  
-            && let Some((next_cursor, vel)) = self  
-                .tracker  
-                .lost()  
-                .iter()  
-                .find(|t| t.track_id() == current_id)  
-                .map(|t| {  
-                    let k = t.kalman_tlwh_pub();  
-                    (  
-                        Point2d::new((k[0] + k[2] / 2.0) as f64, (k[1] + k[3] / 2.0) as f64),  
-                        t.kalman_velocity(),  
-                    )  
-                })  
-        {  
-            self.last_cursor = Some(next_cursor);  
-            self.last_velocity = Some(vel);  
-            return Some(to_point(region.tl(), next_cursor));  
-        } 
+                let next_cursor = last_cursor  
+                    + Point::new(  
+                        last_velocity.x.round() as i32,  
+                        last_velocity.y.round() as i32,  
+                    );  
+                let absolute_next_cursor = region.tl() + next_cursor;  
+                if !region.contains(absolute_next_cursor) {  
+                    return None;  
+                }  
   
-        // 兜底:last_cursor + last_velocity * 1.5 线性外推(与 Komari 一致)  
-        if let (Some(last_cursor), Some(last_velocity)) = (self.last_cursor, self.last_velocity) {  
-            let next_cursor = last_cursor + last_velocity * 1.5;  
-            if next_cursor.x >= 0.0  
-                && next_cursor.x < region_w  
-                && next_cursor.y >= 0.0  
-                && next_cursor.y < region_h  
-            {  
                 self.last_cursor = Some(next_cursor);  
   
                 #[cfg(debug_assertions)]  
@@ -193,363 +132,109 @@ impl TransparentShapeSolver {
                     );  
                 }  
   
-                return Some(to_point(region.tl(), next_cursor));  
+                Some(absolute_next_cursor)  
             }  
         }  
-  
-        None  
     }  
   
-    // ===== 优化4: 动态阈值调整(对齐 _adjust_thresholds) =====  
-    fn adjust_thresholds(&mut self, det_count: usize) {  
-        let low = self.det_count_low as f32;  
-        let high = self.det_count_high as f32;  
-        let count = det_count as f32;  
-  
-        if count <= low {  
-            self.tracker.set_high_match_score_threshold(0.20);  
-            self.tracker.set_low_match_score_threshold(0.05);  
-        } else if count >= high {  
-            self.tracker.set_high_match_score_threshold(0.30);  
-            self.tracker.set_low_match_score_threshold(0.15);  
-        } else {  
-            let t = (count - low) / (high - low);  
-            self.tracker.set_high_match_score_threshold(0.20 + t * 0.10);  
-            self.tracker.set_low_match_score_threshold(0.05 + t * 0.10);  
+    fn update_initial_track_if_needed(&mut self, region: Rect, tracks: &[STrack]) {  
+        if self.current_track_id.is_none() {  
+            let region_mid = mid_point(Rect::new(0, 0, region.width, region.height));  
+            if let Some(track) = find_track_closest_to(region_mid, tracks) {  
+                self.current_track_id = Some(track.track_id());  
+                self.last_cursor = Some(mid_point(track.rect()));  
+                self.last_velocity = Some(track.kalman_velocity());  
+            }  
         }  
     }  
   
-    // ===== 背景方向估计 + 优化5 EMA 平滑(对齐 _update_background_direction) =====  
     fn update_background_direction(&mut self, tracks: &[STrack]) {  
-        if tracks.len() < 3 {  
-            return;  
-        }  
-  
-        let mut velocities: Vec<Point2d> = vec![];  
-        for track in tracks {  
-            if track.tracklet_len() < 5 {  
-                continue;  
-            }  
-  
-            let t = track.tlwh();  
-            let (x, y, w, h) = (t[0] as f64, t[1] as f64, t[2] as f64, t[3] as f64);  
-            let center = Point2d::new(x + w / 2.0, y + h / 2.0);  
-  
-            if let Some(last_cursor) = self.last_cursor {  
-                // 排除包含光标的轨迹  
-                if x <= last_cursor.x  
-                    && last_cursor.x <= x + w  
-                    && y <= last_cursor.y  
-                    && last_cursor.y <= y + h  
-                {  
-                    continue;  
-                }  
-                // 距离过近则跳过  
-                let dist = (center - last_cursor).norm();  
-                let diag = (w * w + h * h).sqrt();  
-                if dist < diag {  
-                    continue;  
-                }  
-            }  
-  
-            velocities.push(track.kalman_velocity());  
-        }  
-  
-        if velocities.len() >= 3 {  
-            let velocity_sum = velocities  
-                .into_iter()  
-                .fold(Point2d::default(), |acc, v| acc + v);  
-            let norm = velocity_sum.norm();  
-            if norm > 1e-3 {  
-                let new_direction = velocity_sum / norm;  
-                // EMA 平滑  
-                let blended = self.bg_direction * (1.0 - self.bg_direction_alpha)  
-                    + new_direction * self.bg_direction_alpha;  
-                // 重新归一化  
-                self.bg_direction = blended / (blended.norm() + 1e-6);  
-            }  
+        if let Some(direction) = estimate_background_direction(self.last_cursor, tracks)  
+            .and_then(|direction| unit(self.bg_direction * 0.5 + direction * 0.5))  
+        {  
+            self.bg_direction = direction;  
         }  
     }  
   
-    // ===== 核心:找到最佳追踪目标(对齐 _find_best_track) =====  
-    fn find_best_track(  
+    fn update_and_find_best_track<'a>(  
         &mut self,  
-        tracks: &[STrack],  
-        region_w: f64,  
-        region_h: f64,  
-    ) -> Option<STrack> {  
-        let current_id = self.current_track_id?;  
-        if tracks.is_empty() {  
-            return None;  
-        }  
+        tracks: &'a [STrack],  
+        region: Rect,  
+    ) -> Option<&'a STrack> {  
+        let current_track_id = self.current_track_id?;  
+        let last_cursor = self.last_cursor?;  
+        let bg_direction = self.bg_direction;  
   
-        let current_track = tracks.iter().find(|t| t.track_id() == current_id).cloned();  
-        let current_in_tracks = current_track.is_some();  
+        // 计算所有「逆背景运动」候选的分数（被 30° 过滤的会被丢弃）。  
+        let scored_tracks: Vec<(&STrack, f64, bool)> = tracks  
+            .iter()  
+            .filter(|track| track.track_id() == current_track_id || track.tracklet_len() >= 3)  
+            .filter_map(|track| {  
+                let is_current = track.track_id() == current_track_id;  
+                let score =  
+                    track_background_score(track, last_cursor, bg_direction, region, is_current)?;  
+                Some((track, score, is_current))  
+            })  
+            .collect();  
   
-// ===== 核心策略:稳定 track 直接保留(增加融合→分离防护) =====  
-        if let Some(ref ct) = current_track  
-            && ct.state() == TrackState::Tracked  
-            && ct.tracklet_len() >= 10  
-            && ct.score() >= 0.50  
-        {  
-            // 融合→分离防护:若稳定 track 出现异常跳变,说明底层 ByteTracker  
-            // 在两图形分离时把 ID 错配到了另一物理图形上。此时不再信任该 ID,  
-            // 改选距离上一帧光标最近的 track(分离后仍留在原处的正确图形)。  
-            if !self.is_motion_consistent(ct)  
-                && let Some(lc) = self.last_cursor  
-                && let Some(closest) = tracks.iter().min_by(|a, b| {  
-                    (track_center(a) - lc)  
-                        .norm()  
-                        .partial_cmp(&(track_center(b) - lc).norm())  
-                        .unwrap()  
-                })  
-                && closest.track_id() != ct.track_id()  
-            {  
-                debug!(  
-                    target: "backend/player",  
-                    "REASSIGN(merge-split) {} -> {}",  
-                    ct.track_id(),  
-                    closest.track_id()  
-                );  
-                self.candidate_track_id = None;  
-                self.candidate_track_count = 0;  
-                return Some(closest.clone());  
-            }  
-  
-            self.candidate_track_id = None;  
-            self.candidate_track_count = 0;  
-            return Some(ct.clone());  
-        }
-  
-        // 计算 predicted_pos  
-        let predicted_pos: Option<Point2d> = if let Some(ref ct) = current_track {  
-            Some(predicted_center(ct))  
-        } else if let (Some(lc), Some(lv)) = (self.last_cursor, self.last_velocity) {  
-            Some(lc + lv)  
-        } else {  
-            None  
+        // 找出最高分候选。  
+        let best_track_info = scored_tracks  
+            .iter()  
+            .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap());  
+        let (best_track, best_score, is_best_current) = match best_track_info {  
+            Some(info) => (info.0, info.1, info.2),  
+            // 画面里没有任何逆背景候选（完全融合那几帧）→ 交给惯性滑行。  
+            None => return None,  
         };  
   
-        // 计算每个轨迹的分数  
-        let mut scored_tracks: Vec<(STrack, f64)> = vec![];  
-        for track in tracks {  
-            let is_current = track.track_id() == current_id;  
+        // 当前目标是否仍在逆背景候选集中。  
+        let current_in_scored = scored_tracks.iter().any(|t| t.2);  
   
-            // tracklet_len 过滤:current 在 tracks 中时,新候选需 >= 1  
-            if !is_current && track.tracklet_len() < 1 && current_in_tracks {  
-                continue;  
-            }  
-  
-            // 运动约束  
-            if !is_current  
-                && let Some(pp) = predicted_pos  
-            {  
-                let dist = (track_center(track) - pp).norm();  
-                let search_radius = if let Some(ref ct) = current_track {  
-                    let t = ct.tlwh();  
-                    self.search_radius_factor * (t[2] as f64 + t[3] as f64) / 2.0  
-                } else {  
-                    self.search_radius_factor * 50.0  
-                };  
-                if dist > search_radius {  
-                    continue;  
-                }  
-            } 
-  
-            let mut score = self  
-                .track_background_score(track, region_w, region_h, is_current)  
-                .unwrap_or(track.score() as f64 * 0.2);  
-  
-            // 重叠惩罚  
-            if !is_current  
-                && let Some(ref ct) = current_track  
-                && iou(track, ct) > self.overlap_iou_thresh  
-            {  
-                score *= self.overlap_switch_penalty;  
-            } 
-  
-            scored_tracks.push((track.clone(), score));  
-        }  
-  
-        if scored_tracks.is_empty() {  
-            return current_track;  
-        }  
-  
-        // 选择最高分  
-        let (best_track, best_score) = scored_tracks  
-            .iter()  
-            .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())  
-            .map(|(t, s)| (t.clone(), *s))  
-            .unwrap();  
-  
-        // 如果 best 就是 current,直接返回  
-        if best_track.track_id() == current_id {  
+        // 当前目标已掉出候选集（被背景带走 / 融合 / 丢失）→ 立即重锁定：  
+        // 在所有逆背景候选里选离预测光标位置最近的那个，采纳其新 ID。  
+        if !current_in_scored {  
+            let predicted = predicted_cursor(last_cursor, self.last_velocity);  
+            let relocked = reclaim_track(predicted, &scored_tracks).unwrap_or(best_track);  
             self.candidate_track_id = None;  
             self.candidate_track_count = 0;  
-            return current_track;  
+            return Some(relocked);  
         }  
   
-        // 获取 current track 的分数  
-        let current_score: Option<f64> = scored_tracks  
-            .iter()  
-            .find(|(t, _)| t.track_id() == current_id)  
-            .map(|(_, s)| *s);  
-  
-        // 切换门槛  
-        let mut switch_threshold_multiplier = 1.0f64;  
-        let mut required_confirm_frames = 3u32;  
-        if let Some(ref ct) = current_track {  
-            if ct.tracklet_len() >= 50 {  
-                switch_threshold_multiplier = 3.0;  
-                required_confirm_frames = 6;  
-            } else if ct.tracklet_len() >= 20 {  
-                switch_threshold_multiplier = 2.0;  
-                required_confirm_frames = 5;  
-            } else if ct.tracklet_len() >= 10 {  
-                switch_threshold_multiplier = 1.5;  
-                required_confirm_frames = 4;  
-            }  
-  
-            if ct.score() >= 0.85 {  
-                switch_threshold_multiplier *= 1.5;  
-                required_confirm_frames += 1;  
-            }  
+        // 最佳仍是当前目标，重置候选并返回。  
+        if is_best_current {  
+            self.candidate_track_id = None;  
+            self.candidate_track_count = 0;  
+            return Some(best_track);  
         }  
   
-        // current track 有分数且候选没有显著优势,不切换  
-        if let Some(cs) = current_score  
-            && best_score <= cs * switch_threshold_multiplier  
-        {  
-            return current_track;  
-        } 
-  
-        // 候选确认计数  
-        if self.candidate_track_id == Some(best_track.track_id()) {  
+        // 更新候选计数（迟滞切换，抗抖动）。  
+        let is_same_candidate = self.candidate_track_id == Some(best_track.track_id());  
+        if is_same_candidate {  
             self.candidate_track_count += 1;  
         } else {  
             self.candidate_track_id = Some(best_track.track_id());  
             self.candidate_track_count = 0;  
         }  
   
-        // 确认切换  
-        if self.candidate_track_count >= required_confirm_frames {  
+        let current_score = scored_tracks  
+            .iter()  
+            .find(|t| t.2)  
+            .map(|t| t.1)  
+            .unwrap_or(0.0);  
+  
+        let should_switch = self.candidate_track_count >= 2 && best_score - current_score > 0.1;  
+  
+        if should_switch {  
+            debug!(target: "backend/player", "Switch from {:?} to {}", self.current_track_id, best_track.track_id());  
+            self.current_track_id = Some(best_track.track_id());  
             self.candidate_track_id = None;  
             self.candidate_track_count = 0;  
-            debug!(target: "backend/player", "SWITCH to id={}", best_track.track_id());  
             return Some(best_track);  
         }  
   
-        // current_track 不在 tracks 中时,直接返回 best_track(旧 track 已不可见)  
-        if current_track.is_none() {  
-            return Some(best_track);  
-        }  
-  
-        current_track  
+        // 当前目标仍通过过滤，返回当前目标。  
+        scored_tracks.iter().find(|t| t.2).map(|t| t.0)  
     }  
-  
-    // ===== 背景运动分数(对齐 _track_background_score) =====  
-    fn track_background_score(  
-        &self,  
-        track: &STrack,  
-        region_w: f64,  
-        region_h: f64,  
-        is_current: bool,  
-    ) -> Option<f64> {  
-        // bg_direction 无效时退化为距离先验评分  
-        if self.bg_direction.norm() < 0.1 {  
-            return self.distance_prior_score(track, region_w, region_h, is_current);  
-        }  
-  
-        let angle = self.track_background_degree(track);  
-  
-        // 角度门槛:current 更宽松(30° vs 45°)  
-        let angle_threshold = if is_current { 30.0 } else { 45.0 };  
-        if angle <= angle_threshold {  
-            return None;  
-        }  
-  
-        let score = angle / 180.0;  
-  
-        // 距离惩罚  
-        let distance_penalty = if angle >= 60.0 {  
-            1.0  
-        } else if let Some(last_cursor) = self.last_cursor {  
-            let cursor_dir = track_center(track) - last_cursor;  
-            let cursor_squared = cursor_dir.x * cursor_dir.x + cursor_dir.y * cursor_dir.y;  
-            let sigma = 0.25 * (region_w * region_w + region_h * region_h).sqrt();  
-            (-cursor_squared / (2.0 * sigma * sigma)).exp()  
-        } else {  
-            1.0  
-        };  
-  
-        // current 的距离惩罚门槛也更宽松  
-        let penalty_threshold = if is_current { 0.15 } else { 0.3 };  
-        if distance_penalty <= penalty_threshold {  
-            return None;  
-        }  
-  
-        Some(score * distance_penalty)  
-    }  
-  
-    // ===== bg_direction 无效时的距离先验评分(对齐 _distance_prior_score) =====  
-    fn distance_prior_score(  
-        &self,  
-        track: &STrack,  
-        region_w: f64,  
-        region_h: f64,  
-        is_current: bool,  
-    ) -> Option<f64> {  
-        let last_cursor = self.last_cursor?;  
-  
-        let dist = (track_center(track) - last_cursor).norm();  
-        let sigma = 0.25 * (region_w * region_w + region_h * region_h).sqrt();  
-        let distance_score = (-dist * dist / (2.0 * sigma * sigma)).exp();  
-  
-        let threshold = if is_current { 0.10 } else { 0.25 };  
-        if distance_score <= threshold {  
-            return None;  
-        }  
-  
-        Some(distance_score)  
-    }  
-  
-    // ===== 速度与背景方向夹角(对齐 _track_background_degree) =====  
-    fn track_background_degree(&self, track: &STrack) -> f64 {  
-        let v = track.kalman_velocity();  
-        let norm = v.norm();  
-        if norm < 1e-3 {  
-            return 0.0;  
-        }  
-  
-        let direction = v / norm;  
-        let dot = direction.dot(self.bg_direction);  
-        // 2D 叉积  
-        let det = direction.x * self.bg_direction.y - direction.y * self.bg_direction.x;  
-  
-        det.atan2(dot).to_degrees().abs()  
-    } 
-
-  /// 校验稳定 track 分离后是否仍符合运动模型。  
-    ///  
-    /// 融合→分离时,ByteTracker 的纯 IoU 关联可能把 track ID 贴到错误的  
-    /// 物理图形上,表现为检测框中心相对上一帧光标出现远超正常帧间位移的跳变。  
-    /// 返回 false 表示疑似错配,应触发重选。  
-    fn is_motion_consistent(&self, track: &STrack) -> bool {  
-        let Some(last_cursor) = self.last_cursor else {  
-            return true; // 无历史参考,无法判断,放行  
-        };  
-  
-        let jump = (track_center(track) - last_cursor).norm();  
-  
-        // 允许的帧间位移 = 上一帧速度裕量 + 基于目标尺寸的裕量。  
-        // 正常运动(含背景滚动)由 speed 项覆盖;ID 错配的"瞬移"远超此阈值。  
-        let speed = self.last_velocity.map(|v| v.norm()).unwrap_or(0.0);  
-        let t = track.tlwh();  
-        let size = (t[2] as f64 + t[3] as f64) / 2.0;  
-        let max_jump = speed * 1.5 + size * 0.5;  
-  
-        jump <= max_jump  
-    }
 }  
   
 impl Drop for TransparentShapeSolver {  
@@ -563,54 +248,12 @@ impl Drop for TransparentShapeSolver {
     }  
 }  
   
-// ===== 自由函数 =====  
-  
-/// 轨迹中心(基于检测框 tlwh),对齐 Python track_center。  
-fn track_center(track: &STrack) -> Point2d {  
-    let t = track.tlwh();  
-    Point2d::new(  
-        (t[0] + t[2] / 2.0) as f64,  
-        (t[1] + t[3] / 2.0) as f64,  
-    )  
-}  
-  
-/// 预测轨迹下一位置(对齐 _predicted_center):Kalman 中心 + 速度。  
-fn predicted_center(track: &STrack) -> Point2d {  
-    let v = track.kalman_velocity();  
-    let k = track.kalman_tlwh_pub();  
-    let cx = (k[0] + k[2] / 2.0) as f64;  
-    let cy = (k[1] + k[3] / 2.0) as f64;  
-    Point2d::new(cx + v.x, cy + v.y)  
-}  
-  
-/// 两个 track 检测框的 IoU(对齐 _iou)。  
-fn iou(a: &STrack, b: &STrack) -> f64 {  
-    let ta = a.tlwh();  
-    let tb = b.tlwh();  
-  
-    let (ax1, ay1, aw, ah) = (ta[0] as f64, ta[1] as f64, ta[2] as f64, ta[3] as f64);  
-    let (ax2, ay2) = (ax1 + aw, ay1 + ah);  
-    let (bx1, by1, bw, bh) = (tb[0] as f64, tb[1] as f64, tb[2] as f64, tb[3] as f64);  
-    let (bx2, by2) = (bx1 + bw, by1 + bh);  
-  
-    let inter_w = (ax2.min(bx2) - ax1.max(bx1)).max(0.0);  
-    let inter_h = (ay2.min(by2) - ay1.max(by1)).max(0.0);  
-    let inter_area = inter_w * inter_h;  
-  
-    inter_area / (aw * ah + bw * bh - inter_area + 1e-6)  
-}  
-  
-/// Point2d(region 相对浮点)转为原图整数坐标点。  
-fn to_point(offset: Point, p: Point2d) -> Point {  
-    offset + Point::new(p.x.round() as i32, p.y.round() as i32)  
-}  
-  
 #[cfg(debug_assertions)]  
 fn debug_transparent_shapes(  
     detector: &dyn Detector,  
     tracks: &[STrack],  
     region: Rect,  
-    cursor: Point2d,  
+    last_cursor: Point,  
     bg_direction: Point2d,  
 ) {  
     use opencv::core::MatTraitConst;  
@@ -620,7 +263,168 @@ fn debug_transparent_shapes(
     debug_shape_tracks(  
         &detector.mat().roi(region).unwrap(),  
         tracks.to_vec(),  
-        Point::new(cursor.x.round() as i32, cursor.y.round() as i32),  
+        last_cursor,  
         bg_direction,  
     );  
+}  
+  
+/// 目标框与任意其它 track 框重叠即视为正在融合。  
+fn is_fusing(target: &STrack, tracks: &[STrack]) -> bool {  
+    let target_rect = target.kalman_rect();  
+    tracks.iter().any(|t| {  
+        t.track_id() != target.track_id()  
+            && (t.kalman_rect() & target_rect).area() >= FUSION_OVERLAP_AREA  
+    })  
+}  
+  
+/// 预测光标位置 = 上一帧光标 + 冻结速度。  
+fn predicted_cursor(last_cursor: Point, last_velocity: Option<Point2d>) -> Point {  
+    match last_velocity {  
+        Some(v) => last_cursor + Point::new(v.x.round() as i32, v.y.round() as i32),  
+        None => last_cursor,  
+    }  
+}  
+  
+/// 在逆背景候选里选离预测位置最近的 track 重新认领。  
+fn reclaim_track<'a>(predicted: Point, scored: &[(&'a STrack, f64, bool)]) -> Option<&'a STrack> {  
+    scored  
+        .iter()  
+        .min_by_key(|t| (mid_point(t.0.kalman_rect()) - predicted).norm() as i32)  
+        .map(|t| t.0)  
+}  
+  
+fn find_track_closest_to(point: Point, tracks: &[STrack]) -> Option<&STrack> {  
+    tracks.iter().min_by_key(|track| {  
+        let track_region = track.rect();  
+        let track_mid =  
+            track_region.tl() + Point::new(track_region.width / 2, track_region.height / 2);  
+  
+        (point - track_mid).norm() as i32  
+    })  
+}  
+  
+fn mid_point(rect: Rect) -> Point {  
+    rect.tl() + Point::new(rect.width / 2, rect.height / 2)  
+}  
+  
+fn predicted_center(track: &STrack) -> Point {  
+    let v = track.kalman_velocity();  
+    let point = mid_point(track.kalman_rect());  
+  
+    Point::new(  
+        (point.x as f64 + v.x).round() as i32,  
+        (point.y as f64 + v.y).round() as i32,  
+    )  
+}  
+  
+fn track_background_score(  
+    track: &STrack,  
+    last_cursor: Point,  
+    bg_direction: Point2d,  
+    region: Rect,  
+    is_current_track: bool,  
+) -> Option<f64> {  
+    let angle = track_background_degree(track, bg_direction)?;  
+  
+    // ← 逆背景运动判别阈值： 45° 
+    if angle <= 45.0 {  
+        return None;  
+    }  
+  
+    let angle_score = angle / 180.0;  
+  
+    // 乘法评分：距离惩罚  
+    let distance_penalty = if angle >= 60.0 {  
+        1.0  
+    } else {  
+        let cursor_dir = mid_point(track.rect()) - last_cursor;  
+        let dist_squared = (cursor_dir.x.pow(2) + cursor_dir.y.pow(2)) as f64;  
+        let sigma = 0.25 * diag(region);  
+        (-dist_squared / (2.0 * sigma.powi(2))).exp()  
+    };  
+  
+    if distance_penalty <= 0.3 {  
+        return None;  
+    }  
+  
+    let mut score = angle_score * distance_penalty;  
+  
+    if is_current_track {  
+        score += 0.15;  
+    }  
+  
+    if score <= 0.2 {  
+        return None;  
+    }  
+  
+    Some(score)  
+}  
+  
+fn track_background_degree(track: &STrack, bg_direction: Point2d) -> Option<f64> {  
+    let dir = unit(track.kalman_velocity())?;  
+    let dot = dir.dot(bg_direction);  
+    let det = dir.cross(bg_direction);  
+    Some(det.atan2(dot).to_degrees().abs())  
+}  
+  
+fn estimate_background_direction(last_cursor: Option<Point>, tracks: &[STrack]) -> Option<Point2d> {  
+    let mut last_rect_contains_cursor = None;  
+    let filtered = tracks  
+        .iter()  
+        .filter(|track| {  
+            if track.tracklet_len() < 5 {  
+                return false;  
+            }  
+  
+            if last_rect_contains_cursor.is_some_and(|rect: Rect| (rect & track.rect()).area() > 0)  
+            {  
+                return false;  
+            }  
+  
+            let Some(last_cursor) = last_cursor else {  
+                return true;  
+            };  
+  
+            let rect = track.rect();  
+            if rect.contains(last_cursor) {  
+                if last_rect_contains_cursor.is_none() {  
+                    last_rect_contains_cursor = Some(rect);  
+                }  
+  
+                return false;  
+            }  
+  
+            let norm = (mid_point(track.rect()) - last_cursor).norm();  
+            norm >= diag(track.rect())  
+        })  
+        .map(STrack::kalman_velocity)  
+        .collect::<Vec<Point2d>>();  
+    if filtered.len() < 3 {  
+        return None;  
+    }  
+  
+    let velocity_sum = filtered  
+        .into_iter()  
+        .fold(Point2d::default(), |acc, v| acc + v);  
+    let velocity_unit = unit(velocity_sum)?;  
+  
+    Some(velocity_unit)  
+}  
+  
+fn diag(rect: Rect) -> f64 {  
+    ((rect.width.pow(2) + rect.height.pow(2)) as f64).sqrt()  
+}  
+  
+fn unit<T>(point: Point_<T>) -> Option<Point_<T>>  
+where  
+    T: Copy,  
+    Point_<T>: Div<f64, Output = Point_<T>>,  
+    f64: From<T>,  
+{  
+    let norm = point.norm();  
+    if norm < 1e-3 {  
+        return None;  
+    }  
+  
+    Some(point / norm)  
 }
