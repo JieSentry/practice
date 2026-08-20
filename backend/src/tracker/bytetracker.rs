@@ -54,18 +54,22 @@ impl ByteTracker {
     }
 
 // ===== 为 TransparentShapeSolver 暴露(对齐 solver.py) =====  
+    #[allow(dead_code)]  
     pub fn set_high_match_score_threshold(&mut self, v: f32) {  
         self.high_match_score_threshold = v;  
     }  
   
+    #[allow(dead_code)]  
     pub fn set_low_match_score_threshold(&mut self, v: f32) {  
         self.low_match_score_threshold = v;  
     }  
   
+    #[allow(dead_code)]  
     pub fn tracked(&self) -> &[STrack] {  
         &self.tracked  
     }  
   
+    #[allow(dead_code)]  
     pub fn lost(&self) -> &[STrack] {  
         &self.lost  
     }
