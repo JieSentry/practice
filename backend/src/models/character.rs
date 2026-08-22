@@ -93,8 +93,6 @@ pub struct Character {
     /// up_jump_key 的冷却时间（毫秒）。  
     #[serde(default)]  
     pub up_jump_cooldown_millis: u64,  
-    #[serde(default)]  
-    pub has_extended_teleport_range: bool,
     #[serde(default)]
     pub has_extended_teleport_range: bool,
     pub actions: Vec<ActionConfiguration>,
