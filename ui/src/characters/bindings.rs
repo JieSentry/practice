@@ -141,8 +141,7 @@ pub fn SectionKeyBindings() -> Element {
                     value: character().up_jump_count,  
                 } 
                 CharactersDurationInput {  
-                    label: "Up jump cooldown (mm:ss)",  
-                    tooltip: "按键上跳的冷却时间。00:00 表示无 CD、不限次数（始终按键上跳）。",  
+                    label: "Up jump cooldown (00:00=unlimited count)",  
                     disabled: character().id.is_none() || character().up_jump_key.is_none(),  
                     on_value: move |up_jump_cooldown_millis| {  
                         save_character(Character {  
