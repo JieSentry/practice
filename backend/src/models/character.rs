@@ -87,9 +87,9 @@ pub struct Character {
     pub up_jump_is_flight: bool,
 #[serde(default)]  
     pub up_jump_specific_key_should_jump: bool,  
-    /// CD 内 up_jump_key 可使用的次数（0 = 关闭此功能，始终按键上跳）。  
-    #[serde(default)]  
-    pub up_jump_count: u32,  
+/// CD 内 up_jump_key 可使用的次数（默认 1）。  
+    #[serde(default = "up_jump_count_default")]  
+    pub up_jump_count: u32,
     /// up_jump_key 的冷却时间（毫秒）。  
     #[serde(default)]  
     pub up_jump_cooldown_millis: u64,  
@@ -165,7 +165,7 @@ impl Default for Character {
             disable_grapple_on_double_jumping: false,
             up_jump_is_flight: false,
             up_jump_specific_key_should_jump: false,  
-            up_jump_count: 0,  
+            up_jump_count: 1,  
             up_jump_cooldown_millis: 0,  
             has_extended_teleport_range: false,
             actions: vec![],
@@ -192,6 +192,10 @@ fn hexa_booster_exchange_amount_default() -> u32 {
 
 fn booster_use_count_default() -> u32 {  
     2  
+}
+
+fn up_jump_count_default() -> u32 {  
+    1  
 }
 
 fn jump_key_default() -> KeyBindingConfiguration {
