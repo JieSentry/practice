@@ -431,14 +431,18 @@ impl PlayerContext {
     /// Used whenever minimap data or configuration changes.
     const MAX_THREADS_OF_FATE_FAIL_COUNT: u32 = 1;  
     
-    #[inline] 
+#[inline]  
     /// 返回本次是否应使用 up_jump_key。返回 false 表示改用默认寻路上跳（等价 up_jump_key = None）。  
+    /// 说明：  
+    /// - 是否启用「按键上跳」由是否设置 up_jump_key 决定（在 up_jump.rs 里判断）。  
+    /// - cooldown == 0（即 00:00）表示没有 CD，也就没有次数限制 → 始终用按键上跳。  
+    /// - cooldown > 0 时：一个 CD 周期内最多用 count 次，用尽后退回默认寻路上跳，CD 结束再恢复。  
     pub(super) fn try_consume_up_jump_key(&mut self, tick: u64) -> bool {  
         let count = self.config.up_jump_count;  
         let cd = self.config.up_jump_cooldown_ticks;  
   
-        // 功能关闭：保持原行为，始终按键上跳。  
-        if count == 0 || cd == 0 {  
+        // 没有 CD → 不限次数，始终按键上跳。  
+        if cd == 0 {  
             return true;  
         }  
   
