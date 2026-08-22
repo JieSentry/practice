@@ -89,10 +89,10 @@ pub struct Character {
     pub up_jump_specific_key_should_jump: bool,  
 /// CD 内 up_jump_key 可使用的次数（默认 1）。  
     #[serde(default = "up_jump_count_default")]  
-    pub up_jump_count: u32,
-    /// up_jump_key 的冷却时间（毫秒）。  
+    pub up_jump_count: u32,  
+    /// up_jump_key 的冷却时间（毫秒）。00:00 表示无 CD、不限次数。  
     #[serde(default)]  
-    pub up_jump_cooldown_millis: u64,  
+    pub up_jump_cooldown_millis: u64,
     #[serde(default)]
     pub has_extended_teleport_range: bool,
     pub actions: Vec<ActionConfiguration>,
