@@ -206,6 +206,10 @@ pub struct PlayerConfiguration {
     pub jump_key: KeyKind,
     /// The up jump key with [`None`] indicating composite jump (Up arrow + Double Space).
     pub up_jump_key: Option<KeyKind>,
+    /// CD 内 up_jump_key 可使用的次数（0 = 关闭，始终按键上跳）。  
+    pub up_jump_count: u32,  
+    /// up_jump_key 的冷却时间（tick 数）。  
+    pub up_jump_cooldown_ticks: u32,
     /// The cash shop key.
     pub cash_shop_key: Option<KeyKind>,
     /// The familiar key.
@@ -254,6 +258,8 @@ impl Default for PlayerConfiguration {
             teleport_key: None,
             jump_key: KeyKind::A,
             up_jump_key: None,
+            up_jump_count: 0,  
+            up_jump_cooldown_ticks: 0,
             cash_shop_key: None,
             familiar_key: None,
             to_town_key: None,
@@ -276,6 +282,10 @@ impl Default for PlayerConfiguration {
 pub struct PlayerContext {
     pub config: PlayerConfiguration,
 
+    /// 当前 CD 周期内剩余可用的 up_jump_key 次数。  
+    up_jump_uses_remaining: u32,  
+    /// CD 开始时的 tick（None = 尚未进入 CD）。  
+    up_jump_cooldown_started_tick: Option<u64>,
     /// Optional id of current normal action provided by [`Rotator`].
     normal_action_id: Option<u32>,
     /// Requested normal action.
@@ -420,6 +430,43 @@ impl PlayerContext {
     ///
     /// Used whenever minimap data or configuration changes.
     const MAX_THREADS_OF_FATE_FAIL_COUNT: u32 = 1;  
+    
+    #[inline] 
+    /// 返回本次是否应使用 up_jump_key。返回 false 表示改用默认寻路上跳（等价 up_jump_key = None）。  
+    pub(super) fn try_consume_up_jump_key(&mut self, tick: u64) -> bool {  
+        let count = self.config.up_jump_count;  
+        let cd = self.config.up_jump_cooldown_ticks;  
+  
+        // 功能关闭：保持原行为，始终按键上跳。  
+        if count == 0 || cd == 0 {  
+            return true;  
+        }  
+  
+        // CD 结束 → 重置次数。  
+        if let Some(started) = self.up_jump_cooldown_started_tick  
+            && tick.saturating_sub(started) >= cd as u64  
+        {  
+            self.up_jump_cooldown_started_tick = None;  
+            self.up_jump_uses_remaining = count;  
+        }  
+  
+        // 尚未进入过 CD 且未初始化：充满次数。  
+        if self.up_jump_cooldown_started_tick.is_none() && self.up_jump_uses_remaining == 0 {  
+            self.up_jump_uses_remaining = count;  
+        }  
+  
+        if self.up_jump_uses_remaining > 0 {  
+            // 本 CD 周期首次使用时启动计时。  
+            if self.up_jump_uses_remaining == count {  
+                self.up_jump_cooldown_started_tick = Some(tick);  
+            }  
+            self.up_jump_uses_remaining -= 1;  
+            true  
+        } else {  
+            // 次数用尽，CD 未结束 → 使用默认寻路上跳。  
+            false  
+        }  
+    }
   
     #[inline]  
     pub(crate) fn mark_pending_go_to_town_after_respawn(&mut self) {  
