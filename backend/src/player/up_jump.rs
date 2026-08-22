@@ -77,37 +77,49 @@ pub struct UpJumping {
     auto_mob_wait_completion: bool,
 }
 
-impl UpJumping {
-    pub fn new(moving: Moving, resources: &mut Resources, player_context: &PlayerContext) -> Self {
-        let (y_distance, _) = moving.y_distance_direction_from(true, moving.pos);
-        let spam_delay = if !player_context.config.up_jump_specific_key_should_jump
-            && y_distance <= SOFT_UP_JUMP_THRESHOLD
-        {
-            SOFT_SPAM_DELAY
-        } else {
-            SPAM_DELAY
-        };
-        let auto_mob_wait_completion =
-            player_context.has_auto_mob_action_only() && resources.rng.random_bool(0.5);
-        let kind = up_jumping_kind(
-            player_context.config.up_jump_key,
-            player_context.config.teleport_key.is_some(),
-            player_context.config.has_extended_teleport_range,
-        );
-
-        Self {
-            moving,
-            kind,
-            spam_delay,
-            auto_mob_wait_completion,
-        }
-    }
-
-    #[inline]
-    fn moving(mut self, moving: Moving) -> UpJumping {
-        self.moving = moving;
-        self
-    }
+impl UpJumping {  
+    pub fn new(  
+        moving: Moving,  
+        resources: &mut Resources,  
+        player_context: &mut PlayerContext,  
+    ) -> Self {  
+        let (y_distance, _) = moving.y_distance_direction_from(true, moving.pos);  
+        let spam_delay = if !player_context.config.up_jump_specific_key_should_jump  
+            && y_distance <= SOFT_UP_JUMP_THRESHOLD  
+        {  
+            SOFT_SPAM_DELAY  
+        } else {  
+            SPAM_DELAY  
+        };  
+        let auto_mob_wait_completion =  
+            player_context.has_auto_mob_action_only() && resources.rng.random_bool(0.5);  
+  
+        // 依据次数 / CD 计算实效 up_jump_key：次数用尽则退回 None（默认寻路上跳）。  
+        let effective_up_jump_key = if player_context.try_consume_up_jump_key(resources.tick) {  
+            player_context.config.up_jump_key  
+        } else {  
+            None  
+        };  
+  
+        let kind = up_jumping_kind(  
+            effective_up_jump_key,  
+            player_context.config.teleport_key.is_some(),  
+            player_context.config.has_extended_teleport_range,  
+        );  
+  
+        Self {  
+            moving,  
+            kind,  
+            spam_delay,  
+            auto_mob_wait_completion,  
+        }  
+    }  
+  
+    #[inline]  
+    fn moving(mut self, moving: Moving) -> UpJumping {  
+        self.moving = moving;  
+        self  
+    }  
 }
 
 /// Updates the [`Player::UpJumping`] contextual state.
