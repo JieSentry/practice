@@ -392,7 +392,7 @@ fn update_from_ping_pong_action(
         player.state = if has_grappling {
             Player::Grappling(Grappling::new(moving))
         } else {
-            Player::UpJumping(UpJumping::new(moving, resources, &player.context))
+            Player::UpJumping(UpJumping::new(moving, resources, &mut player.context))
         };
         return;
     }
