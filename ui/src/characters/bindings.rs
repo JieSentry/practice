@@ -1,9 +1,12 @@
 use backend::{Character, KeyBindingConfiguration};
 use dioxus::prelude::*;
 
-use crate::{
-    characters::{CharactersContext, CharactersKeyBindingConfigurationInput},
-    components::section::Section,
+use crate::{  
+    characters::{  
+        CharactersContext, CharactersDurationInput, CharactersKeyBindingConfigurationInput,  
+        CharactersNumberU32Input,  
+    },  
+    components::section::Section,  
 };
 
 #[component]
@@ -49,19 +52,6 @@ pub fn SectionKeyBindings() -> Element {
                         });
                     },
                     value: character().jump_key,
-                }
-                CharactersKeyBindingConfigurationInput {
-                    label: "Up jump",
-                    optional: true,
-                    tooltip: "This is meant for classes that have a separate skill to up jump. Classes that use up arrow should set this key to up arrow.",
-                    disabled: character().id.is_none(),
-                    on_value: move |up_jump_key| {
-                        save_character(Character {
-                            up_jump_key,
-                            ..character.peek().clone()
-                        });
-                    },
-                    value: character().up_jump_key,
                 }
                 CharactersKeyBindingConfigurationInput {
                     label: "Interact",
@@ -125,6 +115,41 @@ pub fn SectionKeyBindings() -> Element {
                         });
                     },
                     value: character().familiar_menu_key,
+                }
+                 CharactersKeyBindingConfigurationInput {  
+                    label: "Up jump",  
+                    optional: true,  
+                    tooltip: "This is meant for classes that have a separate skill to up jump. Classes that use up arrow should set this key to up arrow.",  
+                    disabled: character().id.is_none(),  
+                    on_value: move |up_jump_key| {  
+                        save_character(Character {  
+                            up_jump_key,  
+                            ..character.peek().clone()  
+                        });  
+                    },  
+                    value: character().up_jump_key,  
+                }  
+                CharactersNumberU32Input {  
+                    label: "Up jump count",  
+                    disabled: character().id.is_none() || character().up_jump_key.is_none(),  
+                    on_value: move |up_jump_count| {  
+                        save_character(Character {  
+                            up_jump_count,  
+                            ..character.peek().clone()  
+                        });  
+                    },  
+                    value: character().up_jump_count,  
+                }  
+                CharactersDurationInput {  
+                    label: "Up jump cooldown (mm:ss)",  
+                    disabled: character().id.is_none() || character().up_jump_key.is_none(),  
+                    on_value: move |up_jump_cooldown_millis| {  
+                        save_character(Character {  
+                            up_jump_cooldown_millis,  
+                            ..character.peek().clone()  
+                        });  
+                    },  
+                    value: character().up_jump_cooldown_millis,  
                 }
             }
         }
