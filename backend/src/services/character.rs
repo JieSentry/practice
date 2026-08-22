@@ -46,7 +46,10 @@ impl CharacterService for DefaultCharacterService {
             player_context.config.grappling_key = character.ropelift_key.map(|key| key.key.into());
             player_context.config.teleport_key = character.teleport_key.map(|key| key.key.into());
             player_context.config.jump_key = character.jump_key.key.into();
-            player_context.config.up_jump_key = character.up_jump_key.map(|key| key.key.into());
+            player_context.config.up_jump_key = character.up_jump_key.map(|key| key.key.into());  
+            player_context.config.up_jump_count = character.up_jump_count;  
+            player_context.config.up_jump_cooldown_ticks =  
+                (character.up_jump_cooldown_millis / crate::run::MS_PER_TICK) as u32;
             player_context.config.cash_shop_key = character.cash_shop_key.map(|key| key.key.into());
             player_context.config.familiar_key =
                 character.familiar_menu_key.map(|key| key.key.into());
