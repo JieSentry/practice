@@ -85,8 +85,16 @@ pub struct Character {
     pub disable_grapple_on_double_jumping: bool,
     #[serde(default)]
     pub up_jump_is_flight: bool,
-    #[serde(default)]
-    pub up_jump_specific_key_should_jump: bool,
+#[serde(default)]  
+    pub up_jump_specific_key_should_jump: bool,  
+    /// CD 内 up_jump_key 可使用的次数（0 = 关闭此功能，始终按键上跳）。  
+    #[serde(default)]  
+    pub up_jump_count: u32,  
+    /// up_jump_key 的冷却时间（毫秒）。  
+    #[serde(default)]  
+    pub up_jump_cooldown_millis: u64,  
+    #[serde(default)]  
+    pub has_extended_teleport_range: bool,
     #[serde(default)]
     pub has_extended_teleport_range: bool,
     pub actions: Vec<ActionConfiguration>,
@@ -158,7 +166,9 @@ impl Default for Character {
             disable_teleport_on_fall: false,
             disable_grapple_on_double_jumping: false,
             up_jump_is_flight: false,
-            up_jump_specific_key_should_jump: false,
+            up_jump_specific_key_should_jump: false,  
+            up_jump_count: 0,  
+            up_jump_cooldown_millis: 0,  
             has_extended_teleport_range: false,
             actions: vec![],
             elite_boss_behavior_key: KeyBinding::default(),
