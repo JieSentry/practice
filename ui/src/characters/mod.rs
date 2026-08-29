@@ -1,9 +1,10 @@
 use std::{fmt::Display, mem};
 
-use backend::{
-    Character, EliteBossBehavior, ExchangeHexaBoosterCondition, FamiliarRarity, Familiars,
-    IntoEnumIterator, KeyBinding, KeyBindingConfiguration, PotionMode, SwappableFamiliars,
-    delete_character, query_characters, update_character, upsert_character,
+use backend::{  
+    Character, EliteBossBehavior, ExchangeHexaBoosterCondition, FamiliarRarity, Familiars,  
+    IntoEnumIterator, KeyBinding, KeyBindingConfiguration, PotionMode, SwappableFamiliars,  
+    delete_character, query_characters, query_settings, update_character, upsert_character,  
+    upsert_settings,  
 };
 use dioxus::{html::FileData, prelude::*};
 use futures_util::StreamExt;
@@ -48,8 +49,10 @@ struct CharactersContext {
 
 #[component]
 pub fn CharactersScreen() -> Element {
-    let mut character = use_context::<AppState>().character;
-    let mut characters = use_resource(async || query_characters().await.unwrap_or_default());
+    let mut character = use_context::<AppState>().character;  
+    let mut characters = use_resource(async || query_characters().await.unwrap_or_default());  
+    // 新增：读取已保存的 settings，用于恢复上次选中的预设  
+    let saved_settings = use_resource(async || query_settings().await);
     // Maps queried `characters` to names
     let character_names = use_memo::<Vec<String>>(move || {
         characters()
@@ -120,17 +123,25 @@ pub fn CharactersScreen() -> Element {
         coroutine.send(CharactersUpdate::Update(new_character));
     });
 
-    let select_character = use_callback(move |index: usize| {
-        let selected = characters
-            .peek()
-            .as_ref()
-            .unwrap()
-            .get(index)
-            .cloned()
-            .unwrap();
-
-        character.set(Some(selected));
-        coroutine.send(CharactersUpdate::Set);
+    let select_character = use_callback(move |index: usize| {  
+        let selected = characters  
+            .peek()  
+            .as_ref()  
+            .unwrap()  
+            .get(index)  
+            .cloned()  
+            .unwrap();  
+  
+        let selected_id = selected.id;  
+        character.set(Some(selected));  
+        coroutine.send(CharactersUpdate::Set);  
+  
+        // 新增：把当前选中的预设 id 持久化到 settings  
+        spawn(async move {  
+            let mut settings = query_settings().await;  
+            settings.last_character_id = selected_id;  
+            upsert_settings(settings).await;  
+        });  
     });
 
     use_context_provider(|| CharactersContext {
@@ -139,14 +150,26 @@ pub fn CharactersScreen() -> Element {
     });
 
     // Sets a character if there is not one
-    use_effect(move || {
-        if let Some(characters) = characters()
-            && !characters.is_empty()
-            && character.peek().is_none()
-        {
-            character.set(characters.into_iter().next());
-            coroutine.send(CharactersUpdate::Set);
-        }
+    // Sets a character if there is not one  
+    use_effect(move || {  
+        if let Some(characters) = characters()  
+            && !characters.is_empty()  
+            && character.peek().is_none()  
+            && let Some(settings) = saved_settings()  
+        {  
+            let last_id = settings.last_character_id;  
+  
+            let mut chosen = None;  
+            if let Some(id) = last_id {  
+                chosen = characters.iter().find(|c| c.id == Some(id)).cloned();  
+            }  
+            if chosen.is_none() {  
+                chosen = characters.into_iter().next();  
+            }  
+  
+            character.set(chosen);  
+            coroutine.send(CharactersUpdate::Set);  
+        }  
     });
 
     rsx! {
