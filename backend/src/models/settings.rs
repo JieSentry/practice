@@ -36,6 +36,8 @@ pub struct Settings {
     pub platform_add_key: KeyBindingConfiguration,
     #[serde(default = "efficiency_mode_default")]  
     pub efficiency_mode: bool,
+    #[serde(default)]  
+    pub last_character_id: Option<i64>,  
 }
 
 impl Default for Settings {
@@ -58,9 +60,10 @@ impl Default for Settings {
             platform_start_key: platform_start_key_default(),
             platform_end_key: platform_end_key_default(),
             platform_add_key: platform_add_key_default(),
-            efficiency_mode: efficiency_mode_default(),
-        }
-    }
+            efficiency_mode: efficiency_mode_default(),  
+            last_character_id: None,  
+        }  
+    }  
 }
 
 impl_identifiable!(Settings);
