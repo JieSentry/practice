@@ -185,33 +185,18 @@ pub fn run_system(
         return;  
     }  
   
-    // 最高优先级：检测到玩家卡在地图边缘时，无论当前状态如何，立即释放所有按键并切换到 Unstucking  
-    // 这可以防止解符文时按键卡死导致角色移动到地图边缘  
-    if !matches!(player.state, Player::Unstucking(_) | Player::CashShopThenExit(_)) {  
-        let is_at_edge = match minimap.state {  
-            Minimap::Idle(idle) => !idle.partially_overlapping && player.context.last_known_pos.is_none(),  
-            _ => false,  
-        };  
-        if is_at_edge {  
-            resources.input.send_key_up(KeyKind::Up);  
-            resources.input.send_key_up(KeyKind::Down);  
-            resources.input.send_key_up(KeyKind::Left);  
-            resources.input.send_key_up(KeyKind::Right);  
-            let unstucking = Unstucking::new_movement(  
-                Timeout::default(),  
-                player.context.track_unstucking_transitioned(),  
-            );  
-            player.state = Player::Unstucking(unstucking);  
-            player.context.last_known_direction = ActionKeyDirection::Any;  
-            return;  
-        }  
-    }  
-  
     let did_update =  
         player  
             .context  
             .update_state(resources, player.state.clone(), minimap.state, buffs);  
     if !did_update && !resources.operation.halting() {  
+        // When the player detection fails, the possible causes are:  
+        // - Player moved inside the edges of the minimap  
+        // - Other UIs overlapping the minimap  
+        //  
+        // `update_non_positional_context` is here to continue updating  
+        // `Player::Unstucking` returned from below when the player  
+        // is inside the edges of the minimap. And also `Player::CashShopThenExit`.  
         if update_non_positional_state(resources, player, minimap.state, true) {  
             return;  
         }  
