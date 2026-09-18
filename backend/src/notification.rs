@@ -81,39 +81,39 @@ impl NotificationKind {
             .unwrap_or_default();
 
         match self {
-            NotificationKind::FailOrMapChange => {
-                if settings.stop_on_fail_or_change_map {
-                    format!(
-                        "{user_id}Bot stopped because it has failed to detect or the map has changed"
-                    )
-                } else {
-                    format!("{user_id}Bot has failed to detect or the map has changed")
-                }
-            }
-            NotificationKind::RuneAppear => {
-                format!("{user_id}Bot has detected a rune on map")
-            }
-            NotificationKind::EliteBossAppear => {
-                format!("{user_id}Elite boss spawned")
-            }
-            NotificationKind::PlayerIsDead => {
-                format!("{user_id}The player is dead")
-            }
-            NotificationKind::PlayerGuildieAppear => {
-                format!("{user_id}Bot has detected guildie player(s)")
-            }
-            NotificationKind::PlayerStrangerAppear => {
-                format!("{user_id}Bot has detected stranger player(s)")
-            }
-            NotificationKind::PlayerFriendAppear => {
-                format!("{user_id}Bot has detected friend player(s)")
-            }
-            NotificationKind::LieDetectorViolettaAppear
-            | NotificationKind::LieDetectorShapeAppear => {
-                format!("{user_id}Bot has detected the lie detector")
-            }
-            NotificationKind::RunTimerEnded => {
-                format!("{user_id}Bot run timer has ended.")
+            NotificationKind::FailOrMapChange => {  
+                if settings.stop_on_fail_or_change_map {  
+                    format!(  
+                        "{user_id}℗检测失败或地图已改变，机器人已停止\nBot stopped because it has failed to detect or the map has changed"  
+                    )  
+                } else {  
+                    format!("{user_id}℗检测失败或地图已改变\nBot has failed to detect or the map has changed")  
+                }  
+            }  
+            NotificationKind::RuneAppear => {  
+                format!("{user_id}◙符文出现\nBot has detected a rune on map")  
+            }  
+            NotificationKind::EliteBossAppear => {  
+                format!("{user_id}精英boss出现\nElite boss spawned")  
+            }  
+            NotificationKind::PlayerIsDead => {  
+                format!("{user_id}💀玩家已死亡\nThe player is dead")  
+            }  
+            NotificationKind::PlayerGuildieAppear => {  
+                format!("{user_id}检测到公会成员\nBot has detected guildie player(s)")  
+            }  
+            NotificationKind::PlayerStrangerAppear => {  
+                format!("{user_id}检测到陌生玩家\nBot has detected stranger player(s)")  
+            }  
+            NotificationKind::PlayerFriendAppear => {  
+                format!("{user_id}检测到好友玩家\nBot has detected friend player(s)")  
+            }  
+            NotificationKind::LieDetectorViolettaAppear  
+            | NotificationKind::LieDetectorShapeAppear => {  
+                format!("{user_id}Ø检测到测谎仪\nBot has detected the lie detector")  
+            }  
+            NotificationKind::RunTimerEnded => {  
+                format!("{user_id}◀运行计时器已结束\nBot run timer has ended.")  
             }
         }
     }
@@ -513,10 +513,11 @@ async fn post_feishu_notification(
         image_keys.push(image_key);
     }
 
-    let mut post_content_lines = vec![vec![json!({
-        "tag": "text",
-        "text": notification.content,
-    })]];
+    let mut post_content_lines: Vec<Vec<Value>> = notification  
+        .content  
+        .split('\n')  
+        .map(|line| vec![json!({ "tag": "text", "text": line })])  
+        .collect();
     for image_key in image_keys {
         post_content_lines.push(vec![json!({
             "tag": "img",
