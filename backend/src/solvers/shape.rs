@@ -9,12 +9,6 @@ use crate::{
     tracker::{ByteTracker, Detection, IouGating, STrack},  
 };  
   
-// ── 调参常量 ──────────────────────────────────────────────  
-/// 当前目标框与另一个 track 框重叠即视为「正在融合」，融合期冻结速度。  
-const FUSION_OVERLAP_AREA: i32 = 1;  
-/// 惯性滑行的最大帧数，超过则放弃（返回 None），避免无限盲滑。  
-const MAX_SLIDE_FRAMES: u32 = 30;  
-  
 #[derive(Debug)]  
 pub struct TransparentShapeSolver {  
     tracker: ByteTracker,  
@@ -24,8 +18,7 @@ pub struct TransparentShapeSolver {
     last_cursor: Option<Point>,  
     last_velocity: Option<Point2d>,  
     bg_direction: Point2d,  
-    /// 连续惯性滑行的帧数。  
-    slide_frames: u32,  
+    // ← 移除了 current_low_angle_frames 字段  
     #[cfg(debug_assertions)]  
     is_debugging: bool,  
 }  
@@ -40,7 +33,7 @@ impl Default for TransparentShapeSolver {
             last_cursor: None,  
             last_velocity: None,  
             bg_direction: Point2d::default(),  
-            slide_frames: 0,  
+            // ← 移除了 current_low_angle_frames 初始化  
             #[cfg(debug_assertions)]  
             is_debugging: false,  
         }  
@@ -75,15 +68,7 @@ impl TransparentShapeSolver {
                 }  
                 self.current_track_id = Some(track.track_id());  
                 self.last_cursor = Some(next_cursor);  
-  
-                // 融合期冻结速度：若目标框与其它 track 框重叠，认为正在融合，  
-                // 此时 kalman_velocity 已被融合质心污染，不用它覆盖干净速度快照。  
-                if !is_fusing(track, &tracks) {  
-                    self.last_velocity = Some(track.kalman_velocity());  
-                }  
-  
-                // 成功锁定到真实 track，清零滑行计数。  
-                self.slide_frames = 0;  
+                self.last_velocity = Some(track.kalman_velocity());  
   
                 #[cfg(debug_assertions)]  
                 if self.is_debugging {  
@@ -99,16 +84,8 @@ impl TransparentShapeSolver {
                 Some(region.tl() + next_cursor)  
             }  
             None => {  
-                // 完全融合 / 无逆背景候选：用冻结的干净速度滑行过渡。  
                 let last_cursor = self.last_cursor?;  
-                let last_velocity = self.last_velocity.expect("set if last_cursor set") * 1.0;  
-  
-                // 滑行过久则放弃，避免连环融合时一直盲滑。  
-                self.slide_frames += 1;  
-                if self.slide_frames > MAX_SLIDE_FRAMES {  
-                    return None;  
-                }  
-  
+                let last_velocity = self.last_velocity.expect("set if last_cursor set") * 1.5;  
                 let next_cursor = last_cursor  
                     + Point::new(  
                         last_velocity.x.round() as i32,  
@@ -165,49 +142,44 @@ impl TransparentShapeSolver {
         let last_cursor = self.last_cursor?;  
         let bg_direction = self.bg_direction;  
   
-        // 计算所有「逆背景运动」候选的分数（被 30° 过滤的会被丢弃）。  
-        let scored_tracks: Vec<(&STrack, f64, bool)> = tracks  
+        // ← 移除了 self.update_low_angle_count(tracks, bg_direction) 调用  
+  
+        // 计算所有候选分数  
+        let scored_tracks: Vec<_> = tracks  
             .iter()  
-            .filter(|track| track.track_id() == current_track_id || track.tracklet_len() >= 3)  
+            .filter(|track| {  
+                track.track_id() == current_track_id || track.tracklet_len() >= 3  
+            })  
             .filter_map(|track| {  
                 let is_current = track.track_id() == current_track_id;  
-                let score =  
-                    track_background_score(track, last_cursor, bg_direction, region, is_current)?;  
+                let score = track_background_score(  
+                    track,  
+                    last_cursor,  
+                    bg_direction,  
+                    region,  
+                    is_current, // ← 移除了 current_low_angle_frames 参数  
+                )?;  
                 Some((track, score, is_current))  
             })  
             .collect();  
   
-        // 找出最高分候选。  
+        // 找出最高分  
         let best_track_info = scored_tracks  
             .iter()  
-            .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap());  
+            .max_by(|(_, a, _), (_, b, _)| a.partial_cmp(b).unwrap());  
         let (best_track, best_score, is_best_current) = match best_track_info {  
-            Some(info) => (info.0, info.1, info.2),  
-            // 画面里没有任何逆背景候选（完全融合那几帧）→ 交给惯性滑行。  
-            None => return None,  
+            Some(info) => info,  
+            None => return tracks.iter().find(|t| t.track_id() == current_track_id),  
         };  
   
-        // 当前目标是否仍在逆背景候选集中。  
-        let current_in_scored = scored_tracks.iter().any(|t| t.2);  
-  
-        // 当前目标已掉出候选集（被背景带走 / 融合 / 丢失）→ 立即重锁定：  
-        // 在所有逆背景候选里选离预测光标位置最近的那个，采纳其新 ID。  
-        if !current_in_scored {  
-            let predicted = predicted_cursor(last_cursor, self.last_velocity);  
-            let relocked = reclaim_track(predicted, &scored_tracks).unwrap_or(best_track);  
-            self.candidate_track_id = None;  
-            self.candidate_track_count = 0;  
-            return Some(relocked);  
-        }  
-  
-        // 最佳仍是当前目标，重置候选并返回。  
-        if is_best_current {  
+        // 如果最佳仍是当前目标，重置候选  
+        if *is_best_current {  
             self.candidate_track_id = None;  
             self.candidate_track_count = 0;  
             return Some(best_track);  
         }  
   
-        // 更新候选计数（迟滞切换，抗抖动）。  
+        // 更新候选计数  
         let is_same_candidate = self.candidate_track_id == Some(best_track.track_id());  
         if is_same_candidate {  
             self.candidate_track_count += 1;  
@@ -216,13 +188,17 @@ impl TransparentShapeSolver {
             self.candidate_track_count = 0;  
         }  
   
+        // 获取当前目标的分数  
         let current_score = scored_tracks  
             .iter()  
-            .find(|t| t.2)  
-            .map(|t| t.1)  
+            .find(|(_, _, is_cur)| *is_cur)  
+            .map(|(_, s, _)| *s)  
             .unwrap_or(0.0);  
   
-        let should_switch = self.candidate_track_count >= 2 && best_score - current_score > 0.1;  
+        // ← 简化切换条件：候选连续3帧最佳 + 分差 > 0.1  
+        //   移除了 current_low_angle_frames >= 3 的分支  
+        let should_switch =  
+            self.candidate_track_count >= 2 && best_score - current_score > 0.1;  
   
         if should_switch {  
             debug!(target: "backend/player", "Switch from {:?} to {}", self.current_track_id, best_track.track_id());  
@@ -232,9 +208,11 @@ impl TransparentShapeSolver {
             return Some(best_track);  
         }  
   
-        // 当前目标仍通过过滤，返回当前目标。  
-        scored_tracks.iter().find(|t| t.2).map(|t| t.0)  
+        // 默认返回当前目标  
+        tracks.iter().find(|t| t.track_id() == current_track_id)  
     }  
+  
+    // ← 移除了整个 update_low_angle_count 方法  
 }  
   
 impl Drop for TransparentShapeSolver {  
@@ -268,31 +246,6 @@ fn debug_transparent_shapes(
     );  
 }  
   
-/// 目标框与任意其它 track 框重叠即视为正在融合。  
-fn is_fusing(target: &STrack, tracks: &[STrack]) -> bool {  
-    let target_rect = target.kalman_rect();  
-    tracks.iter().any(|t| {  
-        t.track_id() != target.track_id()  
-            && (t.kalman_rect() & target_rect).area() >= FUSION_OVERLAP_AREA  
-    })  
-}  
-  
-/// 预测光标位置 = 上一帧光标 + 冻结速度。  
-fn predicted_cursor(last_cursor: Point, last_velocity: Option<Point2d>) -> Point {  
-    match last_velocity {  
-        Some(v) => last_cursor + Point::new(v.x.round() as i32, v.y.round() as i32),  
-        None => last_cursor,  
-    }  
-}  
-  
-/// 在逆背景候选里选离预测位置最近的 track 重新认领。  
-fn reclaim_track<'a>(predicted: Point, scored: &[(&'a STrack, f64, bool)]) -> Option<&'a STrack> {  
-    scored  
-        .iter()  
-        .min_by_key(|t| (mid_point(t.0.kalman_rect()) - predicted).norm() as i32)  
-        .map(|t| t.0)  
-}  
-  
 fn find_track_closest_to(point: Point, tracks: &[STrack]) -> Option<&STrack> {  
     tracks.iter().min_by_key(|track| {  
         let track_region = track.rect();  
@@ -323,10 +276,11 @@ fn track_background_score(
     bg_direction: Point2d,  
     region: Rect,  
     is_current_track: bool,  
+    // ← 移除了 current_low_angle_frames 参数  
 ) -> Option<f64> {  
     let angle = track_background_degree(track, bg_direction)?;  
   
-    // ← 逆背景运动判别阈值： 45° 
+    // ← 统一使用 45° 阈值，移除了动态阈值逻辑  
     if angle <= 45.0 {  
         return None;  
     }  
@@ -349,6 +303,7 @@ fn track_background_score(
   
     let mut score = angle_score * distance_penalty;  
   
+    // ← 当前目标加分简化：只要是当前目标就加 0.15（不再依赖 low_angle_frames）  
     if is_current_track {  
         score += 0.15;  
     }  
