@@ -34,7 +34,11 @@ pub struct SolvingShape {
     region: Rect,  
     solver: TransparentShapeSolver,  
     lie_detector_task: Rc<RefCell<Option<Task<Result<bool>>>>>,  
-}  
+    /// 最近一次真实检测得到的目标位置（每 1/4 秒更新一次）  
+    target_cursor: Option<Point>,  
+    /// 每帧输出的平滑后位置  
+    smoothed_cursor: Option<Point>,  
+}
   
 impl Clone for SolvingShape {  
     fn clone(&self) -> Self {  
