@@ -47,9 +47,11 @@ impl Clone for SolvingShape {
             region: self.region,  
             solver: TransparentShapeSolver::default(),  
             lie_detector_task: self.lie_detector_task.clone(),  
+            target_cursor: self.target_cursor,  
+            smoothed_cursor: self.smoothed_cursor,  
         }  
     }  
-}  
+}
   
 impl Display for SolvingShape {  
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {  
@@ -152,14 +154,33 @@ fn update_solving(resources: &mut Resources, solving_shape: &mut SolvingShape) {
             solving_shape.state = State::Completed;  
         }  
         Lifecycle::Started(timeout) | Lifecycle::Updated(timeout) => {  
-            if let Some(cursor) =  
-                solving_shape.solver.solve(resources.detector(), solving_shape.region)  
+            // 每 1/4 秒（≈8 帧 @30FPS）才跑一次 YOLO 检测，其余帧只做平滑输出。  
+            // 30FPS → 250ms ≈ 7.5 帧，取 8。若 solving 期实际是 10FPS，请改成 3。  
+            const SOLVE_INTERVAL: u64 = 8;  
+            // 平滑系数：越大越跟手（滞后小、抖动大），越小越平滑（滞后大）。0.3~0.5 之间调。  
+            const ALPHA: f64 = 0.35;  
+  
+            if resources.tick.is_multiple_of(SOLVE_INTERVAL)  
+                && let Some(cursor) =  
+                    solving_shape.solver.solve(resources.detector(), solving_shape.region)  
             {  
+                solving_shape.target_cursor = Some(cursor);  
+            }  
+  
+            // 每帧朝目标做指数平滑（EMA），让鼠标连续顺滑地追向最近一次检测位置。  
+            if let Some(target) = solving_shape.target_cursor {  
+                let current = solving_shape.smoothed_cursor.unwrap_or(target);  
+                let next = Point::new(  
+                    (current.x as f64 + (target.x - current.x) as f64 * ALPHA).round() as i32,  
+                    (current.y as f64 + (target.y - current.y) as f64 * ALPHA).round() as i32,  
+                );  
+                solving_shape.smoothed_cursor = Some(next);  
                 resources  
                     .input  
-                    .send_mouse(cursor.x, cursor.y, MouseKind::Move);  
+                    .send_mouse(next.x, next.y, MouseKind::Move);  
             }  
+  
             solving_shape.state = State::Solving(timeout);  
-        }  
+        } 
     }  
 }
