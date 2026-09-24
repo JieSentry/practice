@@ -60,8 +60,10 @@ runs:
     - uses: mozilla-actions/sccache-action@v0.0.9
 
     - uses: cargo-bins/cargo-binstall@main
-    - name: Install Dioxus CLI
-      shell: pwsh
+    - name: Install Dioxus CLI  
+      shell: pwsh  
+      env:  
+        GITHUB_TOKEN: ${{ github.token }}  
       run: cargo binstall dioxus-cli@0.7.2 --no-confirm --locked
 
     - name: Install protoc
