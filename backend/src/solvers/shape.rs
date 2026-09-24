@@ -1,43 +1,47 @@
-use std::ops::Div;  
-  
+// backend/src/solvers/shape.rs —— 漂移减除 + 绿色光标闭环追踪  
 use log::debug;  
-use opencv::core::{Point, Point_, Point2d, Rect};  
-  
-use crate::{  
-    detect::Detector,  
-    run::FPS,  
-    tracker::{ByteTracker, Detection, IouGating, STrack},  
+use opencv::{  
+    core::{  
+        self, Mat, MatTrait, MatTraitConst, Point, Point2d, Rect, Scalar, CV_8UC1, CV_32FC1, CV_32S,  
+        BORDER_CONSTANT,  
+    },  
+    imgproc::{  
+        self, CC_STAT_AREA, COLOR_BGR2HSV_FULL, COLOR_BGRA2BGR, COLOR_BGRA2GRAY, INTER_LINEAR,  
+        THRESH_BINARY,  
+    },  
 };  
   
-#[derive(Debug)]  
+use crate::detect::Detector;  
+  
+// ── 可调参数(必须用真实帧调) ──────────────────────────  
+/// diff 后判定为“信号”的最小灰度差(0..255)。越大越严格。  
+const DIFF_THRESHOLD: f64 = 8.0;  
+/// 幸存连通域面积上下限(像素),滤掉噪点和过大伪影。  
+const MIN_BLOB_AREA: i32 = 6;  
+const MAX_BLOB_AREA: i32 = 4000;  
+/// 速度 EMA 平滑系数。  
+const VELOCITY_ALPHA: f64 = 0.5;  
+/// 丢帧外推倍率(沿用旧实现的 1.5)。  
+const DEAD_RECKON_GAIN: f64 = 1.5;  
+/// 连续丢帧超过此值则放弃(返回 None)。  
+const MAX_MISS: u32 = 20;  
+/// 绿色光标 HSV 阈值(COLOR_BGR2HSV_FULL: H/S/V 均 0..255)。★占位,需实测★  
+const GREEN_LO: [f64; 3] = [60.0, 60.0, 60.0];  
+const GREEN_HI: [f64; 3] = [110.0, 255.0, 255.0];  
+// ─────────────────────────────────────────────────────────  
+  
+#[derive(Debug, Default)]  
 pub struct TransparentShapeSolver {  
-    tracker: ByteTracker,  
-    current_track_id: Option<u64>,  
-    candidate_track_id: Option<u64>,  
-    candidate_track_count: u32,  
-    last_cursor: Option<Point>,  
-    last_velocity: Option<Point2d>,  
-    bg_direction: Point2d,  
-    // ← 移除了 current_low_angle_frames 字段  
+    /// 上一帧去绿灰度图(region 尺寸, CV_8UC1)。  
+    prev_gray: Option<Mat>,  
+    /// 上一次光标位置(region 局部坐标)。  
+    last_cursor: Option<Point2d>,  
+    /// 平滑后的速度。  
+    velocity: Point2d,  
+    /// 连续丢帧计数。  
+    miss_count: u32,  
     #[cfg(debug_assertions)]  
     is_debugging: bool,  
-}  
-  
-impl Default for TransparentShapeSolver {  
-    fn default() -> Self {  
-        Self {  
-            tracker: ByteTracker::new(FPS as u64, 0.25, 0.1, 0.25, IouGating::None),  
-            current_track_id: None,  
-            candidate_track_id: None,  
-            candidate_track_count: 0,  
-            last_cursor: None,  
-            last_velocity: None,  
-            bg_direction: Point2d::default(),  
-            // ← 移除了 current_low_angle_frames 初始化  
-            #[cfg(debug_assertions)]  
-            is_debugging: false,  
-        }  
-    }  
 }  
   
 impl TransparentShapeSolver {  
@@ -49,170 +53,67 @@ impl TransparentShapeSolver {
     }  
   
     pub fn solve(&mut self, detector: &dyn Detector, region: Rect) -> Option<Point> {  
-        let shapes = detector.detect_transparent_shapes(region);  
-        let tracks = self.tracker.update(  
-            shapes  
-                .into_iter()  
-                .map(|(bbox, score)| Detection::new(bbox, score))  
-                .collect(),  
-        );  
+        // 1. 取当前帧 BGRA ROI  
+        let bgra = detector.mat().roi(region).ok()?.clone_pointee();  
   
-        self.update_initial_track_if_needed(region, &tracks);  
-        self.update_background_direction(&tracks);  
+        // 2. 去绿灰度 + 绿色光标质心(= 鼠标当前位置)  
+        let (cur_gray, measured_cursor) = to_gray_and_cursor(&bgra)?;  
   
-        match self.update_and_find_best_track(&tracks, region) {  
-            Some(track) => {  
-                let next_cursor = predicted_center(track);  
-                if self.current_track_id != Some(track.track_id()) {  
-                    debug!(target: "backend/player", "shape id switches from {:?} to {}", self.current_track_id, track.track_id());  
+        // 3. 用实测绿色光标位置闭环校正 last_cursor  
+        if let Some(c) = measured_cursor {  
+            self.last_cursor = Some(c);  
+        }  
+  
+        // 4. 需要上一帧才能做漂移减除  
+        let target = match self.prev_gray.take() {  
+            Some(prev) if prev.size().ok() == cur_gray.size().ok() => {  
+                extract_signal_centroid(&prev, &cur_gray, self.last_cursor)  
+            }  
+            _ => None,  
+        };  
+        self.prev_gray = Some(cur_gray);  
+  
+        // 5. 有目标 -> 更新速度并返回;无目标 -> 外推  
+        let cursor = match target {  
+            Some(t) => {  
+                if let Some(last) = self.last_cursor {  
+                    let raw_v = t - last;  
+                    self.velocity =  
+                        self.velocity * (1.0 - VELOCITY_ALPHA) + raw_v * VELOCITY_ALPHA;  
                 }  
-                self.current_track_id = Some(track.track_id());  
-                self.last_cursor = Some(next_cursor);  
-                self.last_velocity = Some(track.kalman_velocity());  
-  
-                #[cfg(debug_assertions)]  
-                if self.is_debugging {  
-                    debug_transparent_shapes(  
-                        detector,  
-                        &tracks,  
-                        region,  
-                        next_cursor,  
-                        self.bg_direction,  
-                    );  
-                }  
-  
-                Some(region.tl() + next_cursor)  
+                self.last_cursor = Some(t);  
+                self.miss_count = 0;  
+                t  
             }  
             None => {  
-                let last_cursor = self.last_cursor?;  
-                let last_velocity = self.last_velocity.expect("set if last_cursor set") * 1.5;  
-                let next_cursor = last_cursor  
-                    + Point::new(  
-                        last_velocity.x.round() as i32,  
-                        last_velocity.y.round() as i32,  
-                    );  
-                let absolute_next_cursor = region.tl() + next_cursor;  
-                if !region.contains(absolute_next_cursor) {  
+                let last = self.last_cursor?;  
+                self.miss_count += 1;  
+                if self.miss_count > MAX_MISS {  
                     return None;  
                 }  
-  
-                self.last_cursor = Some(next_cursor);  
-  
-                #[cfg(debug_assertions)]  
-                if self.is_debugging {  
-                    debug_transparent_shapes(  
-                        detector,  
-                        &tracks,  
-                        region,  
-                        next_cursor,  
-                        self.bg_direction,  
-                    );  
-                }  
-  
-                Some(absolute_next_cursor)  
+                let next = last + self.velocity * DEAD_RECKON_GAIN;  
+                self.last_cursor = Some(next);  
+                next  
             }  
-        }  
-    }  
-  
-    fn update_initial_track_if_needed(&mut self, region: Rect, tracks: &[STrack]) {  
-        if self.current_track_id.is_none() {  
-            let region_mid = mid_point(Rect::new(0, 0, region.width, region.height));  
-            if let Some(track) = find_track_closest_to(region_mid, tracks) {  
-                self.current_track_id = Some(track.track_id());  
-                self.last_cursor = Some(mid_point(track.rect()));  
-                self.last_velocity = Some(track.kalman_velocity());  
-            }  
-        }  
-    }  
-  
-    fn update_background_direction(&mut self, tracks: &[STrack]) {  
-        if let Some(direction) = estimate_background_direction(self.last_cursor, tracks)  
-            .and_then(|direction| unit(self.bg_direction * 0.5 + direction * 0.5))  
-        {  
-            self.bg_direction = direction;  
-        }  
-    }  
-  
-    fn update_and_find_best_track<'a>(  
-        &mut self,  
-        tracks: &'a [STrack],  
-        region: Rect,  
-    ) -> Option<&'a STrack> {  
-        let current_track_id = self.current_track_id?;  
-        let last_cursor = self.last_cursor?;  
-        let bg_direction = self.bg_direction;  
-  
-        // ← 移除了 self.update_low_angle_count(tracks, bg_direction) 调用  
-  
-        // 计算所有候选分数  
-        let scored_tracks: Vec<_> = tracks  
-            .iter()  
-            .filter(|track| {  
-                track.track_id() == current_track_id || track.tracklet_len() >= 3  
-            })  
-            .filter_map(|track| {  
-                let is_current = track.track_id() == current_track_id;  
-                let score = track_background_score(  
-                    track,  
-                    last_cursor,  
-                    bg_direction,  
-                    region,  
-                    is_current, // ← 移除了 current_low_angle_frames 参数  
-                )?;  
-                Some((track, score, is_current))  
-            })  
-            .collect();  
-  
-        // 找出最高分  
-        let best_track_info = scored_tracks  
-            .iter()  
-            .max_by(|(_, a, _), (_, b, _)| a.partial_cmp(b).unwrap());  
-        let (best_track, best_score, is_best_current) = match best_track_info {  
-            Some(info) => info,  
-            None => return tracks.iter().find(|t| t.track_id() == current_track_id),  
         };  
   
-        // 如果最佳仍是当前目标，重置候选  
-        if *is_best_current {  
-            self.candidate_track_id = None;  
-            self.candidate_track_count = 0;  
-            return Some(best_track);  
+        let local = Point::new(cursor.x.round() as i32, cursor.y.round() as i32);  
+        let absolute = region.tl() + local;  
+        if !region.contains(absolute) {  
+            return None;  
         }  
   
-        // 更新候选计数  
-        let is_same_candidate = self.candidate_track_id == Some(best_track.track_id());  
-        if is_same_candidate {  
-            self.candidate_track_count += 1;  
-        } else {  
-            self.candidate_track_id = Some(best_track.track_id());  
-            self.candidate_track_count = 0;  
+        #[cfg(debug_assertions)]  
+        if self.is_debugging {  
+            debug!(  
+                target: "backend/player",  
+                "shape cursor(local)={local:?} v={:?} miss={}",  
+                self.velocity, self.miss_count  
+            );  
         }  
   
-        // 获取当前目标的分数  
-        let current_score = scored_tracks  
-            .iter()  
-            .find(|(_, _, is_cur)| *is_cur)  
-            .map(|(_, s, _)| *s)  
-            .unwrap_or(0.0);  
-  
-        // ← 简化切换条件：候选连续3帧最佳 + 分差 > 0.1  
-        //   移除了 current_low_angle_frames >= 3 的分支  
-        let should_switch =  
-            self.candidate_track_count >= 2 && best_score - current_score > 0.1;  
-  
-        if should_switch {  
-            debug!(target: "backend/player", "Switch from {:?} to {}", self.current_track_id, best_track.track_id());  
-            self.current_track_id = Some(best_track.track_id());  
-            self.candidate_track_id = None;  
-            self.candidate_track_count = 0;  
-            return Some(best_track);  
-        }  
-  
-        // 默认返回当前目标  
-        tracks.iter().find(|t| t.track_id() == current_track_id)  
+        Some(absolute)  
     }  
-  
-    // ← 移除了整个 update_low_angle_count 方法  
 }  
   
 impl Drop for TransparentShapeSolver {  
@@ -220,166 +121,121 @@ impl Drop for TransparentShapeSolver {
         #[cfg(debug_assertions)]  
         if self.is_debugging {  
             use opencv::highgui::destroy_all_windows;  
-  
             let _ = destroy_all_windows();  
         }  
     }  
 }  
   
-#[cfg(debug_assertions)]  
-fn debug_transparent_shapes(  
-    detector: &dyn Detector,  
-    tracks: &[STrack],  
-    region: Rect,  
-    last_cursor: Point,  
-    bg_direction: Point2d,  
-) {  
-    use opencv::core::MatTraitConst;  
+/// BGRA ROI -> (去绿灰度图 CV_8UC1, 绿色光标质心[region 局部坐标])。  
+fn to_gray_and_cursor(bgra: &Mat) -> Option<(Mat, Option<Point2d>)> {  
+    // 灰度  
+    let mut gray = Mat::default();  
+    imgproc::cvt_color_def(bgra, &mut gray, COLOR_BGRA2GRAY).ok()?;  
   
-    use crate::debug::debug_shape_tracks;  
+    // BGRA -> BGR -> HSV,取绿色 mask  
+    let mut bgr = Mat::default();  
+    imgproc::cvt_color_def(bgra, &mut bgr, COLOR_BGRA2BGR).ok()?;  
+    let mut hsv = Mat::default();  
+    imgproc::cvt_color_def(&bgr, &mut hsv, COLOR_BGR2HSV_FULL).ok()?;  
   
-    debug_shape_tracks(  
-        &detector.mat().roi(region).unwrap(),  
-        tracks.to_vec(),  
-        last_cursor,  
-        bg_direction,  
-    );  
-}  
-  
-fn find_track_closest_to(point: Point, tracks: &[STrack]) -> Option<&STrack> {  
-    tracks.iter().min_by_key(|track| {  
-        let track_region = track.rect();  
-        let track_mid =  
-            track_region.tl() + Point::new(track_region.width / 2, track_region.height / 2);  
-  
-        (point - track_mid).norm() as i32  
-    })  
-}  
-  
-fn mid_point(rect: Rect) -> Point {  
-    rect.tl() + Point::new(rect.width / 2, rect.height / 2)  
-}  
-  
-fn predicted_center(track: &STrack) -> Point {  
-    let v = track.kalman_velocity();  
-    let point = mid_point(track.kalman_rect());  
-  
-    Point::new(  
-        (point.x as f64 + v.x).round() as i32,  
-        (point.y as f64 + v.y).round() as i32,  
+    let mut green_mask = Mat::default();  
+    core::in_range(  
+        &hsv,  
+        &Scalar::new(GREEN_LO[0], GREEN_LO[1], GREEN_LO[2], 0.0),  
+        &Scalar::new(GREEN_HI[0], GREEN_HI[1], GREEN_HI[2], 0.0),  
+        &mut green_mask,  
     )  
-}  
+    .ok()?;  
   
-fn track_background_score(  
-    track: &STrack,  
-    last_cursor: Point,  
-    bg_direction: Point2d,  
-    region: Rect,  
-    is_current_track: bool,  
-    // ← 移除了 current_low_angle_frames 参数  
-) -> Option<f64> {  
-    let angle = track_background_degree(track, bg_direction)?;  
-  
-    // ← 统一使用 45° 阈值，移除了动态阈值逻辑  
-    if angle <= 45.0 {  
-        return None;  
-    }  
-  
-    let angle_score = angle / 180.0;  
-  
-    // 乘法评分：距离惩罚  
-    let distance_penalty = if angle >= 60.0 {  
-        1.0  
+    // 绿色光标质心 = 鼠标当前位置  
+    let m = imgproc::moments_def(&green_mask).ok()?;  
+    let cursor = if m.m00 > 1.0 {  
+        Some(Point2d::new(m.m10 / m.m00, m.m01 / m.m00))  
     } else {  
-        let cursor_dir = mid_point(track.rect()) - last_cursor;  
-        let dist_squared = (cursor_dir.x.pow(2) + cursor_dir.y.pow(2)) as f64;  
-        let sigma = 0.25 * diag(region);  
-        (-dist_squared / (2.0 * sigma.powi(2))).exp()  
+        None // 绿色光标不在 region 内 / 被遮挡  
     };  
   
-    if distance_penalty <= 0.3 {  
-        return None;  
-    }  
-  
-    let mut score = angle_score * distance_penalty;  
-  
-    // ← 当前目标加分简化：只要是当前目标就加 0.15（不再依赖 low_angle_frames）  
-    if is_current_track {  
-        score += 0.15;  
-    }  
-  
-    if score <= 0.2 {  
-        return None;  
-    }  
-  
-    Some(score)  
+    // diff 用的灰度图把绿色像素抹掉,避免污染  
+    gray.set_to(&Scalar::all(0.0), &green_mask).ok()?;  
+    Some((gray, cursor))  
 }  
   
-fn track_background_degree(track: &STrack, bg_direction: Point2d) -> Option<f64> {  
-    let dir = unit(track.kalman_velocity())?;  
-    let dot = dir.dot(bg_direction);  
-    let det = dir.cross(bg_direction);  
-    Some(det.atan2(dot).to_degrees().abs())  
-}  
+/// phaseCorrelate 估漂移 -> 对齐 prev -> absdiff -> threshold -> 连通域取质心。  
+fn extract_signal_centroid(prev: &Mat, cur: &Mat, last: Option<Point2d>) -> Option<Point2d> {  
+    // f32 版本用于 phaseCorrelate  
+    let mut prev_f = Mat::default();  
+    let mut cur_f = Mat::default();  
+    prev.convert_to(&mut prev_f, CV_32FC1, 1.0, 0.0).ok()?;  
+    cur.convert_to(&mut cur_f, CV_32FC1, 1.0, 0.0).ok()?;  
   
-fn estimate_background_direction(last_cursor: Option<Point>, tracks: &[STrack]) -> Option<Point2d> {  
-    let mut last_rect_contains_cursor = None;  
-    let filtered = tracks  
-        .iter()  
-        .filter(|track| {  
-            if track.tracklet_len() < 5 {  
-                return false;  
-            }  
+    // 背景漂移向量(cur 相对 prev 的位移)  
+    let shift = imgproc::phase_correlate_def(&prev_f, &cur_f).ok()?;  
   
-            if last_rect_contains_cursor.is_some_and(|rect: Rect| (rect & track.rect()).area() > 0)  
-            {  
-                return false;  
-            }  
+    // 用 shift 把 prev 平移对齐到 cur  
+    let m = Mat::from_slice_2d(&[[1.0f64, 0.0, shift.x], [0.0, 1.0, shift.y]]).ok()?;  
+    let size = cur.size().ok()?;  
+    let mut aligned = Mat::default();  
+    imgproc::warp_affine(  
+        prev,  
+        &mut aligned,  
+        &m,  
+        size,  
+        INTER_LINEAR,  
+        BORDER_CONSTANT,  
+        Scalar::all(0.0),  
+    )  
+    .ok()?;  
   
-            let Some(last_cursor) = last_cursor else {  
-                return true;  
-            };  
+    // 背景被抵消,只剩运动方式不同的目标  
+    let mut diff = Mat::default();  
+    core::absdiff(&aligned, cur, &mut diff).ok()?;  
   
-            let rect = track.rect();  
-            if rect.contains(last_cursor) {  
-                if last_rect_contains_cursor.is_none() {  
-                    last_rect_contains_cursor = Some(rect);  
-                }  
-  
-                return false;  
-            }  
-  
-            let norm = (mid_point(track.rect()) - last_cursor).norm();  
-            norm >= diag(track.rect())  
-        })  
-        .map(STrack::kalman_velocity)  
-        .collect::<Vec<Point2d>>();  
-    if filtered.len() < 3 {  
-        return None;  
+    let mut mask = Mat::default();  
+    imgproc::threshold(&diff, &mut mask, DIFF_THRESHOLD, 255.0, THRESH_BINARY).ok()?;  
+    if mask.typ() != CV_8UC1 {  
+        let mut m8 = Mat::default();  
+        mask.convert_to(&mut m8, CV_8UC1, 1.0, 0.0).ok()?;  
+        mask = m8;  
     }  
   
-    let velocity_sum = filtered  
-        .into_iter()  
-        .fold(Point2d::default(), |acc, v| acc + v);  
-    let velocity_unit = unit(velocity_sum)?;  
-  
-    Some(velocity_unit)  
+    best_centroid(&mask, last)  
 }  
   
-fn diag(rect: Rect) -> f64 {  
-    ((rect.width.pow(2) + rect.height.pow(2)) as f64).sqrt()  
-}  
+/// 连通域:选面积达标、且离上次光标最近的质心;首帧取最大面积。  
+fn best_centroid(mask: &Mat, last: Option<Point2d>) -> Option<Point2d> {  
+    let mut labels = Mat::default();  
+    let mut stats = Mat::default();  
+    let mut centroids = Mat::default();  
+    let n = imgproc::connected_components_with_stats(  
+        mask,  
+        &mut labels,  
+        &mut stats,  
+        &mut centroids,  
+        8,  
+        CV_32S,  
+    )  
+    .ok()?;  
   
-fn unit<T>(point: Point_<T>) -> Option<Point_<T>>  
-where  
-    T: Copy,  
-    Point_<T>: Div<f64, Output = Point_<T>>,  
-    f64: From<T>,  
-{  
-    let norm = point.norm();  
-    if norm < 1e-3 {  
-        return None;  
+    let mut best: Option<Point2d> = None;  
+    let mut best_metric = f64::MAX;  
+    for i in 1..n {  
+        let area = *stats.at_2d::<i32>(i, CC_STAT_AREA).ok()?;  
+        if area < MIN_BLOB_AREA || area > MAX_BLOB_AREA {  
+            continue;  
+        }  
+        let cx = *centroids.at_2d::<f64>(i, 0).ok()?;  
+        let cy = *centroids.at_2d::<f64>(i, 1).ok()?;  
+        let c = Point2d::new(cx, cy);  
+  
+        // 有历史光标:取距离最小;否则:取面积最大(用负面积当 metric)  
+        let metric = match last {  
+            Some(l) => (c - l).norm(),  
+            None => -(area as f64),  
+        };  
+        if metric < best_metric {  
+            best_metric = metric;  
+            best = Some(c);  
+        }  
     }  
-  
-    Some(point / norm)  
+    best  
 }
