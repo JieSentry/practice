@@ -220,9 +220,9 @@ fn best_centroid(mask: &Mat, last: Option<Point2d>) -> Option<Point2d> {
     let mut best_metric = f64::MAX;  
     for i in 1..n {  
         let area = *stats.at_2d::<i32>(i, CC_STAT_AREA).ok()?;  
-        if area < MIN_BLOB_AREA || area > MAX_BLOB_AREA {  
-            continue;  
-        }  
+        if !(MIN_BLOB_AREA..=MAX_BLOB_AREA).contains(&area) {  
+    continue;  
+} 
         let cx = *centroids.at_2d::<f64>(i, 0).ok()?;  
         let cy = *centroids.at_2d::<f64>(i, 1).ok()?;  
         let c = Point2d::new(cx, cy);  
