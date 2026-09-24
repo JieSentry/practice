@@ -84,11 +84,12 @@ pub fn debug_spinning_arrows(mat: &impl MatTraitConst, spin_arrow: SpinArrow) {
     debug_mat("Spin Arrow", &mat, 0, []);
 }
 
-pub fn debug_shape_tracks(
-    mat: &impl MatTraitConst,
-    tracks: Vec<STrack>,
-    cursor: Point,
-    bg_direction: Point2d, 
+#[allow(dead_code)]  
+pub fn debug_shape_tracks(  
+    mat: &impl MatTraitConst,  
+    tracks: Vec<STrack>,  
+    cursor: Point,  
+    bg_direction: Point2d,  
 ) {
     fn signed_angle_deg(a: Point2d, b: Point2d) -> f64 {
         let dot = a.dot(b);
