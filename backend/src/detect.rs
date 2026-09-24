@@ -284,11 +284,6 @@ pub trait Detector: Debug + Send + Sync {
     /// Detects the Sol Erda state from the tracker menu.
     fn detect_hexa_sol_erda(&self) -> Result<SolErda>;
 
-    /// Detects a list of transparent shapes during lie detector event.
-    ///
-    /// The returned [`Rect`]s have coordinates relative to `region`.
-    fn detect_transparent_shapes(&self, region: Rect) -> Vec<(Rect, f32)>;
-
     /// Detects a list of mushrooms during Violetta lie detector event.
     ///
     /// The returned [`Rect`]s have coordinates relative to `region`.
@@ -638,10 +633,6 @@ fn detect_tof_ask_button(&self) -> Result<Rect> {
 
     fn detect_hexa_sol_erda(&self) -> Result<SolErda> {
         detect_hexa_sol_erda(self.grayscale())
-    }
-
-    fn detect_transparent_shapes(&self, region: Rect) -> Vec<(Rect, f32)> {
-        detect_transparent_shapes(&self.bgr().roi(region).unwrap())
     }
 
     fn detect_violetta_mushrooms(&self, region: Rect) -> Vec<(Rect, f32)> {
@@ -2729,32 +2720,6 @@ fn detect_hexa_sol_erda(grayscale: &impl ToInputArray) -> Result<SolErda> {
     }
 
     bail!("sol erda tracker menu not visible")
-}
-
-fn detect_transparent_shapes(bgr: &impl MatTraitConst) -> Vec<(Rect, f32)> {
-    static MODEL: LazyLock<Mutex<Session>> = LazyLock::new(|| {
-        Mutex::new(
-            build_session(include_bytes!(env!("TRANSPARENT_SHAPE_MODEL")))
-                .expect("build transparent shape detection session successfully"),
-        )
-    });
-
-    let size = bgr.size().unwrap();
-    let (mat_in, w_ratio, h_ratio, left, top) = preprocess_for_yolo(bgr);
-    let mut model = MODEL.lock().unwrap();
-    let result = model.run([to_input_value(&mat_in)]).unwrap();
-    let mat_out = from_output_value(&result);
-
-    (0..mat_out.rows())
-        // SAFETY: 0..result.rows() is within Mat bounds
-        .map(|i| unsafe { mat_out.at_row_unchecked::<f32>(i).unwrap() })
-        .map(|pred| {
-            (
-                remap_from_yolo(pred, size, w_ratio, h_ratio, left, top),
-                pred[4],
-            )
-        })
-        .collect()
 }
 
 fn detect_violetta_mushrooms(bgr: &impl MatTraitConst) -> Vec<(Rect, f32)> {
