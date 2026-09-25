@@ -2,14 +2,13 @@
 use log::debug;  
 use opencv::{  
     core::{  
-        self, Mat, MatTrait, MatTraitConst, Point, Point2d, Rect, Scalar, CV_8UC1, CV_32FC1, CV_32S,  
-        BORDER_CONSTANT,  
+        self, Mat, MatTrait, MatTraitConst, Point, Point2d, Rect, Scalar, Size, CV_8UC1, CV_32F,  
+        CV_32FC1, BORDER_CONSTANT,  
     },  
     imgproc::{  
-        self, CC_STAT_AREA, COLOR_BGR2HSV_FULL, COLOR_BGRA2BGR, COLOR_BGRA2GRAY, INTER_LINEAR,  
-        THRESH_BINARY,  
+        self, COLOR_BGR2HSV_FULL, COLOR_BGRA2BGR, COLOR_BGRA2GRAY, INTER_LINEAR, THRESH_BINARY,  
     },  
-};  
+};
   
 use crate::detect::Detector;  
   
@@ -21,13 +20,20 @@ const MIN_BLOB_AREA: i32 = 6;
 const MAX_BLOB_AREA: i32 = 4000;  
 /// 速度 EMA 平滑系数。  
 const VELOCITY_ALPHA: f64 = 0.5;  
-/// 丢帧外推倍率(沿用旧实现的 1.5)。  
-const DEAD_RECKON_GAIN: f64 = 1.5;  
+/// 丢帧外推倍率(降到 1.0,避免换向时过冲飞出)。  
+const DEAD_RECKON_GAIN: f64 = 1.0;  
 /// 连续丢帧超过此值则放弃(返回 None)。  
 const MAX_MISS: u32 = 20;  
+/// 密度窗口边长(px),覆盖最大图形(125~175)。噪点干扰时可降到 ~150。★需实测★  
+const BOX_SIZE: i32 = 175;  
+/// 密度峰值窗口内像素和(单位:像素个数)最小阈值,低于则判本帧无有效目标。★需实测★  
+const MIN_WINDOW_SUM: f32 = 200.0;  
+/// 单帧离群门控阈值(px):候选质心相对预测位置的最大允许跳变。  
+/// 图形匀速移动、不会瞬移,超过则判坏帧走外推。需略大于图形一帧最大位移。★需实测★  
+const MAX_JUMP_PX: f64 = 60.0;  
 /// 绿色光标 HSV 阈值(COLOR_BGR2HSV_FULL: H/S/V 均 0..255)。★占位,需实测★  
 const GREEN_LO: [f64; 3] = [60.0, 60.0, 60.0];  
-const GREEN_HI: [f64; 3] = [110.0, 255.0, 255.0];  
+const GREEN_HI: [f64; 3] = [110.0, 255.0, 255.0]; 
 // ─────────────────────────────────────────────────────────  
   
 #[derive(Debug, Default)]  
@@ -67,38 +73,50 @@ impl TransparentShapeSolver {
         // 4. 需要上一帧才能做漂移减除  
         let target = match self.prev_gray.take() {  
             Some(prev) if prev.size().ok() == cur_gray.size().ok() => {  
-                extract_signal_centroid(&prev, &cur_gray, self.last_cursor)  
+                extract_signal_centroid(&prev, &cur_gray)  
             }  
             _ => None,  
         };  
         self.prev_gray = Some(cur_gray);  
   
-        // 5. 有目标 -> 更新速度并返回;无目标 -> 外推  
-        let cursor = match target {  
-            Some(t) => {  
-                if let Some(last) = self.last_cursor {  
-                    let raw_v = t - last;  
-                    self.velocity =  
-                        self.velocity * (1.0 - VELOCITY_ALPHA) + raw_v * VELOCITY_ALPHA;  
+        // 5. 有目标 -> 单帧离群门控 + 更新速度;无目标/坏帧 -> 惯性外推  
+        let cursor = 'pick: {  
+            if let Some(t) = target {  
+                // 单帧离群门控:图形匀速移动、不会瞬移。  
+                // 候选质心相对预测位置(last + velocity)跳变过大 -> 判坏帧,走外推,  
+                // 不污染 velocity / last_cursor,避免鼠标锁到错误目标。  
+                let is_outlier = match self.last_cursor {  
+                    Some(last) => (t - (last + self.velocity)).norm() > MAX_JUMP_PX,  
+                    None => false, // 首帧无历史,直接接受  
+                };  
+                if !is_outlier {  
+                    if let Some(last) = self.last_cursor {  
+                        let raw_v = t - last;  
+                        self.velocity =  
+                            self.velocity * (1.0 - VELOCITY_ALPHA) + raw_v * VELOCITY_ALPHA;  
+                    }  
+                    self.last_cursor = Some(t);  
+                    self.miss_count = 0;  
+                    break 'pick t;  
                 }  
-                self.last_cursor = Some(t);  
-                self.miss_count = 0;  
-                t  
             }  
-            None => {  
-                let last = self.last_cursor?;  
-                self.miss_count += 1;  
-                if self.miss_count > MAX_MISS {  
-                    return None;  
-                }  
-                let next = last + self.velocity * DEAD_RECKON_GAIN;  
-                self.last_cursor = Some(next);  
-                next  
+            // 无目标 或 门控判定的坏帧:用惯性外推顶过去  
+            let last = self.last_cursor?;  
+            self.miss_count += 1;  
+            if self.miss_count > MAX_MISS {  
+                return None;  
             }  
+            let next = last + self.velocity * DEAD_RECKON_GAIN;  
+            self.last_cursor = Some(next);  
+            next  
         };  
   
-        let local = Point::new(cursor.x.round() as i32, cursor.y.round() as i32);  
-        let absolute = region.tl() + local;  
+        // 6. clamp 到 region 内:越界不再返回 None 中断,而是贴到最近边界,  
+        //    保证鼠标不飞出测谎仪窗口、也不中断移动。  
+        let lx = (cursor.x.round() as i32).clamp(0, region.width - 1);  
+        let ly = (cursor.y.round() as i32).clamp(0, region.height - 1);  
+        let local = Point::new(lx, ly);  
+        let absolute = region.tl() + local;
         if !region.contains(absolute) {  
             return None;  
         }  
@@ -186,7 +204,7 @@ fn extract_signal_centroid(prev: &Mat, cur: &Mat, last: Option<Point2d>) -> Opti
     )  
     .ok()?;  
   
-    // 背景被抵消,只剩运动方式不同的目标  
+    // 背景被抵消,只剩运动方式不同的目标(碎片化 diff)  
     let mut diff = Mat::default();  
     core::absdiff(&aligned, cur, &mut diff).ok()?;  
   
@@ -198,44 +216,66 @@ fn extract_signal_centroid(prev: &Mat, cur: &Mat, last: Option<Point2d>) -> Opti
         mask = m8;  
     }  
   
-    best_centroid(&mask, last)  
+    peak_window_centroid(&mask)  
 }  
   
-/// 连通域:选面积达标、且离上次光标最近的质心;首帧取最大面积。  
-fn best_centroid(mask: &Mat, last: Option<Point2d>) -> Option<Point2d> {  
-    let mut labels = Mat::default();  
-    let mut stats = Mat::default();  
-    let mut centroids = Mat::default();  
-    let n = imgproc::connected_components_with_stats(  
-        mask,  
-        &mut labels,  
-        &mut stats,  
-        &mut centroids,  
-        8,  
-        CV_32S,  
+/// 密度窗口:用 BOX_SIZE 方框滑过整张碎片 mask,找碎片最密集的窗口,  
+/// 再对该窗口内的碎片求质心作为目标点(不用窗口位置,避免平顶抖动)。  
+fn peak_window_centroid(mask: &Mat) -> Option<Point2d> {  
+    let size = mask.size().ok()?;  
+  
+    // mask(0/255) -> f32,并归一到 0/1,使窗口和 = 窗口内像素个数  
+    let mut mask_f = Mat::default();  
+    mask.convert_to(&mut mask_f, CV_32F, 1.0 / 255.0, 0.0).ok()?;  
+  
+    // 盒式滤波(normalize=false): 每像素 = 以其为中心的窗口内像素和  
+    let mut resp = Mat::default();  
+    imgproc::box_filter(  
+        &mask_f,  
+        &mut resp,  
+        CV_32F,  
+        Size::new(BOX_SIZE, BOX_SIZE),  
+        Point::new(-1, -1),  
+        false,  
+        BORDER_CONSTANT,  
     )  
     .ok()?;  
   
-    let mut best: Option<Point2d> = None;  
-    let mut best_metric = f64::MAX;  
-    for i in 1..n {  
-        let area = *stats.at_2d::<i32>(i, CC_STAT_AREA).ok()?;  
-        if !(MIN_BLOB_AREA..=MAX_BLOB_AREA).contains(&area) {  
-    continue;  
-} 
-        let cx = *centroids.at_2d::<f64>(i, 0).ok()?;  
-        let cy = *centroids.at_2d::<f64>(i, 1).ok()?;  
-        let c = Point2d::new(cx, cy);  
+    // 找密度峰值窗口的中心位置  
+    let mut min_val = 0.0f64;  
+    let mut max_val = 0.0f64;  
+    let mut min_loc = Point::default();  
+    let mut max_loc = Point::default();  
+    core::min_max_loc(  
+        &resp,  
+        &mut min_val,  
+        &mut max_val,  
+        &mut min_loc,  
+        &mut max_loc,  
+        &core::no_array(),  
+    )  
+    .ok()?;  
   
-        // 有历史光标:取距离最小;否则:取面积最大(用负面积当 metric)  
-        let metric = match last {  
-            Some(l) => (c - l).norm(),  
-            None => -(area as f64),  
-        };  
-        if metric < best_metric {  
-            best_metric = metric;  
-            best = Some(c);  
-        }  
+    // 窗口内碎片过少 -> 本帧无有效目标(交给上层走外推)  
+    if (max_val as f32) < MIN_WINDOW_SUM {  
+        return None;  
     }  
-    best  
+  
+    // 以峰值为中心构造 ROI,并 clamp 到 mask 边界内  
+    let half = BOX_SIZE / 2;  
+    let x0 = (max_loc.x - half).clamp(0, size.width - 1);  
+    let y0 = (max_loc.y - half).clamp(0, size.height - 1);  
+    let x1 = (max_loc.x + half + 1).clamp(x0 + 1, size.width);  
+    let y1 = (max_loc.y + half + 1).clamp(y0 + 1, size.height);  
+    let roi_rect = Rect::new(x0, y0, x1 - x0, y1 - y0);  
+  
+    // 只在峰值窗口内对碎片求质心(质心由碎片真实分布决定,天然稳定居中)  
+    let roi = mask.roi(roi_rect).ok()?;  
+    let mm = imgproc::moments_def(&roi).ok()?;  
+    if mm.m00 <= 1.0 {  
+        return None;  
+    }  
+    let cx = mm.m10 / mm.m00 + roi_rect.x as f64;  
+    let cy = mm.m01 / mm.m00 + roi_rect.y as f64;  
+    Some(Point2d::new(cx, cy))  
 }
