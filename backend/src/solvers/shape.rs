@@ -226,7 +226,12 @@ fn best_centroid(mask: &Mat, anchor: Option<Point2d>) -> Option<Point2d> {
     let mut stats = Mat::default();  
     let mut centroids = Mat::default();  
     let n = imgproc::connected_components_with_stats(  
-        mask, &mut labels, &mut stats, &mut centroids, 8, CV_32S,  
+        mask,  
+        &mut labels,  
+        &mut stats,  
+        &mut centroids,  
+        8,  
+        CV_32S,  
     )  
     .ok()?;  
   
