@@ -113,9 +113,6 @@ impl TransparentShapeSolver {
         let ly = (cursor.y.round() as i32).clamp(0, region.height - 1);  
         let local = Point::new(lx, ly);  
         let absolute = region.tl() + local;
-        if !region.contains(absolute) {  
-            return None;  
-        }  
   
         #[cfg(debug_assertions)]  
         if self.is_debugging {  
