@@ -15,9 +15,6 @@ use crate::detect::Detector;
 // ── 可调参数(必须用真实帧调) ──────────────────────────  
 /// diff 后判定为“信号”的最小灰度差(0..255)。越大越严格。  
 const DIFF_THRESHOLD: f64 = 8.0;  
-/// 幸存连通域面积上下限(像素),滤掉噪点和过大伪影。  
-const MIN_BLOB_AREA: i32 = 6;  
-const MAX_BLOB_AREA: i32 = 4000;  
 /// 速度 EMA 平滑系数。  
 const VELOCITY_ALPHA: f64 = 0.5;  
 /// 丢帧外推倍率(降到 1.0,避免换向时过冲飞出)。  
@@ -28,12 +25,11 @@ const MAX_MISS: u32 = 20;
 const BOX_SIZE: i32 = 175;  
 /// 密度峰值窗口内像素和(单位:像素个数)最小阈值,低于则判本帧无有效目标。★需实测★  
 const MIN_WINDOW_SUM: f32 = 200.0;  
-/// 单帧离群门控阈值(px):候选质心相对预测位置的最大允许跳变。  
-/// 图形匀速移动、不会瞬移,超过则判坏帧走外推。需略大于图形一帧最大位移。★需实测★  
+/// 单帧离群门控阈值(px):候选质心相对预测位置的最大允许跳变距离。★需实测★  
 const MAX_JUMP_PX: f64 = 60.0;  
 /// 绿色光标 HSV 阈值(COLOR_BGR2HSV_FULL: H/S/V 均 0..255)。★占位,需实测★  
 const GREEN_LO: [f64; 3] = [60.0, 60.0, 60.0];  
-const GREEN_HI: [f64; 3] = [110.0, 255.0, 255.0]; 
+const GREEN_HI: [f64; 3] = [110.0, 255.0, 255.0];  
 // ─────────────────────────────────────────────────────────  
   
 #[derive(Debug, Default)]  
@@ -179,7 +175,7 @@ fn to_gray_and_cursor(bgra: &Mat) -> Option<(Mat, Option<Point2d>)> {
 }  
   
 /// phaseCorrelate 估漂移 -> 对齐 prev -> absdiff -> threshold -> 连通域取质心。  
-fn extract_signal_centroid(prev: &Mat, cur: &Mat, last: Option<Point2d>) -> Option<Point2d> {  
+fn extract_signal_centroid(prev: &Mat, cur: &Mat) -> Option<Point2d> {
     // f32 版本用于 phaseCorrelate  
     let mut prev_f = Mat::default();  
     let mut cur_f = Mat::default();  
@@ -248,13 +244,13 @@ fn peak_window_centroid(mask: &Mat) -> Option<Point2d> {
     let mut max_loc = Point::default();  
     core::min_max_loc(  
         &resp,  
-        &mut min_val,  
-        &mut max_val,  
-        &mut min_loc,  
-        &mut max_loc,  
+        Some(&mut min_val),  
+        Some(&mut max_val),  
+        Some(&mut min_loc),  
+        Some(&mut max_loc),  
         &core::no_array(),  
     )  
-    .ok()?;  
+    .ok()?; 
   
     // 窗口内碎片过少 -> 本帧无有效目标(交给上层走外推)  
     if (max_val as f32) < MIN_WINDOW_SUM {  
