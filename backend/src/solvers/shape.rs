@@ -246,8 +246,8 @@ fn best_centroid(mask: &Mat, anchor: Option<Point2d>) -> Option<Point2d> {
             && (c - a).norm() > GATE_RADIUS * 1.5  
         {  
             continue;  
-        }
         }  
+  
         // 候选里选面积最大的块(目标本体)  
         if area > best_area {  
             best_area = area;  
