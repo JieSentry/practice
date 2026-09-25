@@ -54,11 +54,10 @@ pub struct TransparentShapeSolver {
 impl TransparentShapeSolver {  
     #[cfg(debug_assertions)]  
     pub fn debug() -> Self {  
-        Self {  
-            is_debugging: true,  
-            ..Default::default()  
-        }  
-    }
+        let mut default = Self::default();  
+        default.is_debugging = true;  
+        default  
+    }  
   
     pub fn solve(&mut self, detector: &dyn Detector, region: Rect) -> Option<Point> {  
         // 1. 取当前帧 BGRA ROI  
@@ -226,12 +225,7 @@ fn best_centroid(mask: &Mat, anchor: Option<Point2d>) -> Option<Point2d> {
     let mut stats = Mat::default();  
     let mut centroids = Mat::default();  
     let n = imgproc::connected_components_with_stats(  
-        mask,  
-        &mut labels,  
-        &mut stats,  
-        &mut centroids,  
-        8,  
-        CV_32S,  
+        mask, &mut labels, &mut stats, &mut centroids, 8, CV_32S,  
     )  
     .ok()?;  
   
@@ -247,12 +241,11 @@ fn best_centroid(mask: &Mat, anchor: Option<Point2d>) -> Option<Point2d> {
         let c = Point2d::new(cx, cy);  
   
         // 有锚点:先按门控半径过滤远处无关块  
-        if let Some(a) = anchor  
-            && (c - a).norm() > GATE_RADIUS * 1.5  
-        {  
-            continue;  
+        if let Some(a) = anchor {  
+            if (c - a).norm() > GATE_RADIUS * 1.5 {  
+                continue;  
+            }  
         }  
-  
         // 候选里选面积最大的块(目标本体)  
         if area > best_area {  
             best_area = area;  
