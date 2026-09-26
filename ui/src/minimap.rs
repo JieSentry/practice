@@ -311,6 +311,8 @@ pub fn MinimapScreen() -> Element {
     let mut map = use_context::<AppState>().map;
     let mut map_preset = use_context::<AppState>().map_preset;
     let mut maps = use_resource(async || query_maps().await.unwrap_or_default());
+    // 读取已保存的 settings，用于恢复上次选中的地图  
+    let saved_settings = use_resource(async || query_settings().await);  
     let position = use_context::<AppState>().position;
     // Maps queried `maps` to names
     let map_names = use_memo::<Vec<String>>(move || {
