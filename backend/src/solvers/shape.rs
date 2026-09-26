@@ -18,7 +18,6 @@ pub struct TransparentShapeSolver {
     last_cursor: Option<Point>,  
     last_velocity: Option<Point2d>,  
     bg_direction: Point2d,  
-    // ← 移除了 current_low_angle_frames 字段  
     #[cfg(debug_assertions)]  
     is_debugging: bool,  
 }  
@@ -33,7 +32,6 @@ impl Default for TransparentShapeSolver {
             last_cursor: None,  
             last_velocity: None,  
             bg_direction: Point2d::default(),  
-            // ← 移除了 current_low_angle_frames 初始化  
             #[cfg(debug_assertions)]  
             is_debugging: false,  
         }  
@@ -142,8 +140,6 @@ impl TransparentShapeSolver {
         let last_cursor = self.last_cursor?;  
         let bg_direction = self.bg_direction;  
   
-        // ← 移除了 self.update_low_angle_count(tracks, bg_direction) 调用  
-  
         // 计算所有候选分数  
         let scored_tracks: Vec<_> = tracks  
             .iter()  
@@ -157,7 +153,7 @@ impl TransparentShapeSolver {
                     last_cursor,  
                     bg_direction,  
                     region,  
-                    is_current, // ← 移除了 current_low_angle_frames 参数  
+                    is_current,  
                 )?;  
                 Some((track, score, is_current))  
             })  
@@ -195,8 +191,7 @@ impl TransparentShapeSolver {
             .map(|(_, s, _)| *s)  
             .unwrap_or(0.0);  
   
-        // ← 简化切换条件：候选连续3帧最佳 + 分差 > 0.1  
-        //   移除了 current_low_angle_frames >= 3 的分支  
+        // 切换条件：候选连续最佳 + 分差 > 0.1  
         let should_switch =  
             self.candidate_track_count >= 2 && best_score - current_score > 0.1;  
   
@@ -211,8 +206,6 @@ impl TransparentShapeSolver {
         // 默认返回当前目标  
         tracks.iter().find(|t| t.track_id() == current_track_id)  
     }  
-  
-    // ← 移除了整个 update_low_angle_count 方法  
 }  
   
 impl Drop for TransparentShapeSolver {  
@@ -276,11 +269,10 @@ fn track_background_score(
     bg_direction: Point2d,  
     region: Rect,  
     is_current_track: bool,  
-    // ← 移除了 current_low_angle_frames 参数  
 ) -> Option<f64> {  
     let angle = track_background_degree(track, bg_direction)?;  
   
-    // ← 统一使用 45° 阈值，移除了动态阈值逻辑  
+    // 逆背景运动判别阈值：45°  
     if angle <= 45.0 {  
         return None;  
     }  
@@ -303,7 +295,6 @@ fn track_background_score(
   
     let mut score = angle_score * distance_penalty;  
   
-    // ← 当前目标加分简化：只要是当前目标就加 0.15（不再依赖 low_angle_frames）  
     if is_current_track {  
         score += 0.15;  
     }  
