@@ -139,7 +139,13 @@ impl TransparentShapeSolver {
   
         // 找到最佳追踪目标  
         if let Some(best_track) = self.find_best_track(&tracks, region_w, region_h) {  
-            let next_cursor = predicted_center(&best_track);  
+            // 诉求1: 融合期禁用速度外推(预测框不准,图形常在融合期拐弯),改用检测框中心;  
+            // 诉求3: 非融合期仍用 Kalman 中心 + 速度预测。  
+            let next_cursor = if self.is_merging(&best_track, &tracks) {  
+                track_center(&best_track)  
+            } else {  
+                predicted_center(&best_track)  
+            };  
             self.current_track_id = Some(best_track.track_id());  
             self.last_cursor = Some(next_cursor);  
             self.last_velocity = Some(best_track.kalman_velocity());  
@@ -152,7 +158,7 @@ impl TransparentShapeSolver {
             return Some(to_point(region.tl(), next_cursor));  
         }  
   
-// 优化2: 检查 current_track_id 是否在 lost 池中,用其 Kalman 预测位置  
+        // 优化2: 检查 current_track_id 是否在 lost 池中,用其 Kalman 预测位置  
         if let Some(current_id) = self.current_track_id  
             && let Some((next_cursor, vel)) = self  
                 .tracker  
@@ -170,7 +176,7 @@ impl TransparentShapeSolver {
             self.last_cursor = Some(next_cursor);  
             self.last_velocity = Some(vel);  
             return Some(to_point(region.tl(), next_cursor));  
-        } 
+        }  
   
         // 兜底:last_cursor + last_velocity * 1.5 线性外推(与 Komari 一致)  
         if let (Some(last_cursor), Some(last_velocity)) = (self.last_cursor, self.last_velocity) {  
@@ -286,44 +292,61 @@ impl TransparentShapeSolver {
         let current_track = tracks.iter().find(|t| t.track_id() == current_id).cloned();  
         let current_in_tracks = current_track.is_some();  
   
-// ===== 核心策略:稳定 track 直接保留(增加融合→分离防护) =====  
+        // ===== 核心策略:稳定 track 保留(健康检查 + 背景方向裁决) =====  
         if let Some(ref ct) = current_track  
             && ct.state() == TrackState::Tracked  
             && ct.tracklet_len() >= 10  
             && ct.score() >= 0.50  
         {  
-            // 融合→分离防护:若稳定 track 出现异常跳变,说明底层 ByteTracker  
-            // 在两图形分离时把 ID 错配到了另一物理图形上。此时不再信任该 ID,  
-            // 改选距离上一帧光标最近的 track(分离后仍留在原处的正确图形)。  
-            if !self.is_motion_consistent(ct)  
-                && let Some(lc) = self.last_cursor  
-                && let Some(closest) = tracks.iter().min_by(|a, b| {  
-                    (track_center(a) - lc)  
-                        .norm()  
-                        .partial_cmp(&(track_center(b) - lc).norm())  
-                        .unwrap()  
-                })  
-                && closest.track_id() != ct.track_id()  
-            {  
-                debug!(  
-                    target: "backend/player",  
-                    "REASSIGN(merge-split) {} -> {}",  
-                    ct.track_id(),  
-                    closest.track_id()  
-                );  
+            // 健康检查:仅当当前 track "像目标"(背景分数有效,即逆背景运动)时,  
+            // 才允许走快路径短路;若它顺背景运动(疑似被错配的背景图形),  
+            // 则不短路,落入下方正常打分流程,让正确图形有机会夺回。  
+            let current_is_healthy = self  
+                .track_background_score(ct, region_w, region_h, true)  
+                .is_some();  
+  
+            if current_is_healthy {  
+                // 融合→分离裁决:改用"背景方向"而非"距离最近"。  
+                // (距离最近会选到迎面而来的错误图形,已删除。)  
+                // 当前 track 运动不一致(疑似 ID 错配)时,在其它候选里选  
+                // "最逆背景运动"且比当前更逆背景的 track 接管。  
+                if !self.is_motion_consistent(ct)  
+                    && let Some(best) = tracks  
+                        .iter()  
+                        .filter(|t| t.track_id() != ct.track_id())  
+                        .max_by(|a, b| {  
+                            self.track_background_degree(a)  
+                                .partial_cmp(&self.track_background_degree(b))  
+                                .unwrap()  
+                        })  
+                    && self.track_background_degree(best) > self.track_background_degree(ct)  
+                {  
+                    debug!(  
+                        target: "backend/player",  
+                        "REASSIGN(merge-split) {} -> {}",  
+                        ct.track_id(),  
+                        best.track_id()  
+                    );  
+                    self.candidate_track_id = None;  
+                    self.candidate_track_count = 0;  
+                    return Some(best.clone());  
+                }  
+  
                 self.candidate_track_id = None;  
                 self.candidate_track_count = 0;  
-                return Some(closest.clone());  
+                return Some(ct.clone());  
             }  
-  
-            self.candidate_track_id = None;  
-            self.candidate_track_count = 0;  
-            return Some(ct.clone());  
-        }
+            // current_is_healthy == false → 不短路,继续往下走正常打分  
+        }  
   
         // 计算 predicted_pos  
         let predicted_pos: Option<Point2d> = if let Some(ref ct) = current_track {  
-            Some(predicted_center(ct))  
+            // 诉求1: 融合期不做速度外推,直接用检测框中心  
+            if self.is_merging(ct, tracks) {  
+                Some(track_center(ct))  
+            } else {  
+                Some(predicted_center(ct))  
+            }  
         } else if let (Some(lc), Some(lv)) = (self.last_cursor, self.last_velocity) {  
             Some(lc + lv)  
         } else {  
@@ -354,7 +377,7 @@ impl TransparentShapeSolver {
                 if dist > search_radius {  
                     continue;  
                 }  
-            } 
+            }  
   
             let mut score = self  
                 .track_background_score(track, region_w, region_h, is_current)  
@@ -366,7 +389,7 @@ impl TransparentShapeSolver {
                 && iou(track, ct) > self.overlap_iou_thresh  
             {  
                 score *= self.overlap_switch_penalty;  
-            } 
+            }  
   
             scored_tracks.push((track.clone(), score));  
         }  
@@ -399,20 +422,31 @@ impl TransparentShapeSolver {
         let mut switch_threshold_multiplier = 1.0f64;  
         let mut required_confirm_frames = 3u32;  
         if let Some(ref ct) = current_track {  
-            if ct.tracklet_len() >= 50 {  
-                switch_threshold_multiplier = 3.0;  
-                required_confirm_frames = 6;  
-            } else if ct.tracklet_len() >= 20 {  
-                switch_threshold_multiplier = 2.0;  
-                required_confirm_frames = 5;  
-            } else if ct.tracklet_len() >= 10 {  
-                switch_threshold_multiplier = 1.5;  
-                required_confirm_frames = 4;  
-            }  
+            // 仅当当前 track "像目标"(逆背景运动,背景分数有效)时才启用粘性加固;  
+            // 若当前 track 顺背景运动(疑似错误图形),用最小门槛以便迅速切回正确目标。  
+            let current_is_healthy = self  
+                .track_background_score(ct, region_w, region_h, true)  
+                .is_some();  
   
-            if ct.score() >= 0.85 {  
-                switch_threshold_multiplier *= 1.5;  
-                required_confirm_frames += 1;  
+            if current_is_healthy {  
+                if ct.tracklet_len() >= 50 {  
+                    switch_threshold_multiplier = 3.0;  
+                    required_confirm_frames = 6;  
+                } else if ct.tracklet_len() >= 20 {  
+                    switch_threshold_multiplier = 2.0;  
+                    required_confirm_frames = 5;  
+                } else if ct.tracklet_len() >= 10 {  
+                    switch_threshold_multiplier = 1.5;  
+                    required_confirm_frames = 4;  
+                }  
+  
+                if ct.score() >= 0.85 {  
+                    switch_threshold_multiplier *= 1.5;  
+                    required_confirm_frames += 1;  
+                }  
+            } else {  
+                switch_threshold_multiplier = 1.0;  
+                required_confirm_frames = 1;  
             }  
         }  
   
@@ -421,7 +455,7 @@ impl TransparentShapeSolver {
             && best_score <= cs * switch_threshold_multiplier  
         {  
             return current_track;  
-        } 
+        }  
   
         // 候选确认计数  
         if self.candidate_track_id == Some(best_track.track_id()) {  
@@ -527,13 +561,13 @@ impl TransparentShapeSolver {
         let det = direction.x * self.bg_direction.y - direction.y * self.bg_direction.x;  
   
         det.atan2(dot).to_degrees().abs()  
-    } 
-
-  /// 校验稳定 track 分离后是否仍符合运动模型。  
+    }  
+  
+    /// 校验稳定 track 分离后是否仍符合运动模型。  
     ///  
     /// 融合→分离时,ByteTracker 的纯 IoU 关联可能把 track ID 贴到错误的  
     /// 物理图形上,表现为检测框中心相对上一帧光标出现远超正常帧间位移的跳变。  
-    /// 返回 false 表示疑似错配,应触发重选。  
+    /// 返回 false 表示疑似错配,应触发背景方向重选。  
     fn is_motion_consistent(&self, track: &STrack) -> bool {  
         let Some(last_cursor) = self.last_cursor else {  
             return true; // 无历史参考,无法判断,放行  
@@ -549,7 +583,17 @@ impl TransparentShapeSolver {
         let max_jump = speed * 1.5 + size * 0.5;  
   
         jump <= max_jump  
-    }
+    }  
+  
+    /// 判断某 track 是否正处于与其它 track 的融合/重叠状态。  
+    ///  
+    /// 融合期间两图形检测框高度重叠,Kalman 速度外推极不可靠(图形常在此时拐弯),  
+    /// 因此需要禁用速度预测,改用检测框原始中心。  
+    fn is_merging(&self, track: &STrack, tracks: &[STrack]) -> bool {  
+        tracks.iter().any(|other| {  
+            other.track_id() != track.track_id() && iou(track, other) > self.overlap_iou_thresh  
+        })  
+    }  
 }  
   
 impl Drop for TransparentShapeSolver {  
@@ -568,10 +612,7 @@ impl Drop for TransparentShapeSolver {
 /// 轨迹中心(基于检测框 tlwh),对齐 Python track_center。  
 fn track_center(track: &STrack) -> Point2d {  
     let t = track.tlwh();  
-    Point2d::new(  
-        (t[0] + t[2] / 2.0) as f64,  
-        (t[1] + t[3] / 2.0) as f64,  
-    )  
+    Point2d::new((t[0] + t[2] / 2.0) as f64, (t[1] + t[3] / 2.0) as f64)  
 }  
   
 /// 预测轨迹下一位置(对齐 _predicted_center):Kalman 中心 + 速度。  
