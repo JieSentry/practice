@@ -379,8 +379,16 @@ pub fn MinimapScreen() -> Element {
         if let Some(maps) = maps()
             && !maps.is_empty()
             && map.peek().is_none()
+            && let Some(settings) = saved_settings()
         {
-            map.set(maps.into_iter().next());
+             let mut chosen = None;  
+            if let Some(id) = settings.last_map_id {  
+                chosen = maps.iter().find(|m| m.id == Some(id)).cloned();  
+            }  
+            if chosen.is_none() {  
+                chosen = maps.into_iter().next();             // 找不到再退回第一个（老行为）  
+            }  
+            map.set(chosen);
             map_preset.set(
                 map.peek()
                     .as_ref()
@@ -451,8 +459,14 @@ pub fn MinimapScreen() -> Element {
                                         .cloned()
                                         .unwrap();
                                     map_preset.set(selected.actions.keys().next().cloned());
+                                    let selected_id = selected.id;
                                     map.set(Some(selected));
                                     coroutine.send(MinimapUpdate::Set);
+                                    spawn(async move {  
+                                        let mut settings = query_settings().await;  
+                                        settings.last_map_id = selected_id;  
+                                        upsert_settings(settings).await;  
+                                    });
                                 },
 
                                 for (i , name) in map_names().into_iter().enumerate() {
