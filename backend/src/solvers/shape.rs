@@ -623,3 +623,4 @@ fn debug_transparent_shapes(
         Point::new(cursor.x.round() as i32, cursor.y.round() as i32),  
         bg_direction,  
     );  
+}
