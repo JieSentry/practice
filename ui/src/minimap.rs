@@ -3,11 +3,10 @@ use std::{
     time::{Duration, Instant},
 };
 
-use backend::{
-    Action, ActionKey, ActionMove, DatabaseEvent, Map, Operation, OperationUpdate, Position,
-    RotationMode, create_map, database_event_receiver, delete_map, redetect_minimap,
-    query_maps, query_settings,
-    state_receiver, update_map, update_operation, upsert_map,
+use backend::{  
+    Action, ActionKey, ActionMove, DatabaseEvent, Map, Operation, OperationUpdate, Position,  
+    RotationMode, create_map, database_event_receiver, delete_map, query_maps, query_settings,  
+    redetect_minimap, state_receiver, update_map, update_operation, upsert_map, upsert_settings,  
 };
 use dioxus::{document::EvalError, html::FileData, prelude::*};
 use futures_util::StreamExt;
