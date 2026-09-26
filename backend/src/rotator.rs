@@ -853,6 +853,14 @@ impl Rotator for DefaultRotator {
         self.normal_actions.clear();
         self.normal_rotate_mode = mode;
         self.normal_actions_reset_on_erda = enable_reset_normal_actions_on_erda;
+        
+        // 快照旧动作的排队时间，避免重建后 last_queued_time 被清空导致全部立即重新入队  
+        let prev_queue_info: std::collections::HashMap<String, PriorityActionQueueInfo> = self  
+            .priority_actions  
+            .iter()  
+            .map(|(_, action)| (priority_action_identity(action), action.queue_info.clone()))  
+            .collect();  
+  
         self.priority_actions.clear();
 
         // Low priority
@@ -986,6 +994,13 @@ if enable_using_hexa_booster {
 
         self.priority_actions
             .insert(next_action_id(), unstuck_priority_action());
+        
+        // 恢复排队时间，使未受影响的定时动作不会因配置改动而立即重新排队  
+        for (_, action) in self.priority_actions.iter_mut() {  
+            if let Some(info) = prev_queue_info.get(&priority_action_identity(action)) {  
+                action.queue_info = info.clone();  
+            }  
+        }
     }
 
     #[inline]
@@ -1688,8 +1703,12 @@ fn should_queue_fixed_action(
 
 fn next_action_id() -> u32 {
     static NEXT_ID: AtomicU32 = AtomicU32::new(0);
-
     NEXT_ID.fetch_add(1, Ordering::Relaxed)
+}
+
+fn priority_action_identity(action: &PriorityAction) -> String {  
+    // metadata 覆盖 buff/booster；inner 的变体覆盖 threads_of_fate/familiars/rune 等  
+    format!("{:?}|{:?}", action.metadata, action.inner)  
 }
 
 #[cfg(test)]
