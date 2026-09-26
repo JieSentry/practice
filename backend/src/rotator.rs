@@ -1412,7 +1412,7 @@ fn buff_priority_action(buff: BuffKind, key: KeyKind) -> PriorityAction {
             wait_after_buffered: WaitAfterBuffered::None,
         })),
         metadata: Some(ActionMetadata::Buff { kind: buff }),
-        queue_to_front: true,
+        queue_to_front: false,
         queue_info: PriorityActionQueueInfo::default(),
     }
 }
