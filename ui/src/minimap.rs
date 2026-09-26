@@ -6,6 +6,7 @@ use std::{
 use backend::{
     Action, ActionKey, ActionMove, DatabaseEvent, Map, Operation, OperationUpdate, Position,
     RotationMode, create_map, database_event_receiver, delete_map, query_maps, redetect_minimap,
+    query_maps, query_settings,
     state_receiver, update_map, update_operation, upsert_map,
 };
 use dioxus::{document::EvalError, html::FileData, prelude::*};
