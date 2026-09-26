@@ -91,7 +91,7 @@ struct PriorityAction {
     queue_info: PriorityActionQueueInfo,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 struct PriorityActionQueueInfo {
     /// Whether this action is being ignored.
     ///
